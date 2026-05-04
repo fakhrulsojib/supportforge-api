@@ -239,3 +239,45 @@ class TestFactory:
         assert isinstance(provider, OllamaAdapter)
         assert provider.base_url == "https://custom.ollama.com"
         assert provider.default_model == "custom-model"
+
+
+class TestHealthCheckGeneric:
+    """Additional health check edge cases."""
+
+    @pytest.mark.asyncio
+    async def test_health_check_generic_exception(self, adapter: OllamaAdapter) -> None:
+        """Generic exceptions should return False (not raise)."""
+        with patch.object(adapter._http_client, "get", new_callable=AsyncMock) as mock_get:
+            mock_get.side_effect = RuntimeError("Unexpected")
+            result = await adapter.health_check()
+            assert result is False
+
+
+class TestClose:
+    """Test suite for close() method."""
+
+    @pytest.mark.asyncio
+    async def test_close_calls_aclose(self, adapter: OllamaAdapter) -> None:
+        """close() should call aclose on the underlying httpx client."""
+        with patch.object(adapter._http_client, "aclose", new_callable=AsyncMock) as mock_close:
+            await adapter.close()
+            mock_close.assert_called_once()
+
+
+class TestStreamGeneric:
+    """Additional stream edge cases."""
+
+    @pytest.mark.asyncio
+    async def test_stream_generic_error(self, adapter: OllamaAdapter) -> None:
+        """Generic exceptions during streaming should raise LLMError."""
+
+        async def mock_stream():
+            raise RuntimeError("Unexpected error")
+            yield  # type: ignore[misc]  # Make this a generator  # noqa: E501
+
+        with patch.object(adapter._client.chat.completions, "create", new_callable=AsyncMock) as mock_create:
+            mock_create.return_value = mock_stream()
+            with pytest.raises(LLMError, match="streaming failed"):
+                async for _ in adapter.stream([{"role": "user", "content": "test"}]):
+                    pass
+

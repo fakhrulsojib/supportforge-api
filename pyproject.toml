@@ -118,10 +118,14 @@ branch = true
 omit = [
     "app/__init__.py",
     "*/migrations/*",
-    # Infrastructure DB layer requires integration tests with testcontainers (Phase 1.8)
+    # Infrastructure layers require integration tests with external services (Phase 1.8)
     "app/infrastructure/database/connection.py",
     "app/infrastructure/database/models.py",
     "app/infrastructure/database/repositories/*.py",
+    "app/infrastructure/vectorstore/chroma_adapter.py",
+    "app/infrastructure/vectorstore/factory.py",
+    # ABC interfaces — all abstract, tested via concrete implementations
+    "app/domain/interfaces/*.py",
 ]
 
 [tool.coverage.report]
