@@ -123,6 +123,15 @@ For each markdown file, check if this task requires an update:
 
 > **Gate:** Manual verification confirms the feature works as expected.
 
+### Step 8 — Update Master Plan
+
+1. Open `../supportforge_plan.md` (the master implementation plan in the parent directory)
+2. Find the checklist items that correspond to the task(s) you just completed
+3. Mark them as done: `- [ ]` → `- [x]`
+4. Do **not** modify any other content in the plan
+
+> **Gate:** Every task you completed in this session is marked `[x]` in `supportforge_plan.md`.
+
 ---
 
 ## Architecture Reference
