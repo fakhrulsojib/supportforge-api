@@ -30,44 +30,104 @@ SupportForge is a production-grade, multi-tenant AI customer support agent. This
 
 ---
 
-## Phase Awareness
+## Task Execution Pipeline
 
-- Before starting work, **read ROADMAP.md** to identify the current phase and its status markers
-- Only work on tasks within the **current phase** unless explicitly told otherwise
-- Mark completed tasks with `[x]` in ROADMAP.md as you finish them
+> **This is the exact sequence an agent MUST follow for every task.** No step may be skipped. Each step has a gate condition that must be satisfied before proceeding to the next.
+
+### Step 1 — Orient
+
+1. Read `ROADMAP.md` and identify the current phase and the specific task to work on
+2. Read all files in the directories that will be affected by the task
+3. If this task depends on work from a previous task, verify that work exists and is correct
+
+> **Gate:** You can describe what you're about to build, which files you'll create or modify, and how it fits into the existing codebase.
+
+### Step 2 — Write Tests
+
+1. Create the test file(s) for the new code following the naming convention: `app/path/to/module.py` → `tests/unit/path/to/test_module.py`
+2. Write tests for:
+   - Happy path (expected inputs → expected outputs)
+   - Edge cases (empty inputs, boundary values, None/null)
+   - Error cases (invalid input → correct exception raised)
+   - If fixing a bug: add a regression test tagged `@pytest.mark.regression`
+3. Run the new tests to confirm they **fail** (since implementation doesn't exist yet): `pytest tests/path/to/test_module.py -v`
+
+> **Gate:** New tests exist and fail with `ImportError` or `NotImplementedError`, NOT with syntax errors.
+
+### Step 3 — Implement
+
+1. Write the implementation code
+2. Follow these constraints:
+   - Domain layer (`app/domain/`) — **ZERO** imports from `fastapi`, `sqlalchemy`, `chromadb`, `openai`, `redis`
+   - Infrastructure adapters — **MUST** implement the corresponding ABC from `app/domain/interfaces/`
+   - All I/O operations — **MUST** use `async/await`
+   - All function signatures — **MUST** have complete type hints
+3. Run the new tests again to confirm they **pass**: `pytest tests/path/to/test_module.py -v`
+
+> **Gate:** All new tests pass.
+
+### Step 4 — Validate
+
+Run each of these commands in order. **If any command fails, fix the issue before proceeding.**
+
+```bash
+# 4a. Full test suite (all existing + new tests must pass)
+pytest --cov --cov-branch --cov-fail-under=95
+
+# 4b. Type checking (zero errors)
+mypy app/ --strict
+
+# 4c. Linting (zero warnings)
+ruff check app/
+
+# 4d. Formatting (zero diffs)
+ruff format --check app/
+```
+
+> **Gate:** All four commands exit with code 0.
+
+### Step 5 — Update Documentation
+
+For each markdown file, check if this task requires an update:
+
+| File | Update if... |
+|---|---|
+| `ROADMAP.md` | Task completed → mark `[x]`. New tasks discovered → add them. |
+| `README.md` | New endpoint, dependency, setup step, or project structure change. |
+| `.env.example` | New environment variable introduced. |
+| `AGENTS.md` | New architecture rule, workflow change, or convention established. |
+
+> **Gate:** All affected markdown files are updated. No stale information remains.
+
+### Step 6 — Commit
+
+1. Stage all changes: `git add -A`
+2. Review staged changes: `git diff --cached --stat`
+3. Commit with a conventional commit message:
+   - `feat: <description>` — new feature or functionality
+   - `fix: <description>` — bug fix
+   - `test: <description>` — test-only changes
+   - `refactor: <description>` — code restructuring, no behavior change
+   - `docs: <description>` — documentation-only changes
+   - `chore: <description>` — tooling, config, dependencies
+
+> **Gate:** `git status` shows a clean working tree.
+
+### Step 7 — Verify (if browser available)
+
+1. Start the server: `uvicorn app.main:app --reload`
+2. Navigate to `http://localhost:8000/docs` — verify OpenAPI docs render
+3. Test the endpoint(s) you just created via the interactive docs
+4. Verify `GET /health` returns 200
+5. If frontend is running at `http://localhost:5173`, verify integration
+
+> **Gate:** Manual verification confirms the feature works as expected.
 
 ---
 
-## Documentation Sync (Mandatory)
+## Architecture Reference
 
-**Every implementation change MUST be reflected in the relevant markdown files** when applicable. This includes but is not limited to:
-
-- **ROADMAP.md** — Update task checkboxes, add new tasks if scope expanded, mark phases complete
-- **README.md** — Update setup instructions, API routes, project structure, tech stack if anything changes
-- **.env.example** — Add new environment variables as they are introduced
-- **AGENTS.md** — Update rules or checklists if architecture or workflow patterns change
-
-> If you add a new endpoint, service, adapter, migration, or configuration — ask yourself: "Does any markdown file need to reflect this?" If yes, update it in the same commit.
-
----
-
-## Mandatory Steps Per Task
-
-1. **Read context** — review related existing files before writing new code
-2. **Write tests FIRST** — TDD required. Write failing test → implement → pass
-3. **Run full test suite** — `pytest --cov --cov-branch` must pass before committing
-4. **Check coverage** — coverage must not drop below 95%. Run `pytest --cov-fail-under=95`
-5. **Type check** — `mypy app/ --strict` must pass with zero errors
-6. **Lint** — `ruff check app/` must pass with zero warnings
-7. **Regression test** — if fixing a bug, add test tagged `@pytest.mark.regression`
-8. **Manual browser test** — if agent has browser access, visually verify UI changes
-9. **Commit message** — use conventional commits: `feat:`, `fix:`, `test:`, `refactor:`, `docs:`
-
----
-
-## Architecture Rules
-
-### Hexagonal Architecture Enforcement
+### Hexagonal Architecture
 
 ```
 Domain Core (ZERO framework imports)
@@ -87,55 +147,21 @@ API Layer (FastAPI routes + Pydantic schemas)
 └── api/schemas/  → Request/response DTOs
 ```
 
-### Hard Rules
+### Test File Mapping
 
-- **Domain layer** (`app/domain/`) must have **ZERO** imports from `fastapi`, `sqlalchemy`, `chromadb`, `openai`, `redis`, or any framework
-- All new infrastructure adapters **must** implement the corresponding ABC from `app/domain/interfaces/`
-- All API endpoints **must** have corresponding integration tests
-- All Pydantic schemas **must** have validation tests for edge cases
-- All I/O operations **must** use `async/await`
-- Every function signature **must** be fully type-hinted
+| Source | Test |
+|---|---|
+| `app/domain/services/chat_service.py` | `tests/unit/domain/test_chat_service.py` |
+| `app/infrastructure/llm/ollama_adapter.py` | `tests/integration/infrastructure/test_ollama_adapter.py` |
+| `app/api/v1/chat.py` | `tests/integration/api/test_chat.py` |
+| `app/rag/nodes/retriever.py` | `tests/unit/rag/test_retriever.py` |
 
----
+### Testing Standards
 
-## Testing Checklist (Every PR)
-
-- [ ] Unit tests for all new domain logic
-- [ ] Integration tests for all new endpoints
-- [ ] Negative tests (invalid input, auth failures, not-found cases)
-- [ ] Multi-tenant isolation verified (Tenant A cannot access Tenant B data)
-- [ ] Coverage ≥ 95% line + branch
-- [ ] No type errors (`mypy --strict`)
-- [ ] No lint warnings (`ruff check`)
-
-### Test Standards
-
-- **Every module gets a corresponding test file** — `app/domain/services/chat_service.py` → `tests/unit/domain/test_chat_service.py`
-- **All edge cases covered** — null inputs, empty collections, auth failures, rate limits, malformed data
-- **Negative tests mandatory** — every happy path has a matching error/rejection test
 - **Fixtures over mocks** — use factories for test data, mock only external I/O
-- **Regression tests** — every bug fix must include a test tagged `@pytest.mark.regression`
-
----
-
-## Code Quality Gates
-
-```bash
-# All of these must pass before committing:
-pytest --cov --cov-branch --cov-fail-under=95    # Tests + coverage
-mypy app/ --strict                                # Type checking
-ruff check app/                                   # Linting
-ruff format --check app/                          # Formatting
-```
-
----
-
-## When Browser Is Available
-
-- Navigate to `http://localhost:8000/docs` and verify OpenAPI docs render
-- Test chat endpoint via interactive docs
-- Verify health endpoint returns 200
-- If frontend is running, test integration at `http://localhost:5173`
+- **Every module gets a test file** — no exceptions
+- **Negative tests are mandatory** — every happy path has a matching error/rejection test
+- **Multi-tenant isolation** — Tenant A must never see Tenant B's data
 
 ---
 
@@ -144,8 +170,8 @@ ruff format --check app/                          # Formatting
 ```bash
 # Required env vars (see .env.example for full list):
 OLLAMA_BASE_URL=https://localhost:11434
-OLLAMA_CHAT_MODEL=<model-name>
-OLLAMA_EMBEDDING_MODEL=<model-name>
+OLLAMA_CHAT_MODEL=qwen3:4b
+OLLAMA_EMBEDDING_MODEL=nomic-embed-text
 CF_OLLAMA_ID=<cloudflare-service-token-id>
 CF_OLLAMA_SECRET=<cloudflare-service-token-secret>
 DATABASE_URL=postgresql+asyncpg://...
