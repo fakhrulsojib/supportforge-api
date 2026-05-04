@@ -1,0 +1,111 @@
+# ============================
+# Python
+# ============================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+*.eggs/
+sdist/
+wheels/
+*.whl
+*.manifest
+*.spec
+pip-log.txt
+pip-delete-this-directory.txt
+develop-eggs/
+downloads/
+.installed.cfg
+MANIFEST
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# ============================
+# Testing & Coverage
+# ============================
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache/
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+.mutmut-cache/
+
+# ============================
+# Type Checking & Linting
+# ============================
+.mypy_cache/
+.ruff_cache/
+.pytype/
+
+# ============================
+# Environment & Secrets
+# ============================
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+
+# ============================
+# IDE & Editor
+# ============================
+.vscode/
+.idea/
+*.iml
+*.swp
+*.swo
+*~
+.cursor/
+.windsurf/
+.gemini/
+
+# ============================
+# OS Generated
+# ============================
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# ============================
+# Docker
+# ============================
+docker-compose.override.yml
+
+# ============================
+# Database
+# ============================
+*.sqlite
+*.sqlite3
+*.db
+
+# ============================
+# Logs
+# ============================
+logs/
+*.log
+
+# ============================
+# Data (large files)
+# ============================
+data/bitext/*.csv
+data/bitext/*.parquet
