@@ -1,0 +1,124 @@
+[build-system]
+requires = ["setuptools>=75.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "supportforge-api"
+version = "0.1.0"
+description = "Production-grade, multi-tenant AI customer support agent — Backend API"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "Fakhrul Islam", email = "fakhrulislam.sojib@gmail.com"},
+]
+
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.34",
+    "sqlalchemy[asyncio]>=2.0",
+    "asyncpg>=0.30",
+    "alembic>=1.14",
+    "pydantic>=2.10",
+    "pydantic-settings>=2.7",
+    "chromadb>=1.0",
+    "langchain>=0.3",
+    "langgraph>=0.3",
+    "langchain-community>=0.3",
+    "openai>=1.60",
+    "httpx>=0.28",
+    "structlog>=24.4",
+    "redis>=5.2",
+    "python-multipart>=0.0.18",
+    "passlib[bcrypt]>=1.7",
+    "python-jose[cryptography]>=3.3",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "pytest-cov>=6.0",
+    "pytest-xdist>=3.5",
+    "testcontainers[postgres,redis]>=4.0",
+    "httpx>=0.28",
+    "mypy>=1.14",
+    "ruff>=0.9",
+    "mutmut>=3.2",
+    "hypothesis>=6.120",
+    "types-passlib>=1.7",
+    "types-python-jose>=3.3",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+markers = [
+    "regression: marks tests as regression tests",
+    "integration: marks tests requiring external services",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+plugins = ["pydantic.mypy"]
+
+[tool.mypy.overrides]
+module = ["chromadb.*", "langchain.*", "langgraph.*"]
+ignore_missing_imports = true
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "N",    # pep8-naming
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "S",    # flake8-bandit
+    "A",    # flake8-builtins
+    "C4",   # flake8-comprehensions
+    "RET",  # flake8-return
+    "SIM",  # flake8-simplify
+    "TCH",  # flake8-type-checking
+    "PTH",  # flake8-use-pathlib
+]
+ignore = [
+    "S101",  # assert used in tests
+    "B008",  # do not perform function calls in argument defaults (FastAPI Depends)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
+[tool.coverage.run]
+source = ["app"]
+branch = true
+omit = [
+    "app/__init__.py",
+    "*/migrations/*",
+]
+
+[tool.coverage.report]
+fail_under = 95
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "if __name__ ==",
+    "@abstractmethod",
+    "raise NotImplementedError",
+]
