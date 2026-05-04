@@ -76,7 +76,10 @@ def _register_routes(app: FastAPI) -> None:
             "version": __version__,
         }
 
-    # API v1 router will be added in sub-phase 1.7
+    # API v1 routers
+    from app.api.v1.chat_router import router as chat_router
+
+    app.include_router(chat_router)
 
 
 # Module-level app instance for uvicorn: `uvicorn app.main:app`
