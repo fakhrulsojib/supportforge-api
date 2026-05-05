@@ -151,6 +151,24 @@ class TestWebSocketConnect:
             ) as ws:
                 ws.close()
 
+    def test_connect_with_deleted_user_rejected(
+        self,
+        ws_client: TestClient,
+        valid_token: str,
+    ) -> None:
+        """Valid JWT for a deleted user should reject the connection."""
+        with patch(
+            "app.api.v1.chat_ws.SQLUserRepository"
+        ) as mock_repo_cls:
+            mock_repo = mock_repo_cls.return_value
+            mock_repo.get_by_id = AsyncMock(return_value=None)
+
+            with pytest.raises(Exception):  # noqa: B017
+                with ws_client.websocket_connect(
+                    f"/api/v1/ws/chat?token={valid_token}"
+                ) as ws:
+                    ws.close()
+
 
 # ── WebSocket Streaming Tests ───────────────────────────────────
 
@@ -206,6 +224,48 @@ class TestWebSocketStreaming:
                 done_frame = ws.receive_json()
                 assert done_frame["type"] == "done"
                 assert done_frame["data"]["conversation_id"] == "conv-123"
+
+    def test_tenant_id_derived_from_jwt(
+        self,
+        ws_client: TestClient,
+        valid_token: str,
+        test_user: User,
+        app_with_mocks: MagicMock,
+    ) -> None:
+        """stream_message must be called with the JWT user's tenant_id.
+
+        This is a cross-tenant isolation regression test: the tenant_id
+        passed to stream_message must come from the authenticated user's
+        JWT, not from any client-supplied value in the WebSocket message.
+        """
+        captured_calls: list[dict[str, str]] = []
+
+        async def _capturing_stream(
+            message: str,
+            tenant_id: str,
+            conversation_id: str | None = None,
+        ):
+            captured_calls.append({"tenant_id": tenant_id})
+            yield {"type": "done", "data": {"conversation_id": "c1"}}
+
+        app_with_mocks.state.chat_service.stream_message = _capturing_stream
+
+        with patch(
+            "app.api.v1.chat_ws.SQLUserRepository"
+        ) as mock_repo_cls:
+            mock_repo = mock_repo_cls.return_value
+            mock_repo.get_by_id = AsyncMock(return_value=test_user)
+
+            with ws_client.websocket_connect(
+                f"/api/v1/ws/chat?token={valid_token}"
+            ) as ws:
+                # Client sends a message — tenant_id should NOT come from here
+                ws.send_json({"message": "Hello from attacker"})
+                ws.receive_json()  # consume done frame
+
+        # Verify tenant_id came from JWT user (tenant-ws-1), not from client
+        assert len(captured_calls) == 1
+        assert captured_calls[0]["tenant_id"] == "tenant-ws-1"
 
     def test_send_empty_message_receives_error(
         self,
