@@ -77,9 +77,15 @@ def _register_routes(app: FastAPI) -> None:
         }
 
     # API v1 routers
+    from app.api.v1.auth import router as auth_router
     from app.api.v1.chat_router import router as chat_router
+    from app.api.v1.conversations import router as conversations_router
+    from app.api.v1.tenants import router as tenants_router
 
+    app.include_router(auth_router)
     app.include_router(chat_router)
+    app.include_router(conversations_router)
+    app.include_router(tenants_router)
 
 
 # Module-level app instance for uvicorn: `uvicorn app.main:app`

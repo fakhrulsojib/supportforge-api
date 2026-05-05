@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
-from typing import AsyncGenerator
+from typing import TYPE_CHECKING
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.main import create_app
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
 
 
 @pytest.fixture

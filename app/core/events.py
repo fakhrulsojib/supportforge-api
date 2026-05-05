@@ -68,7 +68,29 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         debug=settings.app_debug,
     )
 
+    # Initialize Redis cache adapter
+    import redis.asyncio as aioredis
+
+    from app.infrastructure.cache.redis_adapter import RedisAdapter
+
+    try:
+        redis_client = aioredis.from_url(
+            settings.computed_redis_url,
+            decode_responses=False,
+            socket_connect_timeout=5,
+        )
+        await redis_client.ping()
+        app.state.cache = RedisAdapter(redis_client)
+        logger.info("redis_connected", url=settings.computed_redis_url)
+    except Exception:
+        logger.warning("redis_connection_failed", exc_info=True)
+        # Create a no-op cache that always returns None
+        app.state.cache = None
+
     yield
 
     # ── Shutdown ─────────────────────────────────────────────────
+    if getattr(app.state, "cache", None) is not None:
+        await app.state.cache.close()
+        logger.info("redis_disconnected")
     logger.info("shutting_down_application")

@@ -108,6 +108,8 @@ ignore = [
 "app/infrastructure/database/repositories/*.py" = ["TCH001"]
 # Database connection needs runtime AsyncGenerator for yield
 "app/infrastructure/database/connection.py" = ["TCH003"]
+# Test files use hardcoded passwords/secrets in fixtures — expected
+"tests/**/*.py" = ["S105", "S106"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["app"]

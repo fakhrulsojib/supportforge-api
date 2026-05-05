@@ -60,7 +60,7 @@ class TestChatService:
             embedding_service=embedding_service,
         )
 
-        with patch("app.api.v1.chat_service.run_rag_pipeline", new_callable=AsyncMock) as mock_rag:
+        with patch("app.domain.services.chat_service.run_rag_pipeline", new_callable=AsyncMock) as mock_rag:
             mock_rag.return_value = {
                 "answer": "Test answer",
                 "sources": [{"content": "source", "score": 0.8, "id": "1"}],
@@ -87,7 +87,7 @@ class TestChatService:
             embedding_service=AsyncMock(),
         )
 
-        with patch("app.api.v1.chat_service.run_rag_pipeline", new_callable=AsyncMock) as mock_rag:
+        with patch("app.domain.services.chat_service.run_rag_pipeline", new_callable=AsyncMock) as mock_rag:
             mock_rag.return_value = {
                 "answer": "Reply",
                 "sources": [],
