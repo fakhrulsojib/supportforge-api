@@ -28,6 +28,10 @@ SupportForge is a production-grade, multi-tenant AI customer support agent. This
 4. **Do NOT start the next phase** until the previous phase's PR is merged to `main`
 5. **Use conventional commit messages** within each branch: `feat:`, `fix:`, `test:`, `refactor:`, `docs:`, `chore:`
 
+### Scope Rules
+
+> **One sub-phase per conversation.** Large phases (e.g., Phase 2 has 7 sub-phases) MUST be implemented one sub-phase at a time. Commit after each sub-phase. This prevents context loss and ensures each unit of work receives full validation. Do NOT implement multiple sub-phases in a single session.
+
 ---
 
 ## Task Execution Pipeline
@@ -39,20 +43,29 @@ SupportForge is a production-grade, multi-tenant AI customer support agent. This
 1. Read `ROADMAP.md` and identify the current phase and the specific task to work on
 2. Read all files in the directories that will be affected by the task
 3. If this task depends on work from a previous task, verify that work exists and is correct
+4. **Cross-cutting audit:** If this task introduces or modifies a cross-cutting concern (auth, caching, tenant isolation, logging, error handling), identify **ALL existing endpoints and modules** that must also be updated. List them explicitly before writing any code.
+5. **Impact analysis:** For any module being moved, renamed, or refactored — grep for all import references and list every file that will need updating.
 
-> **Gate:** You can describe what you're about to build, which files you'll create or modify, and how it fits into the existing codebase.
+> **Gate:** You can describe what you're about to build, which files you'll create or modify, which existing endpoints need updating for cross-cutting concerns, and how it fits into the existing codebase.
 
 ### Step 2 — Write Tests
 
 1. Create the test file(s) for the new code following the naming convention: `app/path/to/module.py` → `tests/unit/path/to/test_module.py`
 2. Write tests for:
    - Happy path (expected inputs → expected outputs)
-   - Edge cases (empty inputs, boundary values, None/null)
+   - Edge cases (empty inputs, boundary values, None/null, empty strings)
    - Error cases (invalid input → correct exception raised)
    - If fixing a bug: add a regression test tagged `@pytest.mark.regression`
-3. Run the new tests to confirm they **fail** (since implementation doesn't exist yet): `pytest tests/path/to/test_module.py -v`
+3. **Security negative tests (mandatory for any auth or data endpoint):**
+   - Missing auth token → 401
+   - Wrong tenant's data → 403 or empty result
+   - Empty/missing required fields → 422
+   - Invalid token claims (empty `user_id`, empty `tenant_id`, expired token) → 401
+   - Malformed inputs that could bypass validation (empty strings vs None)
+4. Run the new tests to confirm they **fail** (since implementation doesn't exist yet): `pytest tests/path/to/test_module.py -v`
+5. **Paste the failure output** to confirm tests fail for the right reason (`ImportError` or `NotImplementedError`, NOT `SyntaxError`, and NOT passing)
 
-> **Gate:** New tests exist and fail with `ImportError` or `NotImplementedError`, NOT with syntax errors.
+> **Gate:** New tests exist, fail correctly, AND include at least one negative/error test per endpoint or public method.
 
 ### Step 3 — Implement
 
@@ -62,6 +75,8 @@ SupportForge is a production-grade, multi-tenant AI customer support agent. This
    - Infrastructure adapters — **MUST** implement the corresponding ABC from `app/domain/interfaces/`
    - All I/O operations — **MUST** use `async/await`
    - All function signatures — **MUST** have complete type hints
+   - All `datetime` usage — **MUST** use `datetime.now(timezone.utc)` — **NEVER** `datetime.utcnow()` or naive datetimes
+   - All Pydantic response models — **MUST NOT** include sensitive fields (password hashes, tokens, connection strings)
 3. Run the new tests again to confirm they **pass**: `pytest tests/path/to/test_module.py -v`
 
 > **Gate:** All new tests pass.
@@ -86,7 +101,24 @@ ruff format --check app/
 
 > **Gate:** All four commands exit with code 0.
 
-### Step 5 — Update Documentation
+### Step 5 — Self-Review
+
+> **This step exists because automated validation (Step 4) only catches syntax, types, and test failures — it does NOT catch design flaws, security gaps, or cross-cutting inconsistencies. Those are the issues that code reviewers find.**
+
+1. Run `git diff --cached` (full diff — **NOT** `--stat`) and read through every changed line as if you are an independent reviewer seeing this code for the first time.
+2. For **every file**, systematically ask:
+   - **Security:** Does this endpoint have auth? Does it validate tenant ownership? Are credentials masked?
+   - **Consistency:** Does this code follow the same patterns as other files in the same layer? (Same error handling, same response format, same naming)
+   - **Error paths:** What happens when this input is `None`? Empty string `""`? Missing key? Negative number? Do these all produce the correct error response?
+   - **Cross-cutting:** Does this change affect any OTHER endpoint or module? Did I update all callers/importers?
+   - **Cleanup:** Are there deprecated shims, unused imports, or stale re-exports left from refactoring?
+3. Check all endpoints against the **Security Checklist** (below).
+4. Check against the **Consistency Checklist** (below).
+5. If you find ANY issue, go back to Step 3 and fix before continuing.
+
+> **Gate:** You can explain why every endpoint is secure, every boundary validated, every cross-cutting concern addressed, and no deprecated code remains.
+
+### Step 6 — Update Documentation
 
 For each markdown file, check if this task requires an update:
 
@@ -99,7 +131,7 @@ For each markdown file, check if this task requires an update:
 
 > **Gate:** All affected markdown files are updated. No stale information remains.
 
-### Step 6 — Commit
+### Step 7 — Commit
 
 1. Stage all changes: `git add -A`
 2. Review staged changes: `git diff --cached --stat`
@@ -113,7 +145,7 @@ For each markdown file, check if this task requires an update:
 
 > **Gate:** `git status` shows a clean working tree.
 
-### Step 7 — Verify (if browser available)
+### Step 8 — Verify (if browser available)
 
 1. Start the server: `uvicorn app.main:app --reload`
 2. Navigate to `http://localhost:8000/docs` — verify OpenAPI docs render
@@ -123,7 +155,7 @@ For each markdown file, check if this task requires an update:
 
 > **Gate:** Manual verification confirms the feature works as expected.
 
-### Step 8 — Update Master Plan
+### Step 9 — Update Master Plan
 
 1. Open `../supportforge_plan.md` (the master implementation plan in the parent directory)
 2. Find the checklist items that correspond to the task(s) you just completed
@@ -131,6 +163,80 @@ For each markdown file, check if this task requires an update:
 4. Do **not** modify any other content in the plan
 
 > **Gate:** Every task you completed in this session is marked `[x]` in `supportforge_plan.md`.
+
+---
+
+## Security Checklist
+
+> **Check EVERY item before committing ANY endpoint or auth-related code.** This checklist exists because security gaps were the #1 category of code review findings.
+
+### Authentication & Authorization
+- [ ] Every endpoint has explicit auth (`Depends(get_current_user)` or `Depends(require_role(...))`)
+- [ ] The ONLY exceptions to auth are: `POST /auth/register`, `POST /auth/login`, `POST /auth/refresh`, `GET /health`
+- [ ] Token verification rejects missing AND empty required claims (`user_id`, `tenant_id`, `role`)
+- [ ] Refresh token rotation: old refresh token is invalidated after use
+
+### Multi-Tenant Isolation
+- [ ] Every read query filters by `tenant_id` from the authenticated user's token
+- [ ] Every write operation validates the target resource belongs to the authenticated user's tenant
+- [ ] Cross-tenant access tests exist (Tenant A cannot see/modify Tenant B's data)
+
+### Sensitive Data
+- [ ] No plaintext passwords in DTOs, logs, error messages, or API responses
+- [ ] Password hash fields are excluded from all response schemas
+- [ ] All log messages mask sensitive data (passwords, tokens, connection strings, API keys)
+- [ ] Error messages don't leak internal state (no stack traces, no SQL, no tenant IDs of other tenants)
+
+### Input Validation
+- [ ] All datetime values use `datetime.now(timezone.utc)` — never `datetime.utcnow()` or naive datetimes
+- [ ] Default/fallback values are fail-secure (no empty strings that bypass validation)
+- [ ] Enum values are validated (not just accepted as raw strings)
+- [ ] Pagination has sensible max limits to prevent resource exhaustion
+
+### Configuration
+- [ ] No default secrets in production (`JWT_SECRET`, `DATABASE_URL`, etc. must be explicitly set)
+- [ ] Startup fails fast if required secrets are missing or empty
+
+---
+
+## Consistency Checklist
+
+> **Check EVERY item to ensure the codebase is internally consistent.** Inconsistency was the #2 category of code review findings.
+
+### Patterns
+- [ ] All routers use the same error response format
+- [ ] All services follow the same dependency injection pattern
+- [ ] All repository methods follow the same naming convention (`get_by_*`, `create`, `update`, `delete`)
+- [ ] All Pydantic schemas follow the same field naming convention (snake_case, consistent `Field(...)` usage)
+
+### Imports & Structure
+- [ ] No deprecated import shims left after refactoring — all callers use the canonical path
+- [ ] No re-export files that exist only for backward compatibility — migrate all consumers
+- [ ] All `__init__.py` files have module docstrings
+
+### Type Safety
+- [ ] All function signatures have full type annotations
+- [ ] All `Any` usage is justified with a comment explaining why a specific type cannot be used
+- [ ] ABCs have `close()` / cleanup methods for resources that need lifecycle management
+
+---
+
+## Phase Completion Checklist
+
+> **Before marking ANY phase as complete, verify EVERY item below.** This is the final gate before a phase branch can be submitted as a PR.
+
+- [ ] Every endpoint in this phase has auth protection (checked against Security Checklist)
+- [ ] Every data endpoint has tenant isolation (verified with cross-tenant test)
+- [ ] All deprecated shims from refactoring are cleaned up — no backward-compat re-exports remain
+- [ ] All new config values are in `.env.example` with documentation
+- [ ] All new dependencies are in `pyproject.toml`
+- [ ] `git diff main --name-only` shows no unexpected files
+- [ ] Full self-review of `git diff main` completed (not just `--stat`)
+- [ ] All items in `ROADMAP.md` for this phase are marked `[x]`
+- [ ] All items in `../supportforge_plan.md` for this phase are marked `[x]`
+- [ ] Coverage is ≥ 95% with `--cov-branch`
+- [ ] `mypy --strict` passes with zero errors
+- [ ] `ruff check` + `ruff format --check` pass with zero issues
 
 ---
 
@@ -161,8 +267,17 @@ API Layer (FastAPI routes + Pydantic schemas)
 | Source | Test |
 |---|---|
 | `app/domain/services/chat_service.py` | `tests/unit/domain/test_chat_service.py` |
+| `app/domain/services/tenant_service.py` | `tests/unit/domain/test_tenant_service.py` |
 | `app/infrastructure/llm/ollama_adapter.py` | `tests/integration/infrastructure/test_ollama_adapter.py` |
-| `app/api/v1/chat.py` | `tests/integration/api/test_chat.py` |
+| `app/infrastructure/cache/redis_adapter.py` | `tests/unit/infrastructure/test_redis_adapter.py` |
+| `app/api/v1/auth.py` | `tests/integration/api/test_auth.py` |
+| `app/api/v1/tenants.py` | `tests/integration/api/test_tenants.py` |
+| `app/api/v1/conversations.py` | `tests/integration/api/test_conversations.py` |
+| `app/api/v1/chat_router.py` | `tests/integration/api/test_chat.py` |
+| `app/api/schemas/*.py` | `tests/unit/schemas/test_*.py` |
+| `app/core/security.py` | `tests/unit/test_security.py` |
+| `app/core/events.py` | `tests/unit/test_events.py` |
+| `app/config.py` | `tests/unit/test_config.py` |
 | `app/rag/nodes/retriever.py` | `tests/unit/rag/test_retriever.py` |
 
 ### Testing Standards
@@ -170,7 +285,10 @@ API Layer (FastAPI routes + Pydantic schemas)
 - **Fixtures over mocks** — use factories for test data, mock only external I/O
 - **Every module gets a test file** — no exceptions
 - **Negative tests are mandatory** — every happy path has a matching error/rejection test
+- **Security tests are mandatory** — every auth endpoint tests missing/invalid/expired tokens
 - **Multi-tenant isolation** — Tenant A must never see Tenant B's data
+- **Test environment isolation** — tests must not leak environment variables (`APP_ENV`, secrets) between test functions; use `monkeypatch` or `unittest.mock.patch.dict(os.environ)`
+- **Edge case coverage** — test empty strings, `None`, zero-length lists, boundary values for every validated field
 
 ---
 
