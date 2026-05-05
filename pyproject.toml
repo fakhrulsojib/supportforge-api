@@ -32,6 +32,7 @@ dependencies = [
     "python-multipart>=0.0.18",
     "passlib[bcrypt]>=1.7",
     "python-jose[cryptography]>=3.3",
+    "pymupdf>=1.25",
 ]
 
 [project.optional-dependencies]
@@ -77,7 +78,7 @@ init_typed = true
 warn_required_dynamic_aliases = true
 
 [[tool.mypy.overrides]]
-module = ["chromadb.*", "langchain.*", "langgraph.*"]
+module = ["chromadb.*", "langchain.*", "langgraph.*", "fitz.*", "pymupdf.*"]
 ignore_missing_imports = true
 
 # m8: ignore_errors is a nuclear option but SQLAlchemy ORM typing is

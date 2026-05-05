@@ -112,20 +112,23 @@
 - [x] Tenant-scoped isolation for all queries
 - [x] Tests: 6 integration tests (list, detail, cross-tenant 404, feedback)
 
-### 2.1 — WebSocket Streaming
-- [ ] Connection manager (per-tenant tracking)
-- [ ] `WS /api/v1/ws/chat` route
-- [ ] Token-by-token streaming from Ollama → WebSocket → client
-- [ ] JSON frames: `{type: "token"|"source"|"done"|"error", data: ...}`
-- [ ] Graceful disconnect handling
-- [ ] **Gap (from Phase 2 review):** Migrate chat endpoint to JWT auth — add `Depends(get_current_user)` and derive `tenant_id` from JWT payload instead of raw `X-Tenant-ID` header
-- [ ] **Gap (from Phase 2 review):** Wire `ChatService` dependencies via `app.state` / `Depends()` instead of per-request `_build_chat_service()` construction (was planned in master plan Phase 1.1 `dependencies.py`)
-- [ ] **Gap (from Phase 2 review):** Update `chat_router.py` to import from canonical paths (`app.domain.services.chat_service`, `app.api.schemas.chat`) instead of deprecated shims
+### 2.1 — WebSocket Streaming ✅
+- [x] Connection manager (per-tenant tracking)
+- [x] `WS /api/v1/ws/chat` route
+- [x] Token-by-token streaming from Ollama → WebSocket → client
+- [x] JSON frames: `{type: "token"|"source"|"done"|"error", data: ...}`
+- [x] Graceful disconnect handling
+- [x] **Gap (from Phase 2 review):** Migrate chat endpoint to JWT auth — add `Depends(get_current_user)` and derive `tenant_id` from JWT payload instead of raw `X-Tenant-ID` header
+- [x] **Gap (from Phase 2 review):** Wire `ChatService` dependencies via `app.state` / `Depends()` instead of per-request `_build_chat_service()` construction (was planned in master plan Phase 1.1 `dependencies.py`)
+- [x] **Gap (from Phase 2 review):** Update `chat_router.py` to import from canonical paths (`app.domain.services.chat_service`, `app.api.schemas.chat`) instead of deprecated shims
 
-### 2.2 — Document Upload API
-- [ ] Multipart upload: PDF, Markdown, CSV, plain text
-- [ ] File validation: max 10MB, max 50 files/tenant
-- [ ] CRUD endpoints: upload, list, status, delete
+### 2.2 — Document Upload API ✅
+- [x] Multipart upload: PDF, Markdown, CSV, plain text
+- [x] File validation: max 10MB, max 50 files/tenant
+- [x] CRUD endpoints: upload, list, status, delete
+- [x] `DocumentService` domain service with tenant isolation
+- [x] `DocumentResponse`, `DocumentListResponse`, `DocumentUploadResponse` schemas
+- [x] Tests: 36 unit + 24 integration (file types, oversized, tenant isolation, RBAC)
 
 ### 2.3 — Async Ingestion Worker
 - [ ] Background pipeline: read → extract → chunk → embed → store
