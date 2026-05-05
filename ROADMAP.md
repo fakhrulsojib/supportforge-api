@@ -130,10 +130,17 @@
 - [x] `DocumentResponse`, `DocumentListResponse`, `DocumentUploadResponse` schemas
 - [x] Tests: 36 unit + 24 integration (file types, oversized, tenant isolation, RBAC)
 
-### 2.3 — Async Ingestion Worker
-- [ ] Background pipeline: read → extract → chunk → embed → store
-- [ ] Failure handling: status=failed, no partial chunks
-- [ ] `document_chunks` table tracking
+### 2.3 — Async Ingestion Worker ✅
+- [x] `app/workers/text_extractor.py` — PDF/MD/CSV/TXT extraction with UTF-8 → latin-1 fallback
+- [x] `app/domain/services/ingestion_service.py` — pipeline orchestrator: extract → chunk → embed → vector store → DB persist
+- [x] `app/workers/ingestion_worker.py` — BackgroundTasks-based async worker with tenant isolation check
+- [x] Upload endpoint triggers background ingestion via `BackgroundTasks`
+- [x] Status tracking: PENDING → PROCESSING → READY (or FAILED with rollback)
+- [x] `document_chunks` table persistence with `chroma_id` reference
+- [x] Failure handling: rollback partial chunks, set status=FAILED
+- [x] `app/core/events.py` — `embedding_service` and `vector_store` exposed on `app.state` + cleanup on shutdown
+- [x] `app/core/dependencies.py` — `get_embedding_service()` and `get_vector_store()` dependency functions
+- [x] Tests: 37 unit tests (20 text extractor + 11 ingestion service + 6 ingestion worker) + 2 new lifespan tests
 
 ### Known Limitations (Phase 2)
 

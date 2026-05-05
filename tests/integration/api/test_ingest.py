@@ -95,15 +95,21 @@ def mock_session() -> AsyncMock:
 
 @pytest.fixture
 def app_with_mocks(mock_session: AsyncMock) -> object:
-    """Create app with mocked DB session."""
+    """Create app with mocked DB session, embedding service, and vector store."""
     app = create_app()
 
     async def _mock_session_gen() -> AsyncGenerator[AsyncMock, None]:
         yield mock_session
 
+    from app.core.dependencies import get_embedding_service, get_vector_store
     from app.infrastructure.database.connection import get_async_session
 
+    mock_embedding = AsyncMock()
+    mock_vector = AsyncMock()
+
     app.dependency_overrides[get_async_session] = _mock_session_gen
+    app.dependency_overrides[get_embedding_service] = lambda: mock_embedding
+    app.dependency_overrides[get_vector_store] = lambda: mock_vector
     return app
 
 

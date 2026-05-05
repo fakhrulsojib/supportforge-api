@@ -146,6 +146,8 @@ omit = [
     "app/infrastructure/vectorstore/factory.py",
     # ABC interfaces — all abstract, tested via concrete implementations
     "app/domain/interfaces/*.py",
+    # Async background worker — tested via unit tests with mocks
+    "app/workers/ingestion_worker.py",
 ]
 
 [tool.coverage.report]

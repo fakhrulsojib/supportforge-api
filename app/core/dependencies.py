@@ -174,3 +174,45 @@ def get_ws_manager(request: Request) -> Any:
         msg = "ConnectionManager not initialized — check lifespan startup"
         raise RuntimeError(msg)
     return ws_manager
+
+
+def get_embedding_service(request: Request) -> Any:
+    """Return the EmbeddingService from application state.
+
+    Initialized during lifespan startup for embedding generation.
+
+    Args:
+        request: The current request (used to access app.state).
+
+    Returns:
+        EmbeddingService instance.
+
+    Raises:
+        RuntimeError: If EmbeddingService was not initialized.
+    """
+    embedding_service = getattr(request.app.state, "embedding_service", None)
+    if embedding_service is None:
+        msg = "EmbeddingService not initialized — check lifespan startup"
+        raise RuntimeError(msg)
+    return embedding_service
+
+
+def get_vector_store(request: Request) -> Any:
+    """Return the VectorStore from application state.
+
+    Initialized during lifespan startup for vector database operations.
+
+    Args:
+        request: The current request (used to access app.state).
+
+    Returns:
+        VectorStore instance.
+
+    Raises:
+        RuntimeError: If VectorStore was not initialized.
+    """
+    vector_store = getattr(request.app.state, "vector_store", None)
+    if vector_store is None:
+        msg = "VectorStore not initialized — check lifespan startup"
+        raise RuntimeError(msg)
+    return vector_store

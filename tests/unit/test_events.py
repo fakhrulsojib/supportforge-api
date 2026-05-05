@@ -38,11 +38,18 @@ def _mock_infrastructure():
     mock_llm = MagicMock()
     mock_llm.close = AsyncMock()
 
+    mock_embedding = MagicMock()
+    mock_embedding.close = AsyncMock()
+
+    mock_vector = MagicMock()
+
     return (
         mock_llm,
+        mock_embedding,
+        mock_vector,
         patch("app.infrastructure.llm.factory.get_llm_provider", return_value=mock_llm),
-        patch("app.infrastructure.vectorstore.chroma_adapter.ChromaAdapter", return_value=MagicMock()),
-        patch("app.rag.embeddings.EmbeddingService", return_value=MagicMock()),
+        patch("app.infrastructure.vectorstore.chroma_adapter.ChromaAdapter", return_value=mock_vector),
+        patch("app.rag.embeddings.EmbeddingService", return_value=mock_embedding),
     )
 
 
@@ -59,7 +66,7 @@ class TestLifespan:
     @pytest.mark.asyncio
     async def test_lifespan_runs_startup_and_shutdown(self) -> None:
         """Lifespan context manager should execute without errors."""
-        mock_llm, p1, p2, p3 = _mock_infrastructure()
+        mock_llm, mock_embed, mock_vec, p1, p2, p3 = _mock_infrastructure()
         with patch.dict(os.environ, {"APP_ENV": "test"}), p1, p2, p3:
             clear_settings_cache()
             app = create_app()
@@ -72,7 +79,7 @@ class TestLifespan:
     @pytest.mark.asyncio
     async def test_lifespan_redis_success_sets_cache(self) -> None:
         """Successful Redis connection should set app.state.cache."""
-        mock_llm, p1, p2, p3 = _mock_infrastructure()
+        mock_llm, mock_embed, mock_vec, p1, p2, p3 = _mock_infrastructure()
         with patch.dict(os.environ, {"APP_ENV": "test"}), p1, p2, p3:
             clear_settings_cache()
             app = create_app()
@@ -90,7 +97,7 @@ class TestLifespan:
     @pytest.mark.asyncio
     async def test_lifespan_redis_failure_sets_cache_none(self) -> None:
         """Failed Redis connection should set app.state.cache = None."""
-        mock_llm, p1, p2, p3 = _mock_infrastructure()
+        mock_llm, mock_embed, mock_vec, p1, p2, p3 = _mock_infrastructure()
         with patch.dict(os.environ, {"APP_ENV": "test"}), p1, p2, p3:
             clear_settings_cache()
             app = create_app()
@@ -103,7 +110,7 @@ class TestLifespan:
     @pytest.mark.asyncio
     async def test_lifespan_shutdown_closes_redis(self) -> None:
         """Shutdown should call close() on the cache adapter."""
-        mock_llm, p1, p2, p3 = _mock_infrastructure()
+        mock_llm, mock_embed, mock_vec, p1, p2, p3 = _mock_infrastructure()
         with patch.dict(os.environ, {"APP_ENV": "test"}), p1, p2, p3:
             clear_settings_cache()
             app = create_app()
@@ -134,7 +141,7 @@ class TestLifespan:
     @pytest.mark.asyncio
     async def test_lifespan_initializes_chat_service(self) -> None:
         """Startup should create ChatService on app.state."""
-        mock_llm, p1, p2, p3 = _mock_infrastructure()
+        mock_llm, mock_embed, mock_vec, p1, p2, p3 = _mock_infrastructure()
         with patch.dict(os.environ, {"APP_ENV": "test"}), p1, p2, p3:
             clear_settings_cache()
             app = create_app()
@@ -148,7 +155,7 @@ class TestLifespan:
         """Startup should create ConnectionManager on app.state."""
         from app.infrastructure.websocket.connection_manager import ConnectionManager
 
-        mock_llm, p1, p2, p3 = _mock_infrastructure()
+        mock_llm, mock_embed, mock_vec, p1, p2, p3 = _mock_infrastructure()
         with patch.dict(os.environ, {"APP_ENV": "test"}), p1, p2, p3:
             clear_settings_cache()
             app = create_app()
@@ -158,20 +165,39 @@ class TestLifespan:
             clear_settings_cache()
 
     @pytest.mark.asyncio
+    async def test_lifespan_exposes_embedding_and_vector_on_state(self) -> None:
+        """Startup should store embedding_service and vector_store on app.state."""
+        mock_llm, mock_embed, mock_vec, p1, p2, p3 = _mock_infrastructure()
+        with patch.dict(os.environ, {"APP_ENV": "test"}), p1, p2, p3:
+            clear_settings_cache()
+            app = create_app()
+            async with lifespan(app):
+                assert hasattr(app.state, "embedding_service")
+                assert app.state.embedding_service is mock_embed
+                assert hasattr(app.state, "vector_store")
+                assert app.state.vector_store is mock_vec
+            clear_settings_cache()
+
+    @pytest.mark.asyncio
     async def test_lifespan_shutdown_closes_llm_provider(self) -> None:
         """Shutdown should call close() on the LLM provider."""
-        mock_llm = MagicMock()
-        mock_llm.close = AsyncMock()
-
-        with (
-            patch.dict(os.environ, {"APP_ENV": "test"}),
-            patch("app.infrastructure.llm.factory.get_llm_provider", return_value=mock_llm),
-            patch("app.infrastructure.vectorstore.chroma_adapter.ChromaAdapter", return_value=MagicMock()),
-            patch("app.rag.embeddings.EmbeddingService", return_value=MagicMock()),
-        ):
+        mock_llm, mock_embed, mock_vec, p1, p2, p3 = _mock_infrastructure()
+        with patch.dict(os.environ, {"APP_ENV": "test"}), p1, p2, p3:
             clear_settings_cache()
             app = create_app()
             async with lifespan(app):
                 pass
             mock_llm.close.assert_called_once()
+            clear_settings_cache()
+
+    @pytest.mark.asyncio
+    async def test_lifespan_shutdown_closes_embedding_service(self) -> None:
+        """Shutdown should call close() on the embedding service."""
+        mock_llm, mock_embed, mock_vec, p1, p2, p3 = _mock_infrastructure()
+        with patch.dict(os.environ, {"APP_ENV": "test"}), p1, p2, p3:
+            clear_settings_cache()
+            app = create_app()
+            async with lifespan(app):
+                pass
+            mock_embed.close.assert_called_once()
             clear_settings_cache()

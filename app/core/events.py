@@ -131,6 +131,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         embedding_service=embedding_service,
     )
     app.state.llm_provider = llm_provider  # kept for cleanup
+    app.state.embedding_service = embedding_service  # for ingestion worker
+    app.state.vector_store = vector_store  # for ingestion worker
     logger.info("chat_service_initialized")
 
     # Initialize WebSocket connection manager
@@ -146,6 +148,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     if hasattr(app.state, "llm_provider") and hasattr(app.state.llm_provider, "close"):
         await app.state.llm_provider.close()
         logger.info("llm_provider_closed")
+
+    # Close embedding service (httpx client)
+    if hasattr(app.state, "embedding_service") and hasattr(app.state.embedding_service, "close"):
+        await app.state.embedding_service.close()
+        logger.info("embedding_service_closed")
 
     if getattr(app.state, "cache", None) is not None:
         await app.state.cache.close()
