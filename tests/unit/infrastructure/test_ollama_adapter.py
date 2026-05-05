@@ -280,4 +280,3 @@ class TestStreamGeneric:
             with pytest.raises(LLMError, match="streaming failed"):
                 async for _ in adapter.stream([{"role": "user", "content": "test"}]):
                     pass
-

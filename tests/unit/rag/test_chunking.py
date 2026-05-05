@@ -140,4 +140,3 @@ class TestChunking:
         text = "This is a very long sentence that exceeds the chunk size limit"
         chunks = chunker.chunk(text)
         assert len(chunks) >= 2
-

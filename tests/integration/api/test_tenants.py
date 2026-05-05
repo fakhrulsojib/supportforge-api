@@ -37,7 +37,10 @@ def viewer_user() -> User:
 def admin_token() -> str:
     """JWT access token for admin user."""
     return create_access_token(
-        user_id="admin-1", tenant_id="t-1", role="admin", secret_key=_JWT_SECRET,
+        user_id="admin-1",
+        tenant_id="t-1",
+        role="admin",
+        secret_key=_JWT_SECRET,
     )
 
 
@@ -45,7 +48,10 @@ def admin_token() -> str:
 def viewer_token() -> str:
     """JWT access token for viewer user."""
     return create_access_token(
-        user_id="viewer-1", tenant_id="t-1", role="viewer", secret_key=_JWT_SECRET,
+        user_id="viewer-1",
+        tenant_id="t-1",
+        role="viewer",
+        secret_key=_JWT_SECRET,
     )
 
 
@@ -256,3 +262,194 @@ class TestDeleteTenantAPI:
             )
 
         assert response.status_code == 401
+
+
+class TestListTenantsAPI:
+    """Tests for GET /api/v1/tenants/."""
+
+    @pytest.mark.asyncio
+    async def test_admin_can_list_tenants(
+        self,
+        tenant_client: AsyncClient,
+        admin_token: str,
+        admin_user: User,
+        sample_tenant: Tenant,
+    ) -> None:
+        """Admin should get paginated list of tenants."""
+        with (
+            patch("app.api.v1.tenants.SQLTenantRepository") as mock_repo_cls,
+            patch("app.core.dependencies.SQLUserRepository") as mock_user_cls,
+        ):
+            mock_repo = mock_repo_cls.return_value
+            mock_repo.list_all = AsyncMock(return_value=[sample_tenant])
+
+            mock_user_repo = mock_user_cls.return_value
+            mock_user_repo.get_by_id = AsyncMock(return_value=admin_user)
+
+            response = await tenant_client.get(
+                "/api/v1/tenants/",
+                headers={"Authorization": f"Bearer {admin_token}"},
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 1
+        assert data["tenants"][0]["slug"] == "acme-corp"
+
+    @pytest.mark.asyncio
+    async def test_viewer_cannot_list_tenants(
+        self,
+        tenant_client: AsyncClient,
+        viewer_token: str,
+        viewer_user: User,
+    ) -> None:
+        """Viewer should not be able to list tenants (admin only)."""
+        with patch("app.core.dependencies.SQLUserRepository") as mock_user_cls:
+            mock_user_repo = mock_user_cls.return_value
+            mock_user_repo.get_by_id = AsyncMock(return_value=viewer_user)
+
+            response = await tenant_client.get(
+                "/api/v1/tenants/",
+                headers={"Authorization": f"Bearer {viewer_token}"},
+            )
+
+        assert response.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_list_empty_tenants(
+        self,
+        tenant_client: AsyncClient,
+        admin_token: str,
+        admin_user: User,
+    ) -> None:
+        """Empty tenant list should return total=0."""
+        with (
+            patch("app.api.v1.tenants.SQLTenantRepository") as mock_repo_cls,
+            patch("app.core.dependencies.SQLUserRepository") as mock_user_cls,
+        ):
+            mock_repo = mock_repo_cls.return_value
+            mock_repo.list_all = AsyncMock(return_value=[])
+
+            mock_user_repo = mock_user_cls.return_value
+            mock_user_repo.get_by_id = AsyncMock(return_value=admin_user)
+
+            response = await tenant_client.get(
+                "/api/v1/tenants/",
+                headers={"Authorization": f"Bearer {admin_token}"},
+            )
+
+        assert response.status_code == 200
+        assert response.json()["total"] == 0
+        assert response.json()["tenants"] == []
+
+
+class TestUpdateTenantAPI:
+    """Tests for PATCH /api/v1/tenants/{id}."""
+
+    @pytest.mark.asyncio
+    async def test_admin_can_update_tenant(
+        self,
+        tenant_client: AsyncClient,
+        admin_token: str,
+        admin_user: User,
+    ) -> None:
+        """Admin should be able to update tenant name."""
+        updated_tenant = Tenant(id="t-1", name="Acme Updated", slug="acme-corp")
+        with (
+            patch("app.api.v1.tenants.SQLTenantRepository") as mock_repo_cls,
+            patch("app.core.dependencies.SQLUserRepository") as mock_user_cls,
+        ):
+            mock_repo = mock_repo_cls.return_value
+            mock_repo.get_by_id = AsyncMock(return_value=updated_tenant)
+            mock_repo.update = AsyncMock(return_value=updated_tenant)
+
+            mock_user_repo = mock_user_cls.return_value
+            mock_user_repo.get_by_id = AsyncMock(return_value=admin_user)
+
+            response = await tenant_client.patch(
+                "/api/v1/tenants/t-1",
+                json={"name": "Acme Updated"},
+                headers={"Authorization": f"Bearer {admin_token}"},
+            )
+
+        assert response.status_code == 200
+        assert response.json()["name"] == "Acme Updated"
+
+    @pytest.mark.asyncio
+    async def test_viewer_cannot_update_tenant(
+        self,
+        tenant_client: AsyncClient,
+        viewer_token: str,
+        viewer_user: User,
+    ) -> None:
+        """Viewer should not be able to update a tenant."""
+        with patch("app.core.dependencies.SQLUserRepository") as mock_user_cls:
+            mock_user_repo = mock_user_cls.return_value
+            mock_user_repo.get_by_id = AsyncMock(return_value=viewer_user)
+
+            response = await tenant_client.patch(
+                "/api/v1/tenants/t-1",
+                json={"name": "Nope"},
+                headers={"Authorization": f"Bearer {viewer_token}"},
+            )
+
+        assert response.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_update_nonexistent_tenant_returns_404(
+        self,
+        tenant_client: AsyncClient,
+        admin_token: str,
+        admin_user: User,
+    ) -> None:
+        """Updating non-existent tenant should return 404."""
+
+        with (
+            patch("app.api.v1.tenants.SQLTenantRepository") as mock_repo_cls,
+            patch("app.core.dependencies.SQLUserRepository") as mock_user_cls,
+        ):
+            mock_repo = mock_repo_cls.return_value
+            mock_repo.update = AsyncMock(return_value=None)
+
+            mock_user_repo = mock_user_cls.return_value
+            mock_user_repo.get_by_id = AsyncMock(return_value=admin_user)
+
+            response = await tenant_client.patch(
+                "/api/v1/tenants/nonexistent",
+                json={"name": "Nope"},
+                headers={"Authorization": f"Bearer {admin_token}"},
+            )
+
+        assert response.status_code == 404
+
+
+class TestCreateTenantDuplicateSlug:
+    """Tests for duplicate slug rejection."""
+
+    @pytest.mark.asyncio
+    async def test_duplicate_slug_returns_409(
+        self,
+        tenant_client: AsyncClient,
+        admin_token: str,
+        admin_user: User,
+        sample_tenant: Tenant,
+    ) -> None:
+        """Creating tenant with existing slug should return 409."""
+
+        with (
+            patch("app.api.v1.tenants.SQLTenantRepository") as mock_repo_cls,
+            patch("app.core.dependencies.SQLUserRepository") as mock_user_cls,
+        ):
+            mock_repo = mock_repo_cls.return_value
+            mock_repo.get_by_slug = AsyncMock(return_value=sample_tenant)
+
+            mock_user_repo = mock_user_cls.return_value
+            mock_user_repo.get_by_id = AsyncMock(return_value=admin_user)
+
+            response = await tenant_client.post(
+                "/api/v1/tenants/",
+                json={"name": "Acme Corp", "slug": "acme-corp"},
+                headers={"Authorization": f"Bearer {admin_token}"},
+            )
+
+        assert response.status_code == 409

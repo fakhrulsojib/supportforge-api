@@ -139,4 +139,3 @@ class TestEmbedBatch:
         with patch.object(service._client, "aclose", new_callable=AsyncMock) as mock_close:
             await service.close()
             mock_close.assert_called_once()
-

@@ -87,12 +87,8 @@ class TestRegister:
     ) -> None:
         """Successful registration should return 201 with tokens."""
         with (
-            patch(
-                "app.api.v1.auth.SQLTenantRepository"
-            ) as mock_tenant_cls,
-            patch(
-                "app.api.v1.auth.SQLUserRepository"
-            ) as mock_user_cls,
+            patch("app.api.v1.auth.SQLTenantRepository") as mock_tenant_cls,
+            patch("app.api.v1.auth.SQLUserRepository") as mock_user_cls,
         ):
             mock_tenant_repo = mock_tenant_cls.return_value
             mock_tenant_repo.get_by_id = AsyncMock(return_value=test_tenant)
@@ -133,9 +129,7 @@ class TestRegister:
         auth_client: AsyncClient,
     ) -> None:
         """Registration with non-existent tenant should return 404."""
-        with patch(
-            "app.api.v1.auth.SQLTenantRepository"
-        ) as mock_tenant_cls:
+        with patch("app.api.v1.auth.SQLTenantRepository") as mock_tenant_cls:
             mock_tenant_repo = mock_tenant_cls.return_value
             mock_tenant_repo.get_by_id = AsyncMock(return_value=None)
 
@@ -160,12 +154,8 @@ class TestRegister:
     ) -> None:
         """Registration with existing email should return 409."""
         with (
-            patch(
-                "app.api.v1.auth.SQLTenantRepository"
-            ) as mock_tenant_cls,
-            patch(
-                "app.api.v1.auth.SQLUserRepository"
-            ) as mock_user_cls,
+            patch("app.api.v1.auth.SQLTenantRepository") as mock_tenant_cls,
+            patch("app.api.v1.auth.SQLUserRepository") as mock_user_cls,
         ):
             mock_tenant_repo = mock_tenant_cls.return_value
             mock_tenant_repo.get_by_id = AsyncMock(return_value=test_tenant)
@@ -193,9 +183,7 @@ class TestRegister:
     ) -> None:
         """Registration with weak password should return 422."""
         with (
-            patch(
-                "app.api.v1.auth.SQLTenantRepository"
-            ) as mock_tenant_cls,
+            patch("app.api.v1.auth.SQLTenantRepository") as mock_tenant_cls,
         ):
             mock_tenant_repo = mock_tenant_cls.return_value
             mock_tenant_repo.get_by_id = AsyncMock(return_value=test_tenant)
@@ -219,9 +207,7 @@ class TestRegister:
         test_tenant: MagicMock,
     ) -> None:
         """Registration with invalid role should return 422."""
-        with patch(
-            "app.api.v1.auth.SQLTenantRepository"
-        ) as mock_tenant_cls:
+        with patch("app.api.v1.auth.SQLTenantRepository") as mock_tenant_cls:
             mock_tenant_repo = mock_tenant_cls.return_value
             mock_tenant_repo.get_by_id = AsyncMock(return_value=test_tenant)
 
@@ -249,9 +235,7 @@ class TestLogin:
         test_user: User,
     ) -> None:
         """Successful login should return tokens."""
-        with patch(
-            "app.api.v1.auth.SQLUserRepository"
-        ) as mock_user_cls:
+        with patch("app.api.v1.auth.SQLUserRepository") as mock_user_cls:
             mock_user_repo = mock_user_cls.return_value
             mock_user_repo.get_by_email = AsyncMock(return_value=test_user)
 
@@ -277,9 +261,7 @@ class TestLogin:
         test_user: User,
     ) -> None:
         """Login with wrong password should return 401."""
-        with patch(
-            "app.api.v1.auth.SQLUserRepository"
-        ) as mock_user_cls:
+        with patch("app.api.v1.auth.SQLUserRepository") as mock_user_cls:
             mock_user_repo = mock_user_cls.return_value
             mock_user_repo.get_by_email = AsyncMock(return_value=test_user)
 
@@ -301,9 +283,7 @@ class TestLogin:
         auth_client: AsyncClient,
     ) -> None:
         """Login with non-existent email should return 401."""
-        with patch(
-            "app.api.v1.auth.SQLUserRepository"
-        ) as mock_user_cls:
+        with patch("app.api.v1.auth.SQLUserRepository") as mock_user_cls:
             mock_user_repo = mock_user_cls.return_value
             mock_user_repo.get_by_email = AsyncMock(return_value=None)
 
@@ -337,9 +317,7 @@ class TestRefresh:
             secret_key="change-me-to-another-random-secret",
         )
 
-        with patch(
-            "app.api.v1.auth.SQLUserRepository"
-        ) as mock_user_cls:
+        with patch("app.api.v1.auth.SQLUserRepository") as mock_user_cls:
             mock_user_repo = mock_user_cls.return_value
             mock_user_repo.get_by_id = AsyncMock(return_value=test_user)
 
@@ -379,9 +357,7 @@ class TestRefresh:
             secret_key="change-me-to-another-random-secret",
         )
 
-        with patch(
-            "app.api.v1.auth.SQLUserRepository"
-        ) as mock_user_cls:
+        with patch("app.api.v1.auth.SQLUserRepository") as mock_user_cls:
             mock_user_repo = mock_user_cls.return_value
             mock_user_repo.get_by_id = AsyncMock(return_value=None)
 

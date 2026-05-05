@@ -30,7 +30,10 @@ def viewer_user() -> User:
 def viewer_token() -> str:
     """JWT for viewer user."""
     return create_access_token(
-        user_id="user-1", tenant_id="t-1", role="viewer", secret_key=_JWT_SECRET,
+        user_id="user-1",
+        tenant_id="t-1",
+        role="viewer",
+        secret_key=_JWT_SECRET,
     )
 
 
@@ -70,7 +73,10 @@ async def conv_client(app_with_mocks: MagicMock) -> AsyncGenerator[AsyncClient, 
 def sample_conversation() -> Conversation:
     """Sample conversation."""
     return Conversation(
-        id="conv-1", tenant_id="t-1", user_id="user-1", status=ConversationStatus.ACTIVE,
+        id="conv-1",
+        tenant_id="t-1",
+        user_id="user-1",
+        status=ConversationStatus.ACTIVE,
     )
 
 
@@ -189,7 +195,10 @@ class TestGetConversation:
     ) -> None:
         """Should return 404 for conversation from different tenant."""
         other_tenant_conv = Conversation(
-            id="conv-other", tenant_id="other-tenant", user_id="u", status=ConversationStatus.ACTIVE,
+            id="conv-other",
+            tenant_id="other-tenant",
+            user_id="u",
+            status=ConversationStatus.ACTIVE,
         )
 
         with (
@@ -222,8 +231,11 @@ class TestFeedback:
     ) -> None:
         """Should update message feedback."""
         updated_msg = Message(
-            id="msg-1", conversation_id="conv-1", role=MessageRole.ASSISTANT,
-            content="Hello!", feedback=FeedbackType.POSITIVE,
+            id="msg-1",
+            conversation_id="conv-1",
+            role=MessageRole.ASSISTANT,
+            content="Hello!",
+            feedback=FeedbackType.POSITIVE,
         )
 
         with (

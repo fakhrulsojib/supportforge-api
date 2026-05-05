@@ -155,7 +155,9 @@ class TestUpdateTenant:
     ) -> None:
         """Should update and return tenant."""
         mock_repo.update.return_value = Tenant(
-            id="t-1", name="Updated Acme", slug="acme-corp",
+            id="t-1",
+            name="Updated Acme",
+            slug="acme-corp",
         )
         result = await service.update_tenant("t-1", name="Updated Acme")
         assert result.name == "Updated Acme"
