@@ -130,19 +130,20 @@ supportforge-api/
 
 ## API Endpoints
 
-| Method | Endpoint | Description |
-|---|---|---|
-| `GET` | `/health` | Health check |
-| `POST` | `/api/v1/auth/register` | Register user |
-| `POST` | `/api/v1/auth/login` | Login |
-| `POST` | `/api/v1/auth/refresh` | Refresh token |
-| `POST` | `/api/v1/chat` | Send chat message |
-| `WS` | `/api/v1/ws/chat` | Streaming chat |
-| `POST` | `/api/v1/documents/upload` | Upload document |
-| `GET` | `/api/v1/documents` | List documents |
-| `GET` | `/api/v1/conversations` | List conversations |
-| `GET` | `/api/v1/analytics/daily` | Daily stats |
-| `POST` | `/api/v1/tenants` | Create tenant (admin) |
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| `GET` | `/health` | — | Health check |
+| `POST` | `/api/v1/auth/register` | — | Register user |
+| `POST` | `/api/v1/auth/login` | — | Login |
+| `POST` | `/api/v1/auth/refresh` | — | Refresh token |
+| `POST` | `/api/v1/chat` | — | Send chat message |
+| `GET` | `/api/v1/conversations` | JWT | List conversations |
+| `GET` | `/api/v1/conversations/{id}` | JWT | Get conversation detail |
+| `PATCH` | `/api/v1/conversations/messages/{id}/feedback` | JWT | Update message feedback |
+| `POST` | `/api/v1/tenants` | Admin | Create tenant |
+| `GET` | `/api/v1/tenants/{slug}` | JWT | Get tenant by slug |
+| `PATCH` | `/api/v1/tenants/{id}` | Admin | Update tenant |
+| `DELETE` | `/api/v1/tenants/{id}` | Admin | Delete tenant |
 
 ## Roadmap
 
