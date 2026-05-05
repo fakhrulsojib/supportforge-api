@@ -5,10 +5,10 @@ from __future__ import annotations
 import structlog
 from fastapi import APIRouter, Header
 
-from app.api.v1.chat_service import ChatService
-from app.api.v1.schemas import ChatRequest, ChatResponse, SourceCitation
+from app.api.schemas.chat import ChatRequest, ChatResponse, SourceCitation
 from app.config import get_settings
 from app.core.exceptions import TenantNotFoundError
+from app.domain.services.chat_service import ChatService
 from app.infrastructure.llm.factory import get_llm_provider
 from app.infrastructure.vectorstore.chroma_adapter import ChromaAdapter
 from app.rag.embeddings import EmbeddingService

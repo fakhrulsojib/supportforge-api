@@ -85,7 +85,7 @@ class TenantService:
         """
         tenant = await self._tenant_repo.get_by_slug(slug)
         if not tenant:
-            raise TenantNotFoundError(tenant_id=slug)
+            raise TenantNotFoundError(tenant_id=f"slug:{slug}")
         return tenant
 
     async def list_tenants(self) -> list[Tenant]:

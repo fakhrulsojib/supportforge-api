@@ -13,13 +13,19 @@ class TestSettings:
 
     def test_default_settings_load(self) -> None:
         """Settings should load with defaults when no env vars are set."""
-        settings = Settings(
-            _env_file=None,  # type: ignore[call-arg]
-        )
-        assert settings.app_name == "SupportForge"
-        assert settings.app_env == "development"
-        assert settings.app_debug is True
-        assert settings.app_port == 8000
+        import os
+        from unittest.mock import patch
+
+        # Patch out env vars that could override defaults (e.g., APP_ENV=test from runner)
+        clean_env = {k: v for k, v in os.environ.items() if not k.startswith("APP_")}
+        with patch.dict(os.environ, clean_env, clear=True):
+            settings = Settings(
+                _env_file=None,  # type: ignore[call-arg]
+            )
+            assert settings.app_name == "SupportForge"
+            assert settings.app_env == "development"
+            assert settings.app_debug is True
+            assert settings.app_port == 8000
 
     def test_app_env_validation_accepts_valid(self) -> None:
         """Valid app_env values should be accepted."""

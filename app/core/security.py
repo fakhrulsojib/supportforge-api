@@ -214,9 +214,13 @@ def verify_token(
     if not user_id:
         raise AuthError("Token missing user identifier")
 
+    tenant_id = payload.get("tenant_id", "")
+    if not tenant_id:
+        raise AuthError("Token missing tenant identifier")
+
     return TokenPayload(
         user_id=user_id,
-        tenant_id=payload.get("tenant_id", ""),
+        tenant_id=tenant_id,
         role=payload.get("role"),
         token_type=token_type,
         exp=datetime.fromtimestamp(payload["exp"], tz=timezone.utc),

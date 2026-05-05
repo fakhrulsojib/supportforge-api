@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime  # noqa: TCH003 — Pydantic needs runtime access
+from datetime import datetime, timezone  # noqa: TCH003 — Pydantic needs runtime access
 
 from pydantic import BaseModel, Field
 
@@ -31,4 +31,4 @@ class ChatResponse(BaseModel):
     escalated: bool = Field(False, description="Whether the query was escalated to a human")
     escalation_reason: str = Field("", description="Reason for escalation, if any")
     model_used: str = Field("", description="LLM model used for generation")
-    created_at: datetime = Field(default_factory=datetime.utcnow, description="Response timestamp")
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="Response timestamp")

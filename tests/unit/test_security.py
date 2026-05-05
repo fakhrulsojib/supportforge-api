@@ -302,6 +302,31 @@ class TestTokenVerification:
         with pytest.raises(AuthError, match="Token missing user identifier"):
             verify_token(token, SECRET_KEY)
 
+    def test_verify_token_missing_tenant_id_raises(self) -> None:
+        """Token without 'tenant_id' claim should raise AuthError."""
+        payload = {
+            "sub": "user-1",
+            "role": "admin",
+            "token_type": "access",
+            "exp": datetime.now(timezone.utc) + timedelta(minutes=15),
+        }
+        token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+        with pytest.raises(AuthError, match="Token missing tenant identifier"):
+            verify_token(token, SECRET_KEY)
+
+    def test_verify_token_empty_tenant_id_raises(self) -> None:
+        """Token with empty string tenant_id should raise AuthError."""
+        payload = {
+            "sub": "user-1",
+            "tenant_id": "",
+            "role": "admin",
+            "token_type": "access",
+            "exp": datetime.now(timezone.utc) + timedelta(minutes=15),
+        }
+        token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+        with pytest.raises(AuthError, match="Token missing tenant identifier"):
+            verify_token(token, SECRET_KEY)
+
     def test_verify_token_exp_field(self) -> None:
         """Verified token should have exp datetime populated (m5: non-optional)."""
         token = create_access_token(

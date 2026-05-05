@@ -68,4 +68,3 @@ class CachePort(ABC):
         Implementations should handle already-closed connections
         gracefully (no-op or log a warning).
         """
-

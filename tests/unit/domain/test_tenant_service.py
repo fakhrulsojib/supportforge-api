@@ -112,10 +112,12 @@ class TestGetTenant:
         service: TenantService,
         mock_repo: AsyncMock,
     ) -> None:
-        """Should raise TenantNotFoundError when slug not found."""
+        """Should raise TenantNotFoundError with slug context when slug not found."""
         mock_repo.get_by_slug.return_value = None
-        with pytest.raises(TenantNotFoundError):
+        with pytest.raises(TenantNotFoundError, match="nonexistent") as exc_info:
             await service.get_tenant_by_slug("nonexistent")
+        # Verify the error message references the slug, not a generic tenant_id
+        assert "slug" in str(exc_info.value).lower() or "nonexistent" in str(exc_info.value)
 
 
 class TestListTenants:

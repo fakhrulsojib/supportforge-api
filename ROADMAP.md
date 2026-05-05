@@ -118,6 +118,9 @@
 - [ ] Token-by-token streaming from Ollama → WebSocket → client
 - [ ] JSON frames: `{type: "token"|"source"|"done"|"error", data: ...}`
 - [ ] Graceful disconnect handling
+- [ ] **Gap (from Phase 2 review):** Migrate chat endpoint to JWT auth — add `Depends(get_current_user)` and derive `tenant_id` from JWT payload instead of raw `X-Tenant-ID` header
+- [ ] **Gap (from Phase 2 review):** Wire `ChatService` dependencies via `app.state` / `Depends()` instead of per-request `_build_chat_service()` construction (was planned in master plan Phase 1.1 `dependencies.py`)
+- [ ] **Gap (from Phase 2 review):** Update `chat_router.py` to import from canonical paths (`app.domain.services.chat_service`, `app.api.schemas.chat`) instead of deprecated shims
 
 ### 2.2 — Document Upload API
 - [ ] Multipart upload: PDF, Markdown, CSV, plain text
@@ -131,7 +134,7 @@
 
 ### Known Limitations (Phase 2)
 
-> Documented during code review — to be addressed in Phase 4.
+> Documented during code review — to be addressed in future phases.
 
 - **No refresh token revocation (M-2):** Token rotation issues a new refresh token
   on every `/refresh` call, but old tokens remain valid until natural expiry.
@@ -139,6 +142,13 @@
 - **Global admin model (M-5):** Tenant CRUD uses a platform-wide admin role — an admin
   authenticated under tenant A can manage any tenant. Per-tenant admin scoping
   (cross-tenant isolation for admins) will be evaluated in Phase 4.
+- ~~**`verify_token()` accepts empty `tenant_id`:**~~ **RESOLVED** — `verify_token()` now validates
+  non-empty `tenant_id` matching the `user_id` validation pattern.
+- ~~**`ChatResponse.created_at` uses deprecated `datetime.utcnow()`:**~~ **RESOLVED** — replaced
+  with `datetime.now(timezone.utc)`.
+- **Conversation list `total` is page length, not global count:** The `total` field in
+  `ConversationListResponse` returns `len(conversations)` (page size), not the actual total
+  record count. Needs a separate COUNT query. Fix in Phase 3 (frontend pagination).
 
 ---
 
@@ -163,6 +173,9 @@
 - [ ] Redis-backed rate limiting middleware
 - [ ] Per-tenant + per-user limits (configurable)
 - [ ] 429 + Retry-After header
+- [ ] **Gap (from Phase 2 review):** Fix `RedisAdapter.incr()` fallback — currently returns `0` on failure which bypasses rate limiting. Should return `limit + 1` (deny by default) or raise
+- [ ] **Gap (from Phase 2 review):** Add `expire(key, ttl)` or `incr_with_ttl()` to `CachePort` for atomic rate limit counter + TTL
+- [ ] **Gap (from Phase 2 review):** Add Redis-backed refresh token blacklist (resolves Known Limitation M-2)
 
 ### 4.3 — Embeddable Chat Widget
 - [ ] Standalone JS bundle in `widget/`
@@ -184,6 +197,11 @@
 - [ ] `docker-compose.prod.yml` with Nginx, SSL, resource limits
 - [ ] Deployment guides: Docker Compose, Railway, Render
 - [ ] README update with badges, screenshots, architecture diagram
+- [ ] **Gap (from Phase 2 review):** Generate Alembic migration for Phase 2 model changes (new fields, new tables)
+- [ ] **Gap (from Phase 2 review):** Bump `__version__` to `0.2.0` (Phase 2 deprecation warning already references it)
+- [ ] **Gap (from Phase 2 review):** Remove backward-compatibility shims (`app/api/v1/schemas.py`, `app/api/v1/chat_service.py`)
+- [ ] **Gap (from Phase 2 review):** Replace `mypy ignore_errors = true` with targeted `# type: ignore[specific-error]` annotations in infrastructure layer
+- [ ] **Gap (from Phase 2 review):** Fix `.env.example` — remove `${VAR}` shell interpolation syntax (pydantic-settings doesn't expand these)
 
 ### 4.7 — End-to-End Test Suite
 - [ ] Full user journey tests
@@ -191,3 +209,4 @@
 - [ ] Auth flow tests
 - [ ] Rate limiting tests
 - [ ] Coverage ≥ 95%, mutation kill rate > 80%
+- [ ] **Gap (from Phase 2 review):** Per-tenant admin scoping tests (resolves Known Limitation M-5)
