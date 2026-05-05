@@ -34,7 +34,7 @@ def _build_chat_service() -> ChatService:
     )
     embedding_service = EmbeddingService(
         base_url=settings.ollama_base_url,
-        model=settings.ollama_embed_model,
+        model=settings.ollama_embedding_model,
         cf_client_id=settings.cf_ollama_id,
         cf_client_secret=settings.cf_ollama_secret,
     )

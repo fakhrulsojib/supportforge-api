@@ -74,7 +74,7 @@ class RedisAdapter(CachePort):
         Returns 0 on Redis failure (safe fallback for rate limiting).
         """
         try:
-            return await self._client.incr(key)  # type: ignore[return-value]
+            return await self._client.incr(key)  # type: ignore[no-any-return]
         except Exception:
             logger.warning("redis_incr_failed", key=key, exc_info=True)
             return 0

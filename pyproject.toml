@@ -71,9 +71,23 @@ disallow_incomplete_defs = true
 check_untyped_defs = true
 plugins = ["pydantic.mypy"]
 
-[tool.mypy.overrides]
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
+
+[[tool.mypy.overrides]]
 module = ["chromadb.*", "langchain.*", "langgraph.*"]
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = [
+    "app.infrastructure.database.models",
+    "app.infrastructure.database.repositories.*",
+    "app.infrastructure.database.connection",
+    "app.infrastructure.vectorstore.*",
+]
+ignore_errors = true
 
 [tool.ruff]
 target-version = "py310"

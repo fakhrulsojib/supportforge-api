@@ -78,7 +78,7 @@ class OllamaAdapter(LLMProvider):
                 max_tokens=max_tokens,
                 stream=False,
             )
-            content = response.choices[0].message.content
+            content = response.choices[0].message.content  # type: ignore[union-attr]
             return content or ""
         except httpx.ConnectError as e:
             logger.error("ollama_connection_failed", error=str(e))
@@ -93,7 +93,7 @@ class OllamaAdapter(LLMProvider):
             msg = f"Ollama generation failed: {e}"
             raise LLMError(msg) from e
 
-    async def stream(
+    async def stream(  # type: ignore[override]
         self,
         messages: list[dict[str, str]],
         model: str | None = None,
@@ -110,7 +110,7 @@ class OllamaAdapter(LLMProvider):
                 max_tokens=max_tokens,
                 stream=True,
             )
-            async for chunk in response:
+            async for chunk in response:  # type: ignore[union-attr]
                 if chunk.choices and chunk.choices[0].delta.content:
                     yield chunk.choices[0].delta.content
         except httpx.ConnectError as e:

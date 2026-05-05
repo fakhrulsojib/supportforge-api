@@ -10,7 +10,10 @@ class RegisterRequest(BaseModel):
 
     email: str = Field(..., min_length=1, max_length=320, description="User email address")
     password: str = Field(
-        ..., min_length=8, max_length=128, description="Password (8-128 chars, mixed case, digit, special char)",
+        ...,
+        min_length=8,
+        max_length=128,
+        description="Password (8-128 chars, mixed case, digit, special char)",
     )
     tenant_id: str = Field(..., min_length=1, description="Tenant the user is registering under")
     role: str = Field("viewer", description="User role: admin, agent, or viewer")

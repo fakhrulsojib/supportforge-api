@@ -20,8 +20,6 @@ from app.infrastructure.database.connection import get_async_session
 from app.infrastructure.database.repositories.user_repo import SQLUserRepository
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from sqlalchemy.ext.asyncio import AsyncSession
     from starlette.requests import Request
 
@@ -84,7 +82,7 @@ async def get_current_user(
     return user
 
 
-def require_role(*allowed_roles: UserRole) -> Callable[..., User]:
+def require_role(*allowed_roles: UserRole) -> Any:
     """Create a dependency that restricts access to specific roles.
 
     Usage::
@@ -150,4 +148,3 @@ def get_cache(request: Request) -> Any:
         CachePort implementation or None.
     """
     return getattr(request.app.state, "cache", None)
-

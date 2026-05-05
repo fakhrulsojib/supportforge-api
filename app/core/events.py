@@ -79,7 +79,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             decode_responses=False,
             socket_connect_timeout=5,
         )
-        await redis_client.ping()
+        await redis_client.ping()  # type: ignore[misc]
         app.state.cache = RedisAdapter(redis_client)
         logger.info("redis_connected", url=settings.computed_redis_url)
     except Exception:
