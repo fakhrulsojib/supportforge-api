@@ -9,7 +9,14 @@ from fastapi.security import HTTPAuthorizationCredentials
 from starlette.datastructures import State
 
 from app.config import get_settings
-from app.core.dependencies import get_app_settings, get_cache, get_current_user, get_tenant_id
+from app.core.dependencies import (
+    get_app_settings,
+    get_cache,
+    get_current_user,
+    get_embedding_service,
+    get_tenant_id,
+    get_vector_store,
+)
 from app.core.exceptions import AuthError, TenantNotFoundError
 from app.core.security import create_access_token
 from app.domain.models.enums import UserRole
@@ -201,3 +208,48 @@ class TestGetCache:
 
         result = get_cache(request)  # type: ignore[arg-type]
         assert result is None
+
+
+class TestGetEmbeddingService:
+    """Test suite for embedding service dependency extraction."""
+
+    def test_returns_embedding_service_when_present(self) -> None:
+        """Should return the EmbeddingService from app.state."""
+        fake_service = object()
+        app = FakeApp()
+        app.state.embedding_service = fake_service
+        request = FakeRequestWithApp(app=app)
+
+        result = get_embedding_service(request)  # type: ignore[arg-type]
+        assert result is fake_service
+
+    def test_raises_when_not_initialized(self) -> None:
+        """Should raise RuntimeError when embedding_service is not on state."""
+        app = FakeApp()
+        request = FakeRequestWithApp(app=app)
+
+        with pytest.raises(RuntimeError, match="EmbeddingService not initialized"):
+            get_embedding_service(request)  # type: ignore[arg-type]
+
+
+class TestGetVectorStore:
+    """Test suite for vector store dependency extraction."""
+
+    def test_returns_vector_store_when_present(self) -> None:
+        """Should return the VectorStore from app.state."""
+        fake_store = object()
+        app = FakeApp()
+        app.state.vector_store = fake_store
+        request = FakeRequestWithApp(app=app)
+
+        result = get_vector_store(request)  # type: ignore[arg-type]
+        assert result is fake_store
+
+    def test_raises_when_not_initialized(self) -> None:
+        """Should raise RuntimeError when vector_store is not on state."""
+        app = FakeApp()
+        request = FakeRequestWithApp(app=app)
+
+        with pytest.raises(RuntimeError, match="VectorStore not initialized"):
+            get_vector_store(request)  # type: ignore[arg-type]
+

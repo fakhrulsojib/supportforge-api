@@ -268,17 +268,22 @@ API Layer (FastAPI routes + Pydantic schemas)
 |---|---|
 | `app/domain/services/chat_service.py` | `tests/unit/domain/test_chat_service.py` |
 | `app/domain/services/tenant_service.py` | `tests/unit/domain/test_tenant_service.py` |
+| `app/domain/services/ingestion_service.py` | `tests/unit/domain/test_ingestion_service.py` |
 | `app/infrastructure/llm/ollama_adapter.py` | `tests/integration/infrastructure/test_ollama_adapter.py` |
 | `app/infrastructure/cache/redis_adapter.py` | `tests/unit/infrastructure/test_redis_adapter.py` |
 | `app/api/v1/auth.py` | `tests/integration/api/test_auth.py` |
 | `app/api/v1/tenants.py` | `tests/integration/api/test_tenants.py` |
 | `app/api/v1/conversations.py` | `tests/integration/api/test_conversations.py` |
 | `app/api/v1/chat_router.py` | `tests/integration/api/test_chat.py` |
+| `app/api/v1/ingest.py` | `tests/integration/api/test_ingest.py` |
 | `app/api/schemas/*.py` | `tests/unit/schemas/test_*.py` |
 | `app/core/security.py` | `tests/unit/test_security.py` |
 | `app/core/events.py` | `tests/unit/test_events.py` |
+| `app/core/dependencies.py` | `tests/unit/test_dependencies.py` |
 | `app/config.py` | `tests/unit/test_config.py` |
 | `app/rag/nodes/retriever.py` | `tests/unit/rag/test_retriever.py` |
+| `app/rag/text_extractor.py` | `tests/unit/workers/test_text_extractor.py` |
+| `app/workers/ingestion_worker.py` | `tests/unit/workers/test_ingestion_worker.py` |
 
 ### Testing Standards
 

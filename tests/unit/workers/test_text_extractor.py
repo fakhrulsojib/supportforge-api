@@ -17,7 +17,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.workers.text_extractor import TextExtractor, TextExtractionError
+from app.rag.text_extractor import TextExtractor, TextExtractionError
 
 
 # ── PDF Extraction ───────────────────────────────────────────────
@@ -26,7 +26,7 @@ from app.workers.text_extractor import TextExtractor, TextExtractionError
 class TestPDFExtraction:
     """Tests for PDF file text extraction."""
 
-    @patch("app.workers.text_extractor.fitz")
+    @patch("app.rag.text_extractor.fitz")
     def test_extract_pdf_single_page(self, mock_fitz: MagicMock) -> None:
         """PDF with a single page returns extracted text."""
         mock_page = MagicMock()
@@ -42,7 +42,7 @@ class TestPDFExtraction:
         assert result == "Hello from page 1"
         mock_fitz.open.assert_called_once()
 
-    @patch("app.workers.text_extractor.fitz")
+    @patch("app.rag.text_extractor.fitz")
     def test_extract_pdf_multiple_pages(self, mock_fitz: MagicMock) -> None:
         """PDF with multiple pages concatenates text with newlines."""
         pages = []
@@ -63,7 +63,7 @@ class TestPDFExtraction:
         assert "Page 2 content" in result
         assert "Page 3 content" in result
 
-    @patch("app.workers.text_extractor.fitz")
+    @patch("app.rag.text_extractor.fitz")
     def test_extract_pdf_empty_pages(self, mock_fitz: MagicMock) -> None:
         """PDF where all pages return empty text raises error."""
         mock_page = MagicMock()
@@ -77,7 +77,7 @@ class TestPDFExtraction:
         with pytest.raises(TextExtractionError, match="No text content"):
             TextExtractor.extract(b"fake-pdf-bytes", "pdf")
 
-    @patch("app.workers.text_extractor.fitz")
+    @patch("app.rag.text_extractor.fitz")
     def test_extract_pdf_corrupted(self, mock_fitz: MagicMock) -> None:
         """Corrupted PDF raises TextExtractionError."""
         mock_fitz.open.side_effect = Exception("cannot open broken document")
@@ -215,3 +215,13 @@ class TestEncodingErrors:
         content = b"\xff\xfe# Heading"
         result = TextExtractor.extract(content, "md")
         assert "Heading" in result
+
+    def test_extract_csv_invalid_encoding(self) -> None:
+        """Invalid UTF-8 in CSV falls back to latin-1 decoding."""
+        # 0xff 0xfe prefix is invalid UTF-8 but valid latin-1
+        content = b"\xff\xfename,age\nAlice,30"
+        result = TextExtractor.extract(content, "csv")
+        # Should not raise — falls back to latin-1
+        assert "Alice" in result
+        assert "30" in result
+

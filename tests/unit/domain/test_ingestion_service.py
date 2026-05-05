@@ -224,7 +224,7 @@ class TestFailureHandling:
         sample_document: Document,
     ) -> None:
         """Text extraction failure sets document status to FAILED."""
-        from app.workers.text_extractor import TextExtractionError
+        from app.rag.text_extractor import TextExtractionError
 
         mock_extractor.extract.side_effect = TextExtractionError("Cannot extract text")
         mock_document_repo.update_status.return_value = sample_document
@@ -306,7 +306,7 @@ class TestFailureHandling:
         sample_document: Document,
     ) -> None:
         """Empty text extraction result sets FAILED status."""
-        from app.workers.text_extractor import TextExtractionError
+        from app.rag.text_extractor import TextExtractionError
 
         mock_extractor.extract.side_effect = TextExtractionError("No text content extracted")
         mock_document_repo.update_status.return_value = sample_document

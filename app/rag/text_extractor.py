@@ -83,6 +83,8 @@ class TextExtractor:
         Raises:
             TextExtractionError: If the PDF cannot be opened or parsed.
         """
+        if fitz is None:  # pragma: no cover
+            raise TextExtractionError("pymupdf is required for PDF extraction but not installed")
         try:
             with fitz.open(stream=content, filetype="pdf") as doc:
                 pages: list[str] = []

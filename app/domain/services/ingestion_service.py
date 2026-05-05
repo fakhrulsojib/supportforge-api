@@ -16,7 +16,7 @@ from app.core.exceptions import IngestionError
 from app.domain.models.document import DocumentChunk
 from app.domain.models.enums import DocumentStatus
 from app.rag.chunking import RecursiveChunker
-from app.workers.text_extractor import TextExtractionError, TextExtractor
+from app.rag.text_extractor import TextExtractionError, TextExtractor
 
 if TYPE_CHECKING:
     from app.domain.interfaces.repository import DocumentRepository
