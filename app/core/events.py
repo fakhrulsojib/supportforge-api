@@ -7,6 +7,7 @@ and tear down shared resources (DB pool, Redis, ChromaDB, logging).
 from __future__ import annotations
 
 import logging
+import re
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 
@@ -21,6 +22,9 @@ logger = structlog.get_logger(__name__)
 
 # Default JWT secret — used to detect unchanged secrets at startup
 _DEFAULT_JWT_SECRET = "change-me-to-another-random-secret"  # noqa: S105
+
+# Regex to mask passwords in Redis URLs (redis://:password@host → redis://:***@host)
+_REDIS_PASSWORD_RE = re.compile(r"(redis://):([^@]+)@")
 
 
 def _configure_structlog(log_level: str) -> None:
@@ -92,7 +96,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         )
         await redis_client.ping()  # type: ignore[misc]
         app.state.cache = RedisAdapter(redis_client)
-        logger.info("redis_connected", url=settings.computed_redis_url)
+        masked_url = _REDIS_PASSWORD_RE.sub(r"\1:***@", settings.computed_redis_url)
+        logger.info("redis_connected", url=masked_url)
     except Exception:
         logger.warning("redis_connection_failed", exc_info=True)
         # Create a no-op cache that always returns None

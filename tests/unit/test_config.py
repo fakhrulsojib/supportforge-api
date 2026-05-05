@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from app.config import Settings, get_settings
+from app.config import Settings, create_settings, get_settings
 
 
 class TestSettings:
@@ -106,13 +106,24 @@ class TestSettings:
         settings = Settings(cors_origins="", _env_file=None)  # type: ignore[call-arg]
         assert settings.cors_origin_list == []
 
-    def test_get_settings_factory(self) -> None:
-        """get_settings should return a valid Settings instance."""
-        settings = get_settings(app_name="TestApp", _env_file=None)
+    def test_create_settings_factory(self) -> None:
+        """create_settings should return a fresh Settings with overrides."""
+        settings = create_settings(app_name="TestApp", _env_file=None)
         assert settings.app_name == "TestApp"
+
+    def test_get_settings_returns_singleton(self) -> None:
+        """get_settings should return the same instance on repeated calls."""
+        from app.config import clear_settings_cache
+
+        clear_settings_cache()
+        s1 = get_settings()
+        s2 = get_settings()
+        assert s1 is s2
+        clear_settings_cache()  # cleanup
 
     def test_port_type_coercion(self) -> None:
         """String port values should be coerced to int."""
         settings = Settings(app_port="9000", _env_file=None)  # type: ignore[call-arg]
         assert settings.app_port == 9000
         assert isinstance(settings.app_port, int)
+

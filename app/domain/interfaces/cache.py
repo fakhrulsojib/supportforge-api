@@ -59,3 +59,13 @@ class CachePort(ABC):
         Returns:
             New counter value after increment.
         """
+
+    @abstractmethod
+    async def close(self) -> None:
+        """Close the underlying connection.
+
+        Called during application shutdown to release resources.
+        Implementations should handle already-closed connections
+        gracefully (no-op or log a warning).
+        """
+

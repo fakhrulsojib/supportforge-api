@@ -31,7 +31,7 @@ class SQLUserRepository(UserRepository):
             created_at=model.created_at,
         )
 
-    async def create(self, tenant_id: str, user: UserCreate, password_hash: str = "") -> User:
+    async def create(self, tenant_id: str, user: UserCreate, password_hash: str) -> User:
         """Create a new user within a tenant.
 
         Args:

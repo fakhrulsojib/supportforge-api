@@ -129,6 +129,17 @@
 - [ ] Failure handling: status=failed, no partial chunks
 - [ ] `document_chunks` table tracking
 
+### Known Limitations (Phase 2)
+
+> Documented during code review — to be addressed in Phase 4.
+
+- **No refresh token revocation (M-2):** Token rotation issues a new refresh token
+  on every `/refresh` call, but old tokens remain valid until natural expiry.
+  A Redis-backed token blacklist or token-family detection will be added in Phase 4.2.
+- **Global admin model (M-5):** Tenant CRUD uses a platform-wide admin role — an admin
+  authenticated under tenant A can manage any tenant. Per-tenant admin scoping
+  (cross-tenant isolation for admins) will be evaluated in Phase 4.
+
 ---
 
 ## Phase 3 — Frontend Integration 🔲

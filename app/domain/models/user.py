@@ -24,8 +24,12 @@ class User(BaseModel):
 
 
 class UserCreate(BaseModel):
-    """DTO for creating a new user."""
+    """DTO for creating a new user.
+
+    Note: Does NOT carry a plaintext password. The password hash
+    is passed separately to the repository to minimise the surface
+    area where plaintext credentials exist in memory.
+    """
 
     email: str = Field(..., min_length=1, max_length=320)
-    password: str = Field(..., min_length=8, max_length=128)
     role: UserRole = UserRole.VIEWER

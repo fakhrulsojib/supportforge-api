@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import structlog
+from redis import RedisError
 
 from app.domain.interfaces.cache import CachePort
 
@@ -16,6 +17,10 @@ if TYPE_CHECKING:
     import redis.asyncio as aioredis
 
 logger = structlog.get_logger(__name__)
+
+# Specific exception types to catch — avoids swallowing programming
+# bugs (TypeError, AttributeError, etc.) that should propagate.
+_REDIS_ERRORS = (RedisError, ConnectionError, TimeoutError, OSError)
 
 
 class RedisAdapter(CachePort):
@@ -41,7 +46,7 @@ class RedisAdapter(CachePort):
             if value is None:
                 return None
             return str(value)
-        except Exception:
+        except _REDIS_ERRORS:
             logger.warning("redis_get_failed", key=key, exc_info=True)
             return None
 
@@ -55,7 +60,7 @@ class RedisAdapter(CachePort):
                 await self._client.setex(key, ttl_seconds, value)
             else:
                 await self._client.set(key, value)
-        except Exception:
+        except _REDIS_ERRORS:
             logger.warning("redis_set_failed", key=key, exc_info=True)
 
     async def delete(self, key: str) -> None:
@@ -65,7 +70,7 @@ class RedisAdapter(CachePort):
         """
         try:
             await self._client.delete(key)
-        except Exception:
+        except _REDIS_ERRORS:
             logger.warning("redis_delete_failed", key=key, exc_info=True)
 
     async def incr(self, key: str) -> int:
@@ -75,7 +80,7 @@ class RedisAdapter(CachePort):
         """
         try:
             return await self._client.incr(key)  # type: ignore[no-any-return]
-        except Exception:
+        except _REDIS_ERRORS:
             logger.warning("redis_incr_failed", key=key, exc_info=True)
             return 0
 
@@ -83,5 +88,5 @@ class RedisAdapter(CachePort):
         """Close the Redis connection."""
         try:
             await self._client.aclose()
-        except Exception:
+        except _REDIS_ERRORS:
             logger.warning("redis_close_failed", exc_info=True)

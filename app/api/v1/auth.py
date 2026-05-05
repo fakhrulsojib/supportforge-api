@@ -112,7 +112,7 @@ async def register(
     # the user row is never written with an empty password_hash.
 
     hashed = hash_password(request.password)
-    user_create = UserCreate(email=request.email, password=request.password, role=role)
+    user_create = UserCreate(email=request.email, role=role)
     user = await user_repo.create(request.tenant_id, user_create, password_hash=hashed)
 
     logger.info("user_registered", user_id=user.id, tenant_id=request.tenant_id, role=role.value)

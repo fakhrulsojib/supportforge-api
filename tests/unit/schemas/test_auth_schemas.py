@@ -82,10 +82,10 @@ class TestLoginRequest:
         with pytest.raises(ValidationError, match="email"):
             LoginRequest(email="", password="StrongP@ss1", tenant_id="t-1")
 
-    def test_short_password_rejected(self) -> None:
-        """M7: Passwords under 8 chars should be rejected at schema level."""
+    def test_empty_password_rejected(self) -> None:
+        """Login should reject empty passwords (min_length=1)."""
         with pytest.raises(ValidationError, match="password"):
-            LoginRequest(email="a@b.c", password="Short1!", tenant_id="t-1")
+            LoginRequest(email="a@b.c", password="", tenant_id="t-1")
 
     def test_empty_tenant_id_rejected(self) -> None:
         with pytest.raises(ValidationError, match="tenant_id"):

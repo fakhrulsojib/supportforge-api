@@ -122,6 +122,39 @@ class Settings(BaseSettings):
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
 
 
-def get_settings(**overrides: Any) -> Settings:
-    """Create a Settings instance with optional overrides for testing."""
+# ── Singleton settings cache ────────────────────────────────────
+
+_settings_cache: Settings | None = None
+
+
+def get_settings() -> Settings:
+    """Return the cached application settings singleton.
+
+    The Settings object is created once on first call and reused
+    for all subsequent calls, avoiding repeated ``.env`` file
+    parsing and validation on every request.
+
+    Use :func:`clear_settings_cache` in tests that need a fresh
+    instance, and :func:`create_settings` to build ad-hoc instances
+    with overrides.
+    """
+    global _settings_cache  # noqa: PLW0603
+    if _settings_cache is None:
+        _settings_cache = Settings()
+    return _settings_cache
+
+
+def clear_settings_cache() -> None:
+    """Reset the cached settings (for test isolation)."""
+    global _settings_cache  # noqa: PLW0603
+    _settings_cache = None
+
+
+def create_settings(**overrides: Any) -> Settings:
+    """Create a fresh Settings instance with optional overrides.
+
+    Unlike :func:`get_settings`, this always creates a **new**
+    instance and does NOT update the singleton cache. Useful in
+    tests that need specific configuration.
+    """
     return Settings(**overrides)

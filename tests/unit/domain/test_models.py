@@ -98,13 +98,15 @@ class TestUserModel:
         user = User(email="test@example.com")
         assert user.role == UserRole.VIEWER
 
-    def test_user_create_password_min_length(self) -> None:
+    def test_user_create_email_required(self) -> None:
+        """UserCreate should reject empty email."""
         with pytest.raises(ValidationError):
-            UserCreate(email="test@example.com", password="short")
+            UserCreate(email="")
 
     def test_user_create_valid(self) -> None:
-        uc = UserCreate(email="test@example.com", password="securepass123")
+        uc = UserCreate(email="test@example.com")
         assert uc.email == "test@example.com"
+        assert uc.role == UserRole.VIEWER
 
 
 class TestConversationModel:
