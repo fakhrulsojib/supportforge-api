@@ -1,8 +1,9 @@
 """FastAPI dependency injection factories.
 
 All dependencies are async generators or callables that can be used
-with ``fastapi.Depends``. Infrastructure dependencies (DB, LLM, etc.)
-are stubbed and will be fully wired in subsequent sub-phases.
+with ``fastapi.Depends``. Infrastructure dependencies (DB, cache,
+ChatService, ConnectionManager) are initialized during the lifespan
+and injected via ``app.state``.
 """
 
 from __future__ import annotations
@@ -11,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 from fastapi import Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from starlette.requests import Request  # noqa: TC002 — FastAPI DI needs this at runtime
 
 from app.config import Settings, get_settings
 from app.core.exceptions import AuthError, TenantNotFoundError
@@ -22,7 +24,6 @@ from app.infrastructure.database.repositories.user_repo import SQLUserRepository
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
-    from starlette.requests import Request
 
 # ── Security scheme ──────────────────────────────────────────────
 # HTTPBearer provides:
@@ -130,3 +131,46 @@ def get_cache(request: Request) -> Any:
         CachePort implementation or None.
     """
     return getattr(request.app.state, "cache", None)
+
+
+def get_chat_service(request: Request) -> Any:
+    """Return the ChatService singleton from application state.
+
+    Initialized during lifespan startup with LLM, VectorStore,
+    and EmbeddingService dependencies.
+
+    Args:
+        request: The current request (used to access app.state).
+
+    Returns:
+        ChatService instance.
+
+    Raises:
+        RuntimeError: If ChatService was not initialized.
+    """
+    chat_service = getattr(request.app.state, "chat_service", None)
+    if chat_service is None:
+        msg = "ChatService not initialized — check lifespan startup"
+        raise RuntimeError(msg)
+    return chat_service
+
+
+def get_ws_manager(request: Request) -> Any:
+    """Return the WebSocket ConnectionManager from application state.
+
+    Initialized during lifespan startup.
+
+    Args:
+        request: The current request (used to access app.state).
+
+    Returns:
+        ConnectionManager instance.
+
+    Raises:
+        RuntimeError: If ConnectionManager was not initialized.
+    """
+    ws_manager = getattr(request.app.state, "ws_manager", None)
+    if ws_manager is None:
+        msg = "ConnectionManager not initialized — check lifespan startup"
+        raise RuntimeError(msg)
+    return ws_manager

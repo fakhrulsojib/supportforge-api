@@ -24,7 +24,7 @@ logger = structlog.get_logger(__name__)
 _DEFAULT_JWT_SECRET = "change-me-to-another-random-secret"  # noqa: S105
 
 # Regex to mask passwords in Redis URLs (redis://:password@host → redis://:***@host)
-_REDIS_PASSWORD_RE = re.compile(r"(redis://):([^@]+)@")
+_REDIS_PASSWORD_RE = re.compile(r"(rediss?://):([^@]+)@")
 
 
 def _configure_structlog(log_level: str) -> None:
@@ -55,12 +55,20 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         - Configure structured logging
         - C6: Validate JWT secret is not the default in production
         - Initialize Redis cache (graceful fallback)
+        - Initialize ChatService singleton with LLM, VectorStore, Embedding
+        - Initialize WebSocket ConnectionManager
 
     Shutdown:
         - Clean up Redis connection
+        - Clean up LLM adapter (close httpx client)
         - Log shutdown
     """
     from app.config import get_settings
+    from app.domain.services.chat_service import ChatService
+    from app.infrastructure.llm.factory import get_llm_provider
+    from app.infrastructure.vectorstore.chroma_adapter import ChromaAdapter
+    from app.infrastructure.websocket.connection_manager import ConnectionManager
+    from app.rag.embeddings import EmbeddingService
 
     settings = get_settings()
 
@@ -103,10 +111,42 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         # Create a no-op cache that always returns None
         app.state.cache = None
 
+    # Initialize LLM provider, vector store, embedding service, and ChatService
+    llm_provider = get_llm_provider(settings)
+    vector_store = ChromaAdapter(
+        host=settings.chroma_host,
+        port=settings.chroma_port,
+        collection_prefix=settings.chroma_collection_prefix,
+    )
+    embedding_service = EmbeddingService(
+        base_url=settings.ollama_base_url,
+        model=settings.ollama_embedding_model,
+        cf_client_id=settings.cf_ollama_id,
+        cf_client_secret=settings.cf_ollama_secret,
+    )
+
+    app.state.chat_service = ChatService(
+        llm_provider=llm_provider,
+        vector_store=vector_store,
+        embedding_service=embedding_service,
+    )
+    app.state.llm_provider = llm_provider  # kept for cleanup
+    logger.info("chat_service_initialized")
+
+    # Initialize WebSocket connection manager
+    app.state.ws_manager = ConnectionManager()
+    logger.info("ws_manager_initialized")
+
     yield
 
     # ── Shutdown (m6: log shutdown first, then clean up resources) ──
     logger.info("shutting_down_application")
+
+    # Close LLM adapter (httpx client)
+    if hasattr(app.state, "llm_provider") and hasattr(app.state.llm_provider, "close"):
+        await app.state.llm_provider.close()
+        logger.info("llm_provider_closed")
+
     if getattr(app.state, "cache", None) is not None:
         await app.state.cache.close()
         logger.info("redis_disconnected")

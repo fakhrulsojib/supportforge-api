@@ -1,16 +1,85 @@
-"""Tests for chat schemas, service, and endpoint."""
+"""Tests for chat schemas, service, and REST endpoint.
+
+Migrated to canonical imports and JWT-authenticated endpoint tests.
+"""
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from pydantic import ValidationError
 from starlette.testclient import TestClient
 
-from app.api.v1.chat_service import ChatService
-from app.api.v1.schemas import ChatRequest, ChatResponse, SourceCitation
+from app.api.schemas.chat import ChatRequest, ChatResponse, SourceCitation
+from app.core.security import create_access_token
+from app.domain.models.enums import UserRole
+from app.domain.models.user import User
+from app.domain.services.chat_service import ChatService
 from app.main import create_app
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
+
+
+# ── Fixtures ────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def test_user() -> User:
+    """Authenticated test user."""
+    return User(
+        id="user-chat-1",
+        tenant_id="tenant-chat-1",
+        email="chatuser@example.com",
+        password_hash="$2b$12$hashed",
+        role=UserRole.VIEWER,
+    )
+
+
+@pytest.fixture
+def valid_token() -> str:
+    """Valid JWT access token for test user."""
+    return create_access_token(
+        user_id="user-chat-1",
+        tenant_id="tenant-chat-1",
+        role="viewer",
+        secret_key="change-me-to-another-random-secret",
+    )
+
+
+@pytest.fixture
+def mock_session() -> AsyncMock:
+    """Mock async database session."""
+    session = AsyncMock()
+    session.flush = AsyncMock()
+    session.commit = AsyncMock()
+    session.rollback = AsyncMock()
+    session.close = AsyncMock()
+    return session
+
+
+@pytest.fixture
+def app_with_mocks(mock_session: AsyncMock, test_user: User) -> TestClient:
+    """Create app with mocked DB, auth, and chat service."""
+    app = create_app()
+
+    async def _mock_session_gen() -> AsyncGenerator[AsyncMock, None]:
+        yield mock_session
+
+    from app.infrastructure.database.connection import get_async_session
+
+    app.dependency_overrides[get_async_session] = _mock_session_gen
+
+    # Mock chat service on app.state
+    mock_chat_service = AsyncMock()
+    app.state.chat_service = mock_chat_service
+
+    return app
+
+
+# ── Schema Tests ────────────────────────────────────────────────
 
 
 class TestChatRequest:
@@ -42,6 +111,9 @@ class TestChatResponse:
         source = SourceCitation(content="Test doc", score=0.9, id="doc-1")
         resp = ChatResponse(answer="Answer", conversation_id="conv-1", sources=[source])
         assert len(resp.sources) == 1
+
+
+# ── Service Tests ───────────────────────────────────────────────
 
 
 class TestChatService:
@@ -105,35 +177,244 @@ class TestChatService:
             assert result["conversation_id"] == "existing-conv-123"
 
 
-class TestChatEndpoint:
-    """Test suite for POST /api/v1/chat endpoint."""
+class TestChatServiceStreaming:
+    """Test suite for ChatService.stream_message()."""
 
-    def test_chat_missing_tenant_header_returns_422(self) -> None:
-        """Missing X-Tenant-ID should return 422."""
+    @pytest.mark.asyncio
+    async def test_stream_message_yields_source_token_done_frames(self) -> None:
+        """stream_message should yield source, token, and done frames."""
+        mock_llm = AsyncMock()
+        mock_llm.default_model = "test-model"
+
+        async def _mock_stream(*args, **kwargs):
+            yield "Hello "
+            yield "world!"
+
+        mock_llm.stream = _mock_stream
+        mock_vs = AsyncMock()
+        mock_embed = AsyncMock()
+
+        service = ChatService(
+            llm_provider=mock_llm,
+            vector_store=mock_vs,
+            embedding_service=mock_embed,
+        )
+
+        with (
+            patch("app.domain.services.chat_service.retrieve_node", new_callable=AsyncMock) as mock_retrieve,
+            patch("app.domain.services.chat_service.grade_node", new_callable=AsyncMock) as mock_grade,
+        ):
+            mock_retrieve.return_value = {
+                "query": "test",
+                "tenant_id": "t1",
+                "retrieved_docs": [{"content": "doc text", "score": 0.9, "id": "d1"}],
+                "relevant_docs": [],
+                "answer": "",
+                "sources": [],
+                "should_escalate": False,
+                "escalation_reason": "",
+                "model_used": "",
+                "tokens_in": 0,
+                "tokens_out": 0,
+            }
+            mock_grade.return_value = {
+                "query": "test",
+                "tenant_id": "t1",
+                "retrieved_docs": [{"content": "doc text", "score": 0.9, "id": "d1"}],
+                "relevant_docs": [{"content": "doc text", "score": 0.9, "id": "d1"}],
+                "answer": "",
+                "sources": [],
+                "should_escalate": False,
+                "escalation_reason": "",
+                "model_used": "",
+                "tokens_in": 0,
+                "tokens_out": 0,
+            }
+
+            frames = []
+            async for frame in service.stream_message(
+                message="test query", tenant_id="t1"
+            ):
+                frames.append(frame)
+
+        # Should have: 1 source + 2 tokens + 1 done = 4 frames
+        assert len(frames) == 4
+        assert frames[0]["type"] == "source"
+        assert frames[0]["data"]["id"] == "d1"
+        assert frames[1]["type"] == "token"
+        assert frames[1]["data"] == "Hello "
+        assert frames[2]["type"] == "token"
+        assert frames[2]["data"] == "world!"
+        assert frames[3]["type"] == "done"
+        assert frames[3]["data"]["model_used"] == "test-model"
+        assert frames[3]["data"]["conversation_id"]  # UUID generated
+
+    @pytest.mark.asyncio
+    async def test_stream_message_escalation_path(self) -> None:
+        """When should_escalate is True, yield escalation frames."""
+        service = ChatService(
+            llm_provider=AsyncMock(),
+            vector_store=AsyncMock(),
+            embedding_service=AsyncMock(),
+        )
+
+        with (
+            patch("app.domain.services.chat_service.retrieve_node", new_callable=AsyncMock) as mock_retrieve,
+            patch("app.domain.services.chat_service.grade_node", new_callable=AsyncMock) as mock_grade,
+            patch("app.domain.services.chat_service.escalation_node", new_callable=AsyncMock) as mock_esc,
+        ):
+            mock_retrieve.return_value = {
+                "query": "test",
+                "tenant_id": "t1",
+                "retrieved_docs": [],
+                "relevant_docs": [],
+                "answer": "",
+                "sources": [],
+                "should_escalate": False,
+                "escalation_reason": "",
+                "model_used": "",
+                "tokens_in": 0,
+                "tokens_out": 0,
+            }
+            mock_grade.return_value = {
+                "query": "test",
+                "tenant_id": "t1",
+                "retrieved_docs": [],
+                "relevant_docs": [],
+                "answer": "",
+                "sources": [],
+                "should_escalate": True,
+                "escalation_reason": "No docs found",
+                "model_used": "",
+                "tokens_in": 0,
+                "tokens_out": 0,
+            }
+            mock_esc.return_value = {
+                "query": "test",
+                "tenant_id": "t1",
+                "retrieved_docs": [],
+                "relevant_docs": [],
+                "answer": "Escalating to human agent.",
+                "sources": [],
+                "should_escalate": True,
+                "escalation_reason": "No docs found",
+                "model_used": "",
+                "tokens_in": 0,
+                "tokens_out": 0,
+            }
+
+            frames = []
+            async for frame in service.stream_message(
+                message="test query", tenant_id="t1"
+            ):
+                frames.append(frame)
+
+        # Should have: 1 token (escalation message) + 1 done = 2 frames
+        assert len(frames) == 2
+        assert frames[0]["type"] == "token"
+        assert "Escalating" in frames[0]["data"]
+        assert frames[1]["type"] == "done"
+        assert frames[1]["data"]["escalated"] is True
+        assert frames[1]["data"]["escalation_reason"] == "No docs found"
+
+    @pytest.mark.asyncio
+    async def test_stream_message_preserves_conversation_id(self) -> None:
+        """stream_message should use provided conversation_id."""
+        mock_llm = AsyncMock()
+        mock_llm.default_model = "m"
+
+        async def _empty_stream(*args, **kwargs):
+            return
+            yield  # Make it a generator  # type: ignore[misc]  # noqa: E501
+
+        mock_llm.stream = _empty_stream
+
+        service = ChatService(
+            llm_provider=mock_llm,
+            vector_store=AsyncMock(),
+            embedding_service=AsyncMock(),
+        )
+
+        with (
+            patch("app.domain.services.chat_service.retrieve_node", new_callable=AsyncMock) as mock_retrieve,
+            patch("app.domain.services.chat_service.grade_node", new_callable=AsyncMock) as mock_grade,
+        ):
+            mock_retrieve.return_value = {
+                "query": "test", "tenant_id": "t1", "retrieved_docs": [],
+                "relevant_docs": [], "answer": "", "sources": [],
+                "should_escalate": False, "escalation_reason": "",
+                "model_used": "", "tokens_in": 0, "tokens_out": 0,
+            }
+            mock_grade.return_value = {
+                "query": "test", "tenant_id": "t1", "retrieved_docs": [],
+                "relevant_docs": [{"content": "x", "score": 0.5, "id": "1"}],
+                "answer": "", "sources": [],
+                "should_escalate": False, "escalation_reason": "",
+                "model_used": "", "tokens_in": 0, "tokens_out": 0,
+            }
+
+            frames = []
+            async for frame in service.stream_message(
+                message="test", tenant_id="t1", conversation_id="my-conv-42"
+            ):
+                frames.append(frame)
+
+        done_frame = [f for f in frames if f["type"] == "done"][0]
+        assert done_frame["data"]["conversation_id"] == "my-conv-42"
+
+
+class TestChatEndpoint:
+    """Test suite for POST /api/v1/chat endpoint (JWT-protected)."""
+
+    def test_chat_missing_auth_returns_401(self) -> None:
+        """Missing Authorization header should return 401."""
         app = create_app()
         client = TestClient(app)
         response = client.post("/api/v1/chat", json={"message": "Hello"})
-        assert response.status_code == 422
+        assert response.status_code == 401
 
-    def test_chat_empty_message_returns_422(self) -> None:
-        """Empty message should return 422 validation error."""
+    def test_chat_invalid_token_returns_401(self) -> None:
+        """Invalid JWT token should return 401."""
         app = create_app()
         client = TestClient(app)
         response = client.post(
             "/api/v1/chat",
-            json={"message": ""},
-            headers={"X-Tenant-ID": "tenant-1"},
+            json={"message": "Hello"},
+            headers={"Authorization": "Bearer invalid.jwt.token"},
         )
+        assert response.status_code == 401
+
+    def test_chat_empty_message_returns_422(
+        self,
+        app_with_mocks: TestClient,
+        valid_token: str,
+        test_user: User,
+    ) -> None:
+        """Empty message should return 422 validation error."""
+        client = TestClient(app_with_mocks)
+
+        with patch(
+            "app.core.dependencies.SQLUserRepository"
+        ) as mock_repo_cls:
+            mock_repo = mock_repo_cls.return_value
+            mock_repo.get_by_id = AsyncMock(return_value=test_user)
+
+            response = client.post(
+                "/api/v1/chat",
+                json={"message": ""},
+                headers={"Authorization": f"Bearer {valid_token}"},
+            )
         assert response.status_code == 422
 
-    def test_chat_success(self) -> None:
-        """Valid request should return 200 with ChatResponse."""
-        app = create_app()
-        client = TestClient(app)
-
-        with patch("app.api.v1.chat_router._build_chat_service") as mock_build:
-            mock_service = AsyncMock()
-            mock_service.process_message.return_value = {
+    def test_chat_success(
+        self,
+        app_with_mocks: TestClient,
+        valid_token: str,
+        test_user: User,
+    ) -> None:
+        """Valid authenticated request should return 200 with ChatResponse."""
+        app_with_mocks.state.chat_service.process_message = AsyncMock(
+            return_value={
                 "answer": "Test answer",
                 "conversation_id": "conv-123",
                 "sources": [{"content": "doc text", "score": 0.9, "id": "doc-1"}],
@@ -141,29 +422,37 @@ class TestChatEndpoint:
                 "escalation_reason": "",
                 "model_used": "test-model",
             }
-            mock_build.return_value = mock_service
+        )
+        client = TestClient(app_with_mocks)
+
+        with patch(
+            "app.core.dependencies.SQLUserRepository"
+        ) as mock_repo_cls:
+            mock_repo = mock_repo_cls.return_value
+            mock_repo.get_by_id = AsyncMock(return_value=test_user)
 
             response = client.post(
                 "/api/v1/chat",
                 json={"message": "How do I reset my password?"},
-                headers={"X-Tenant-ID": "tenant-123"},
+                headers={"Authorization": f"Bearer {valid_token}"},
             )
 
-            assert response.status_code == 200
-            data = response.json()
-            assert data["answer"] == "Test answer"
-            assert data["conversation_id"] == "conv-123"
-            assert len(data["sources"]) == 1
-            assert data["escalated"] is False
+        assert response.status_code == 200
+        data = response.json()
+        assert data["answer"] == "Test answer"
+        assert data["conversation_id"] == "conv-123"
+        assert len(data["sources"]) == 1
+        assert data["escalated"] is False
 
-    def test_chat_escalation(self) -> None:
+    def test_chat_escalation(
+        self,
+        app_with_mocks: TestClient,
+        valid_token: str,
+        test_user: User,
+    ) -> None:
         """Escalated queries should have escalated=True."""
-        app = create_app()
-        client = TestClient(app)
-
-        with patch("app.api.v1.chat_router._build_chat_service") as mock_build:
-            mock_service = AsyncMock()
-            mock_service.process_message.return_value = {
+        app_with_mocks.state.chat_service.process_message = AsyncMock(
+            return_value={
                 "answer": "Escalating to human agent.",
                 "conversation_id": "conv-456",
                 "sources": [],
@@ -171,14 +460,58 @@ class TestChatEndpoint:
                 "escalation_reason": "No relevant docs",
                 "model_used": "",
             }
-            mock_build.return_value = mock_service
+        )
+        client = TestClient(app_with_mocks)
+
+        with patch(
+            "app.core.dependencies.SQLUserRepository"
+        ) as mock_repo_cls:
+            mock_repo = mock_repo_cls.return_value
+            mock_repo.get_by_id = AsyncMock(return_value=test_user)
 
             response = client.post(
                 "/api/v1/chat",
                 json={"message": "Something obscure"},
-                headers={"X-Tenant-ID": "tenant-123"},
+                headers={"Authorization": f"Bearer {valid_token}"},
             )
 
-            assert response.status_code == 200
-            data = response.json()
-            assert data["escalated"] is True
+        assert response.status_code == 200
+        data = response.json()
+        assert data["escalated"] is True
+
+    def test_chat_derives_tenant_from_jwt(
+        self,
+        app_with_mocks: TestClient,
+        valid_token: str,
+        test_user: User,
+    ) -> None:
+        """Tenant ID should be derived from the JWT user, not from a header."""
+        app_with_mocks.state.chat_service.process_message = AsyncMock(
+            return_value={
+                "answer": "OK",
+                "conversation_id": "conv-789",
+                "sources": [],
+                "escalated": False,
+                "escalation_reason": "",
+                "model_used": "",
+            }
+        )
+        client = TestClient(app_with_mocks)
+
+        with patch(
+            "app.core.dependencies.SQLUserRepository"
+        ) as mock_repo_cls:
+            mock_repo = mock_repo_cls.return_value
+            mock_repo.get_by_id = AsyncMock(return_value=test_user)
+
+            response = client.post(
+                "/api/v1/chat",
+                json={"message": "Hello"},
+                headers={"Authorization": f"Bearer {valid_token}"},
+            )
+
+        assert response.status_code == 200
+        # Verify process_message was called with the JWT user's tenant_id
+        call_kwargs = app_with_mocks.state.chat_service.process_message.call_args
+        assert call_kwargs.kwargs.get("tenant_id") == "tenant-chat-1" or \
+            call_kwargs[1].get("tenant_id") == "tenant-chat-1"

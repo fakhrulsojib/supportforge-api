@@ -1,78 +1,49 @@
-"""Chat API router — POST /api/v1/chat."""
+"""Chat API router — POST /api/v1/chat.
+
+Provides the REST endpoint for synchronous chat requests. For real-time
+streaming, use the WebSocket endpoint in ``chat_ws.py``.
+"""
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, Any
+
 import structlog
-from fastapi import APIRouter, Header
+from fastapi import APIRouter, Depends
 
 from app.api.schemas.chat import ChatRequest, ChatResponse, SourceCitation
-from app.config import get_settings
-from app.core.exceptions import TenantNotFoundError
-from app.domain.services.chat_service import ChatService
-from app.infrastructure.llm.factory import get_llm_provider
-from app.infrastructure.vectorstore.chroma_adapter import ChromaAdapter
-from app.rag.embeddings import EmbeddingService
+from app.core.dependencies import get_chat_service, get_current_user
+
+if TYPE_CHECKING:
+    from app.domain.models.user import User
 
 logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["chat"])
 
 
-def _build_chat_service() -> ChatService:
-    """Build the ChatService with all dependencies.
-
-    In production, these would be injected via FastAPI Depends
-    and managed in the lifespan. For Phase 1, we create them inline.
-    """
-    settings = get_settings()
-
-    llm_provider = get_llm_provider(settings)
-    vector_store = ChromaAdapter(
-        host=settings.chroma_host,
-        port=settings.chroma_port,
-        collection_prefix=settings.chroma_collection_prefix,
-    )
-    embedding_service = EmbeddingService(
-        base_url=settings.ollama_base_url,
-        model=settings.ollama_embedding_model,
-        cf_client_id=settings.cf_ollama_id,
-        cf_client_secret=settings.cf_ollama_secret,
-    )
-
-    return ChatService(
-        llm_provider=llm_provider,
-        vector_store=vector_store,
-        embedding_service=embedding_service,
-    )
-
-
 @router.post("/chat", response_model=ChatResponse)
 async def chat_endpoint(
     request: ChatRequest,
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    user: User = Depends(get_current_user),
+    chat_service: Any = Depends(get_chat_service),
 ) -> ChatResponse:
     """Process a chat message through the RAG pipeline.
 
-    Requires the X-Tenant-ID header for multi-tenant isolation.
+    Requires JWT authentication. Tenant is derived from the
+    authenticated user's token — no manual header needed.
 
     Args:
         request: Chat request with message and optional conversation_id.
-        x_tenant_id: Tenant identifier from header.
+        user: Authenticated user (injected via JWT).
+        chat_service: ChatService singleton (injected via app.state).
 
     Returns:
         ChatResponse with AI-generated answer and source citations.
-
-    Raises:
-        TenantNotFoundError: If X-Tenant-ID header is missing.
     """
-    if not x_tenant_id:
-        raise TenantNotFoundError()
-
-    chat_service = _build_chat_service()
-
     result = await chat_service.process_message(
         message=request.message,
-        tenant_id=x_tenant_id,
+        tenant_id=user.tenant_id,
         conversation_id=request.conversation_id,
     )
 
