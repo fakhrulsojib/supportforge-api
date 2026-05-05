@@ -19,6 +19,9 @@ if TYPE_CHECKING:
 
 logger = structlog.get_logger(__name__)
 
+# Default JWT secret — used to detect unchanged secrets at startup
+_DEFAULT_JWT_SECRET = "change-me-to-another-random-secret"  # noqa: S105
+
 
 def _configure_structlog(log_level: str) -> None:
     """Configure structlog for JSON output with request-ID correlation."""
@@ -46,14 +49,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     Startup:
         - Configure structured logging
-        - Log startup message
+        - C6: Validate JWT secret is not the default in production
+        - Initialize Redis cache (graceful fallback)
 
     Shutdown:
-        - Log shutdown message
-        - Clean up resources
-
-    DB, Redis, and ChromaDB initialization will be added in
-    sub-phases 1.2, 1.4, and 2.7 respectively.
+        - Clean up Redis connection
+        - Log shutdown
     """
     from app.config import get_settings
 
@@ -61,6 +62,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # ── Startup ──────────────────────────────────────────────────
     _configure_structlog(settings.app_log_level)
+
+    # C6: Reject default JWT secret in non-test environments
+    if settings.app_env not in ("test", "testing") and settings.jwt_secret_key == _DEFAULT_JWT_SECRET:
+        logger.critical(
+            "jwt_secret_not_configured",
+            hint="Set JWT_SECRET_KEY env var to a strong random value",
+        )
+        msg = "JWT_SECRET_KEY must be changed from the default value in non-test environments"
+        raise RuntimeError(msg)
+
     logger.info(
         "starting_application",
         app_name=settings.app_name,
@@ -68,7 +79,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         debug=settings.app_debug,
     )
 
-    # Initialize Redis cache adapter
+    # Initialize Redis cache adapter (m3: decode_responses=True to avoid manual decoding)
     import redis.asyncio as aioredis
 
     from app.infrastructure.cache.redis_adapter import RedisAdapter
@@ -76,7 +87,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     try:
         redis_client = aioredis.from_url(
             settings.computed_redis_url,
-            decode_responses=False,
+            decode_responses=True,
             socket_connect_timeout=5,
         )
         await redis_client.ping()  # type: ignore[misc]
@@ -89,8 +100,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     yield
 
-    # ── Shutdown ─────────────────────────────────────────────────
+    # ── Shutdown (m6: log shutdown first, then clean up resources) ──
+    logger.info("shutting_down_application")
     if getattr(app.state, "cache", None) is not None:
         await app.state.cache.close()
         logger.info("redis_disconnected")
-    logger.info("shutting_down_application")

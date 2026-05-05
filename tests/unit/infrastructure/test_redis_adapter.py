@@ -24,9 +24,9 @@ def adapter(mock_redis: AsyncMock) -> RedisAdapter:
 class TestRedisGet:
     """Tests for RedisAdapter.get."""
 
-    async def test_get_hit_bytes(self, adapter: RedisAdapter, mock_redis: AsyncMock) -> None:
-        """Should decode bytes and return string."""
-        mock_redis.get.return_value = b"cached-value"
+    async def test_get_hit_returns_string(self, adapter: RedisAdapter, mock_redis: AsyncMock) -> None:
+        """Should return string value (decode_responses=True)."""
+        mock_redis.get.return_value = "cached-value"
         result = await adapter.get("key1")
         assert result == "cached-value"
         mock_redis.get.assert_awaited_once_with("key1")

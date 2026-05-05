@@ -106,6 +106,11 @@ class SQLMessageRepository(MessageRepository):
         await self._session.flush()
         return self._to_domain(model)
 
+    async def get_by_id(self, message_id: str) -> Message | None:
+        """Get a message by ID."""
+        result = await self._session.get(MessageModel, message_id)
+        return self._to_domain(result) if result else None
+
     async def list_by_conversation(self, conversation_id: str, limit: int = 100) -> list[Message]:
         """List messages in a conversation ordered by creation time."""
         stmt = (

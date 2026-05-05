@@ -104,8 +104,7 @@ class TestRegister:
                 )
             )
 
-            # Mock the direct session.get for password hash update
-            mock_session.get = AsyncMock(return_value=MagicMock())
+
 
             response = await auth_client.post(
                 "/api/v1/auth/register",
@@ -329,7 +328,12 @@ class TestRefresh:
         assert response.status_code == 200
         data = response.json()
         assert "access_token" in data
-        assert data["refresh_token"] == refresh_token
+        # C2: Token rotation — endpoint should return a refresh token
+        # (may be identical if called within same second due to iat precision)
+        assert "refresh_token" in data
+        assert len(data["refresh_token"]) > 0
+        assert data["token_type"] == "bearer"
+        assert data["expires_in"] > 0
 
     @pytest.mark.asyncio
     async def test_refresh_invalid_token(

@@ -5,6 +5,7 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from fastapi.security import HTTPAuthorizationCredentials
 from starlette.datastructures import State
 
 from app.config import get_settings
@@ -84,30 +85,18 @@ class TestGetAppSettings:
 
 
 class TestGetCurrentUser:
-    """Test suite for JWT-based user extraction."""
+    """Test suite for JWT-based user extraction (M2: uses HTTPBearer credentials)."""
 
     @pytest.mark.asyncio
-    async def test_invalid_auth_prefix_raises(self) -> None:
-        """Non-Bearer prefix should raise AuthError."""
+    async def test_empty_token_raises(self) -> None:
+        """Empty credentials token should raise AuthError."""
         mock_session = AsyncMock()
         settings = get_settings()
-
-        with pytest.raises(AuthError, match="Authorization header must be"):
-            await get_current_user(
-                authorization="Basic dXNlcjpwYXNz",
-                session=mock_session,
-                settings=settings,
-            )
-
-    @pytest.mark.asyncio
-    async def test_empty_token_after_bearer_raises(self) -> None:
-        """'Bearer ' with no token should raise AuthError."""
-        mock_session = AsyncMock()
-        settings = get_settings()
+        credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials="")
 
         with pytest.raises(AuthError, match="Missing access token"):
             await get_current_user(
-                authorization="Bearer ",
+                credentials=credentials,
                 session=mock_session,
                 settings=settings,
             )
@@ -122,6 +111,7 @@ class TestGetCurrentUser:
             role="viewer",
             secret_key=settings.jwt_secret_key,
         )
+        credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
 
         mock_session = AsyncMock()
 
@@ -131,7 +121,7 @@ class TestGetCurrentUser:
 
             with pytest.raises(AuthError, match="User not found"):
                 await get_current_user(
-                    authorization=f"Bearer {token}",
+                    credentials=credentials,
                     session=mock_session,
                     settings=settings,
                 )
@@ -146,6 +136,7 @@ class TestGetCurrentUser:
             role="admin",
             secret_key=settings.jwt_secret_key,
         )
+        credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
 
         expected_user = User(
             id="u-1",
@@ -160,7 +151,7 @@ class TestGetCurrentUser:
             mock_repo.get_by_id = AsyncMock(return_value=expected_user)
 
             user = await get_current_user(
-                authorization=f"Bearer {token}",
+                credentials=credentials,
                 session=mock_session,
                 settings=settings,
             )
@@ -179,12 +170,13 @@ class TestGetCurrentUser:
             secret_key=settings.jwt_secret_key,
             expires_minutes=-1,  # Already expired
         )
+        credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
 
         mock_session = AsyncMock()
 
         with pytest.raises(AuthError):
             await get_current_user(
-                authorization=f"Bearer {token}",
+                credentials=credentials,
                 session=mock_session,
                 settings=settings,
             )

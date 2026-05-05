@@ -90,7 +90,7 @@ class Settings(BaseSettings):
     @classmethod
     def validate_app_env(cls, v: str) -> str:
         """Ensure app environment is valid."""
-        allowed = {"development", "staging", "production"}
+        allowed = {"development", "staging", "production", "test", "testing"}
         lower = v.lower()
         if lower not in allowed:
             msg = f"Invalid app_env '{v}'. Must be one of: {', '.join(sorted(allowed))}"

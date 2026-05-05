@@ -106,9 +106,9 @@ class TokenPayload(BaseModel):
 
     user_id: str
     tenant_id: str
-    role: str
+    role: str | None = Field(description="User role. None for refresh tokens.")
     token_type: str = Field(description="'access' or 'refresh'")
-    exp: datetime | None = None
+    exp: datetime = Field(description="Token expiration timestamp")
 
 
 # ── Token creation ───────────────────────────────────────────────
@@ -170,7 +170,6 @@ def create_refresh_token(
     payload: dict[str, Any] = {
         "sub": user_id,
         "tenant_id": tenant_id,
-        "role": "",
         "token_type": "refresh",
         "iat": now,
         "exp": now + timedelta(days=expires_days),
@@ -218,7 +217,7 @@ def verify_token(
     return TokenPayload(
         user_id=user_id,
         tenant_id=payload.get("tenant_id", ""),
-        role=payload.get("role", ""),
+        role=payload.get("role"),
         token_type=token_type,
-        exp=datetime.fromtimestamp(payload["exp"], tz=timezone.utc) if "exp" in payload else None,
+        exp=datetime.fromtimestamp(payload["exp"], tz=timezone.utc),
     )

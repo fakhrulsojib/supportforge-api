@@ -228,8 +228,15 @@ class TestFeedback:
         conv_client: AsyncClient,
         viewer_token: str,
         viewer_user: User,
+        sample_conversation: Conversation,
     ) -> None:
-        """Should update message feedback."""
+        """Should update message feedback after tenant verification."""
+        existing_msg = Message(
+            id="msg-1",
+            conversation_id="conv-1",
+            role=MessageRole.ASSISTANT,
+            content="Hello!",
+        )
         updated_msg = Message(
             id="msg-1",
             conversation_id="conv-1",
@@ -240,10 +247,15 @@ class TestFeedback:
 
         with (
             patch("app.api.v1.conversations.SQLMessageRepository") as mock_msg_cls,
+            patch("app.api.v1.conversations.SQLConversationRepository") as mock_conv_cls,
             patch("app.core.dependencies.SQLUserRepository") as mock_user_cls,
         ):
             mock_msg = mock_msg_cls.return_value
+            mock_msg.get_by_id = AsyncMock(return_value=existing_msg)
             mock_msg.update_feedback = AsyncMock(return_value=updated_msg)
+
+            mock_conv = mock_conv_cls.return_value
+            mock_conv.get_by_id = AsyncMock(return_value=sample_conversation)
 
             mock_user_repo = mock_user_cls.return_value
             mock_user_repo.get_by_id = AsyncMock(return_value=viewer_user)
@@ -270,7 +282,7 @@ class TestFeedback:
             patch("app.core.dependencies.SQLUserRepository") as mock_user_cls,
         ):
             mock_msg = mock_msg_cls.return_value
-            mock_msg.update_feedback = AsyncMock(return_value=None)
+            mock_msg.get_by_id = AsyncMock(return_value=None)
 
             mock_user_repo = mock_user_cls.return_value
             mock_user_repo.get_by_id = AsyncMock(return_value=viewer_user)
@@ -282,3 +294,47 @@ class TestFeedback:
             )
 
         assert response.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_feedback_cross_tenant_returns_404(
+        self,
+        conv_client: AsyncClient,
+        viewer_token: str,
+        viewer_user: User,
+    ) -> None:
+        """M1: Feedback on message from different tenant should return 404."""
+        cross_tenant_msg = Message(
+            id="msg-other",
+            conversation_id="conv-other",
+            role=MessageRole.ASSISTANT,
+            content="Other tenant message",
+        )
+        other_conv = Conversation(
+            id="conv-other",
+            tenant_id="other-tenant",
+            user_id="u",
+            status=ConversationStatus.ACTIVE,
+        )
+
+        with (
+            patch("app.api.v1.conversations.SQLMessageRepository") as mock_msg_cls,
+            patch("app.api.v1.conversations.SQLConversationRepository") as mock_conv_cls,
+            patch("app.core.dependencies.SQLUserRepository") as mock_user_cls,
+        ):
+            mock_msg = mock_msg_cls.return_value
+            mock_msg.get_by_id = AsyncMock(return_value=cross_tenant_msg)
+
+            mock_conv = mock_conv_cls.return_value
+            mock_conv.get_by_id = AsyncMock(return_value=other_conv)
+
+            mock_user_repo = mock_user_cls.return_value
+            mock_user_repo.get_by_id = AsyncMock(return_value=viewer_user)
+
+            response = await conv_client.patch(
+                "/api/v1/conversations/messages/msg-other/feedback",
+                json={"feedback": "positive"},
+                headers={"Authorization": f"Bearer {viewer_token}"},
+            )
+
+        assert response.status_code == 404
+

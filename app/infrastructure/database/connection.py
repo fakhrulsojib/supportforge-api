@@ -44,10 +44,18 @@ AsyncSessionLocal = async_sessionmaker(
 
 
 async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
-    """Yield an async database session.
+    """Yield an async database session with auto-commit semantics.
 
     Used as a FastAPI dependency via ``Depends(get_async_session)``.
-    The session is automatically closed when the request completes.
+
+    Transaction behavior:
+        - On **success**: the session is automatically committed.
+        - On **exception**: the session is automatically rolled back.
+        - The session is always closed when the request completes.
+
+    This means route handlers do NOT need explicit ``session.commit()``
+    calls. Any ``session.flush()`` in repositories writes to the DB
+    within the current transaction, and the final commit happens here.
     """
     async with AsyncSessionLocal() as session:
         try:

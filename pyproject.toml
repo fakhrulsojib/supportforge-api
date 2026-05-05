@@ -80,6 +80,9 @@ warn_required_dynamic_aliases = true
 module = ["chromadb.*", "langchain.*", "langgraph.*"]
 ignore_missing_imports = true
 
+# m8: ignore_errors is a nuclear option but SQLAlchemy ORM typing is
+# notoriously difficult with mypy --strict. Plan to replace with targeted
+# `# type: ignore[...]` annotations in Phase 4 production polish.
 [[tool.mypy.overrides]]
 module = [
     "app.infrastructure.database.models",

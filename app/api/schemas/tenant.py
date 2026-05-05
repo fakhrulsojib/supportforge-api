@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from datetime import datetime  # noqa: TCH003 — Pydantic needs runtime access
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+from typing_extensions import Self
 
 
 class TenantCreateRequest(BaseModel):
@@ -26,6 +27,14 @@ class TenantUpdateRequest(BaseModel):
 
     name: str | None = Field(None, min_length=1, max_length=255, description="Updated display name")
     config_json: dict[str, object] | None = Field(None, description="Updated configuration")
+
+    @model_validator(mode="after")
+    def check_at_least_one_field(self) -> Self:
+        """M5: Reject empty PATCH bodies — at least one field must be provided."""
+        if self.name is None and self.config_json is None:
+            msg = "At least one field (name or config_json) must be provided"
+            raise ValueError(msg)
+        return self
 
 
 class TenantResponse(BaseModel):

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -28,53 +29,70 @@ class TestConfigureStructlog:
 
 
 class TestLifespan:
-    """Test suite for startup/shutdown lifecycle."""
+    """Test suite for startup/shutdown lifecycle.
+
+    C6: Tests set APP_ENV=test to bypass the JWT secret validation,
+    since the test suite intentionally uses the default secret.
+    """
 
     @pytest.mark.asyncio
     async def test_lifespan_runs_startup_and_shutdown(self) -> None:
         """Lifespan context manager should execute without errors."""
-        app = create_app()
-        async with lifespan(app):
-            # Startup has completed if we reach here
-            pass
-        # Shutdown runs when context manager exits
+        with patch.dict(os.environ, {"APP_ENV": "test"}):
+            app = create_app()
+            async with lifespan(app):
+                # Startup has completed if we reach here
+                pass
+            # Shutdown runs when context manager exits
 
     @pytest.mark.asyncio
     async def test_lifespan_redis_success_sets_cache(self) -> None:
         """Successful Redis connection should set app.state.cache."""
-        app = create_app()
+        with patch.dict(os.environ, {"APP_ENV": "test"}):
+            app = create_app()
 
-        mock_redis = AsyncMock()
-        mock_redis.ping = AsyncMock(return_value=True)
-        mock_redis.close = AsyncMock()
+            mock_redis = AsyncMock()
+            mock_redis.ping = AsyncMock(return_value=True)
+            mock_redis.close = AsyncMock()
 
-        with patch("redis.asyncio.from_url", return_value=mock_redis):
-            async with lifespan(app):
-                # Cache should be set (RedisAdapter wrapping mock_redis)
-                assert app.state.cache is not None
+            with patch("redis.asyncio.from_url", return_value=mock_redis):
+                async with lifespan(app):
+                    # Cache should be set (RedisAdapter wrapping mock_redis)
+                    assert app.state.cache is not None
 
     @pytest.mark.asyncio
     async def test_lifespan_redis_failure_sets_cache_none(self) -> None:
         """Failed Redis connection should set app.state.cache = None."""
-        app = create_app()
+        with patch.dict(os.environ, {"APP_ENV": "test"}):
+            app = create_app()
 
-        with patch("redis.asyncio.from_url", side_effect=ConnectionError("Redis unavailable")):
-            async with lifespan(app):
-                assert app.state.cache is None
+            with patch("redis.asyncio.from_url", side_effect=ConnectionError("Redis unavailable")):
+                async with lifespan(app):
+                    assert app.state.cache is None
 
     @pytest.mark.asyncio
     async def test_lifespan_shutdown_closes_redis(self) -> None:
         """Shutdown should call close() on the cache adapter."""
-        app = create_app()
+        with patch.dict(os.environ, {"APP_ENV": "test"}):
+            app = create_app()
 
-        mock_redis = AsyncMock()
-        mock_redis.ping = AsyncMock(return_value=True)
-        mock_redis.close = AsyncMock()
+            mock_redis = AsyncMock()
+            mock_redis.ping = AsyncMock(return_value=True)
+            mock_redis.close = AsyncMock()
 
-        with patch("redis.asyncio.from_url", return_value=mock_redis):
-            async with lifespan(app):
-                assert app.state.cache is not None
+            with patch("redis.asyncio.from_url", return_value=mock_redis):
+                async with lifespan(app):
+                    assert app.state.cache is not None
 
-            # After context manager exits, close should have been called
-            # The RedisAdapter.close() should have been invoked during shutdown
-            assert app.state.cache is not None  # Still set but close was called
+                # After context manager exits, close should have been called
+                # The RedisAdapter.close() should have been invoked during shutdown
+                assert app.state.cache is not None  # Still set but close was called
+
+    @pytest.mark.asyncio
+    async def test_lifespan_rejects_default_secret_in_production(self) -> None:
+        """C6: Default JWT secret should cause RuntimeError in non-test env."""
+        with patch.dict(os.environ, {"APP_ENV": "development"}):
+            app = create_app()
+            with pytest.raises(RuntimeError, match="JWT_SECRET_KEY must be changed"):
+                async with lifespan(app):
+                    pass  # Should not reach here

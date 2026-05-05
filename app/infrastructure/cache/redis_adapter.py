@@ -40,7 +40,7 @@ class RedisAdapter(CachePort):
             value = await self._client.get(key)
             if value is None:
                 return None
-            return value.decode("utf-8") if isinstance(value, bytes) else str(value)
+            return str(value)
         except Exception:
             logger.warning("redis_get_failed", key=key, exc_info=True)
             return None

@@ -179,7 +179,7 @@ class TestTokenCreation:
         assert len(token) > 0
 
     def test_refresh_token_payload(self) -> None:
-        """Refresh token should have token_type='refresh'."""
+        """Refresh token should have token_type='refresh' and no role."""
         token = create_refresh_token(
             user_id="user-1",
             tenant_id="tenant-1",
@@ -188,6 +188,7 @@ class TestTokenCreation:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         assert payload["token_type"] == "refresh"
         assert payload["sub"] == "user-1"
+        assert "role" not in payload  # C4: role excluded from refresh tokens
 
     def test_refresh_token_7d_expiry(self) -> None:
         """Refresh token should default to 7-day expiry."""
@@ -233,6 +234,7 @@ class TestTokenVerification:
         )
         payload = verify_token(token, SECRET_KEY, expected_type="refresh")
         assert payload.token_type == "refresh"
+        assert payload.role is None  # C4: refresh tokens have no role
 
     def test_verify_expired_token_raises(self) -> None:
         """Expired token should raise AuthError."""
@@ -301,7 +303,7 @@ class TestTokenVerification:
             verify_token(token, SECRET_KEY)
 
     def test_verify_token_exp_field(self) -> None:
-        """Verified token should have exp datetime populated."""
+        """Verified token should have exp datetime populated (m5: non-optional)."""
         token = create_access_token(
             user_id="user-1",
             tenant_id="tenant-1",
@@ -309,6 +311,5 @@ class TestTokenVerification:
             secret_key=SECRET_KEY,
         )
         payload = verify_token(token, SECRET_KEY)
-        assert payload.exp is not None
         assert isinstance(payload.exp, datetime)
         assert payload.exp > datetime.now(timezone.utc)

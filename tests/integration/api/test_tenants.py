@@ -148,16 +148,16 @@ class TestCreateTenantAPI:
         assert response.status_code == 401
 
     @pytest.mark.asyncio
-    async def test_no_auth_returns_422(
+    async def test_no_auth_returns_401(
         self,
         tenant_client: AsyncClient,
     ) -> None:
-        """Missing auth header should return 422."""
+        """Missing auth header should return 401 (HTTPBearer rejects)."""
         response = await tenant_client.post(
             "/api/v1/tenants/",
             json={"name": "No Auth", "slug": "no-auth"},
         )
-        assert response.status_code == 422
+        assert response.status_code == 401
 
 
 class TestGetTenantAPI:

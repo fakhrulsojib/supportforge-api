@@ -19,6 +19,7 @@ from app.api.schemas.conversation import (
     MessageResponse,
 )
 from app.core.dependencies import get_current_user
+from app.core.exceptions import ConversationNotFoundError, SupportForgeError
 from app.infrastructure.database.connection import get_async_session
 from app.infrastructure.database.repositories.conversation_repo import (
     SQLConversationRepository,
@@ -52,6 +53,12 @@ async def list_conversations(
 
     Returns:
         Paginated list of conversation summaries.
+
+    Note:
+        M6: ``total`` reflects the current page length, not global count.
+        A separate COUNT query will be added when real pagination is needed
+        in Phase 3 frontend integration. For now the field is accurate for
+        single-page results.
     """
     limit = min(limit, 100)
     repo = SQLConversationRepository(session)
@@ -90,8 +97,6 @@ async def get_conversation(
     Returns:
         Full conversation with messages.
     """
-    from app.core.exceptions import ConversationNotFoundError
-
     conv_repo = SQLConversationRepository(session)
     msg_repo = SQLMessageRepository(session)
 
@@ -137,6 +142,9 @@ async def update_message_feedback(
 ) -> MessageResponse:
     """Update feedback on a specific message.
 
+    M1: Verifies the message belongs to a conversation owned by the
+    user's tenant BEFORE performing the update.
+
     Args:
         message_id: Message UUID.
         request: Feedback data.
@@ -146,11 +154,29 @@ async def update_message_feedback(
     Returns:
         Updated message with feedback.
     """
-    from app.core.exceptions import SupportForgeError
-
     msg_repo = SQLMessageRepository(session)
-    message = await msg_repo.update_feedback(message_id, request.feedback)
+    conv_repo = SQLConversationRepository(session)
 
+    # M1: Verify tenant ownership BEFORE updating
+    existing = await msg_repo.get_by_id(message_id)
+    if not existing:
+        raise SupportForgeError(
+            message=f"Message '{message_id}' not found",
+            status_code=404,
+            error_code="MESSAGE_NOT_FOUND",
+        )
+
+    conversation = await conv_repo.get_by_id(existing.conversation_id)
+    if not conversation or conversation.tenant_id != user.tenant_id:
+        # Return 404 to prevent cross-tenant message existence leakage
+        raise SupportForgeError(
+            message=f"Message '{message_id}' not found",
+            status_code=404,
+            error_code="MESSAGE_NOT_FOUND",
+        )
+
+    # Tenant verified — safe to update
+    message = await msg_repo.update_feedback(message_id, request.feedback)
     if not message:
         raise SupportForgeError(
             message=f"Message '{message_id}' not found",

@@ -91,10 +91,10 @@ class TestTenantCreateRequest:
 class TestTenantUpdateRequest:
     """Edge-case validation for TenantUpdateRequest."""
 
-    def test_all_none_defaults(self) -> None:
-        req = TenantUpdateRequest()
-        assert req.name is None
-        assert req.config_json is None
+    def test_empty_update_rejected(self) -> None:
+        """M5: PATCH with no fields should be rejected."""
+        with pytest.raises(ValidationError, match="At least one field"):
+            TenantUpdateRequest()
 
     def test_partial_update_name(self) -> None:
         req = TenantUpdateRequest(name="New Name")

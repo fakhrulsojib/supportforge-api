@@ -31,12 +31,19 @@ class SQLUserRepository(UserRepository):
             created_at=model.created_at,
         )
 
-    async def create(self, tenant_id: str, user: UserCreate) -> User:
-        """Create a new user within a tenant."""
+    async def create(self, tenant_id: str, user: UserCreate, password_hash: str = "") -> User:
+        """Create a new user within a tenant.
+
+        Args:
+            tenant_id: Tenant the user belongs to.
+            user: User creation DTO.
+            password_hash: Pre-hashed password (bcrypt). Passed from auth
+                service to ensure atomic creation with credentials.
+        """
         model = UserModel(
             tenant_id=tenant_id,
             email=user.email,
-            password_hash="",  # Password hashing handled by auth service (Phase 2.5)
+            password_hash=password_hash,
             role=user.role,
         )
         self._session.add(model)

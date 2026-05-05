@@ -23,6 +23,7 @@ from app.core.security import (
     verify_token,
 )
 from app.domain.models.enums import UserRole
+from app.domain.models.user import UserCreate
 from app.infrastructure.database.connection import get_async_session
 from app.infrastructure.database.repositories.tenant_repo import SQLTenantRepository
 from app.infrastructure.database.repositories.user_repo import SQLUserRepository
@@ -45,11 +46,8 @@ async def register(
 ) -> TokenResponse:
     """Register a new user and return JWT tokens.
 
-    Validates:
-        - Tenant exists
-        - Email not already taken within tenant
-        - Password meets strength requirements
-        - Role is valid
+    Validates input constraints (password, role) before querying the
+    database to prevent information disclosure via error ordering.
 
     Args:
         request: Registration data (email, password, tenant_id, role).
@@ -60,19 +58,12 @@ async def register(
         TokenResponse with access and refresh tokens.
 
     Raises:
+        SupportForgeError(422): Password too weak or invalid role.
         SupportForgeError(404): Tenant not found.
         SupportForgeError(409): Email already registered.
-        SupportForgeError(422): Password too weak or invalid role.
     """
-    # Validate tenant exists
-    tenant_repo = SQLTenantRepository(session)
-    tenant = await tenant_repo.get_by_id(request.tenant_id)
-    if not tenant:
-        raise SupportForgeError(
-            message=f"Tenant '{request.tenant_id}' not found",
-            status_code=404,
-            error_code="TENANT_NOT_FOUND",
-        )
+    # ── C5: Validate local inputs FIRST (no DB queries) to prevent
+    #    tenant/email enumeration via error ordering ──────────────
 
     # Validate role
     try:
@@ -94,6 +85,18 @@ async def register(
             error_code="WEAK_PASSWORD",
         )
 
+    # ── Now safe to query the database ──────────────────────────
+
+    # Validate tenant exists
+    tenant_repo = SQLTenantRepository(session)
+    tenant = await tenant_repo.get_by_id(request.tenant_id)
+    if not tenant:
+        raise SupportForgeError(
+            message=f"Tenant '{request.tenant_id}' not found",
+            status_code=404,
+            error_code="TENANT_NOT_FOUND",
+        )
+
     # Check email uniqueness within tenant
     user_repo = SQLUserRepository(session)
     existing = await user_repo.get_by_email(request.email, request.tenant_id)
@@ -104,19 +107,13 @@ async def register(
             error_code="EMAIL_ALREADY_EXISTS",
         )
 
-    # Create user with hashed password
-    from app.domain.models.user import UserCreate
+    # ── C1: Create user atomically with hashed password ─────────
+    # Password is hashed BEFORE being passed to the repository so
+    # the user row is never written with an empty password_hash.
 
+    hashed = hash_password(request.password)
     user_create = UserCreate(email=request.email, password=request.password, role=role)
-    user = await user_repo.create(request.tenant_id, user_create)
-
-    # Update password hash (repo creates with empty hash)
-    from app.infrastructure.database.models import UserModel
-
-    user_model = await session.get(UserModel, user.id)
-    if user_model:
-        user_model.password_hash = hash_password(request.password)
-        await session.flush()
+    user = await user_repo.create(request.tenant_id, user_create, password_hash=hashed)
 
     logger.info("user_registered", user_id=user.id, tenant_id=request.tenant_id, role=role.value)
 
@@ -205,13 +202,16 @@ async def refresh(
 ) -> TokenResponse:
     """Refresh an access token using a valid refresh token.
 
+    C2: Issues a **new refresh token** on every call (token rotation)
+    to limit the window of a stolen refresh token.
+
     Args:
         request: Refresh token.
         session: Database session.
         settings: Application settings.
 
     Returns:
-        TokenResponse with new access token (same refresh token).
+        TokenResponse with new access AND refresh tokens.
 
     Raises:
         AuthError: Invalid or expired refresh token.
@@ -238,8 +238,17 @@ async def refresh(
         expires_minutes=settings.jwt_access_token_expire_minutes,
     )
 
+    # C2: Rotate the refresh token — issue a fresh one
+    new_refresh_token = create_refresh_token(
+        user_id=user.id,
+        tenant_id=user.tenant_id,
+        secret_key=settings.jwt_secret_key,
+        algorithm=settings.jwt_algorithm,
+        expires_days=settings.jwt_refresh_token_expire_days,
+    )
+
     return TokenResponse(
         access_token=access_token,
-        refresh_token=request.refresh_token,
+        refresh_token=new_refresh_token,
         expires_in=settings.jwt_access_token_expire_minutes * 60,
     )

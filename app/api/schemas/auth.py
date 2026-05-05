@@ -23,7 +23,7 @@ class LoginRequest(BaseModel):
     """Request body for POST /api/v1/auth/login."""
 
     email: str = Field(..., min_length=1, max_length=320, description="User email address")
-    password: str = Field(..., min_length=1, description="User password")
+    password: str = Field(..., min_length=8, description="User password")
     tenant_id: str = Field(..., min_length=1, description="Tenant context for login")
 
 

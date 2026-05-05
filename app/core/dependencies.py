@@ -9,7 +9,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from fastapi import Depends, Header
+from fastapi import Depends
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.config import Settings, get_settings
 from app.core.exceptions import AuthError, TenantNotFoundError
@@ -22,6 +23,12 @@ from app.infrastructure.database.repositories.user_repo import SQLUserRepository
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
     from starlette.requests import Request
+
+# ── Security scheme ──────────────────────────────────────────────
+# HTTPBearer provides:
+#   1. Proper 403 (instead of 422) when Authorization header is missing
+#   2. "Authorize" button in Swagger /docs for authenticated endpoints
+_bearer_scheme = HTTPBearer()
 
 
 def get_app_settings() -> Settings:
@@ -41,16 +48,18 @@ def get_tenant_id(request: Request) -> str:
 
 
 async def get_current_user(
-    authorization: str = Header(..., alias="Authorization"),
+    credentials: HTTPAuthorizationCredentials = Depends(_bearer_scheme),
     session: AsyncSession = Depends(get_async_session),
     settings: Settings = Depends(get_app_settings),
 ) -> User:
     """Extract and validate the current user from JWT.
 
-    Expects ``Authorization: Bearer <token>`` header.
+    Uses ``HTTPBearer`` security scheme which auto-rejects requests
+    without a valid ``Authorization: Bearer <token>`` header with
+    a 403 response and renders the "Authorize" button in Swagger.
 
     Args:
-        authorization: Raw Authorization header value.
+        credentials: Parsed Bearer credentials from HTTPBearer.
         session: Database session.
         settings: Application settings.
 
@@ -58,12 +67,9 @@ async def get_current_user(
         The authenticated User domain model.
 
     Raises:
-        AuthError: If token is missing, invalid, or user not found.
+        AuthError: If token is invalid or user not found.
     """
-    if not authorization.startswith("Bearer "):
-        raise AuthError("Authorization header must be 'Bearer <token>'")
-
-    token = authorization[7:]  # Strip "Bearer "
+    token = credentials.credentials
     if not token:
         raise AuthError("Missing access token")
 
@@ -109,30 +115,6 @@ def require_role(*allowed_roles: UserRole) -> Any:
         return user
 
     return _check_role
-
-
-async def get_db() -> Any:
-    """Yield an async database session.
-
-    Placeholder — fully implemented in sub-phase 1.2 (PostgreSQL + Alembic).
-    """
-    raise NotImplementedError("Database session not configured yet — see sub-phase 1.2")
-
-
-async def get_llm_provider() -> Any:
-    """Return the configured LLM provider adapter.
-
-    Placeholder — fully implemented in sub-phase 1.3 (Ollama Adapter).
-    """
-    raise NotImplementedError("LLM provider not configured yet — see sub-phase 1.3")
-
-
-async def get_vector_store() -> Any:
-    """Return the configured vector store adapter.
-
-    Placeholder — fully implemented in sub-phase 1.4 (ChromaDB).
-    """
-    raise NotImplementedError("Vector store not configured yet — see sub-phase 1.4")
 
 
 def get_cache(request: Request) -> Any:

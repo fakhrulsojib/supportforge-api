@@ -75,20 +75,21 @@ class TestLoginRequest:
     """Edge-case validation for LoginRequest."""
 
     def test_valid_request(self) -> None:
-        req = LoginRequest(email="user@test.com", password="pass", tenant_id="t-1")
+        req = LoginRequest(email="user@test.com", password="StrongP@ss1", tenant_id="t-1")
         assert req.email == "user@test.com"
 
     def test_empty_email_rejected(self) -> None:
         with pytest.raises(ValidationError, match="email"):
-            LoginRequest(email="", password="pass", tenant_id="t-1")
+            LoginRequest(email="", password="StrongP@ss1", tenant_id="t-1")
 
-    def test_empty_password_rejected(self) -> None:
+    def test_short_password_rejected(self) -> None:
+        """M7: Passwords under 8 chars should be rejected at schema level."""
         with pytest.raises(ValidationError, match="password"):
-            LoginRequest(email="a@b.c", password="", tenant_id="t-1")
+            LoginRequest(email="a@b.c", password="Short1!", tenant_id="t-1")
 
     def test_empty_tenant_id_rejected(self) -> None:
         with pytest.raises(ValidationError, match="tenant_id"):
-            LoginRequest(email="a@b.c", password="pass", tenant_id="")
+            LoginRequest(email="a@b.c", password="StrongP@ss1", tenant_id="")
 
 
 class TestRefreshRequest:
