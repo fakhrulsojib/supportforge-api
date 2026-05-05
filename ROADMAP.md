@@ -80,9 +80,9 @@
 
 ---
 
-## Phase 2 — Real-time & Admin 🔨 (in progress)
+## Phase 2 — Real-time & Admin ✅
 
-> **Branch:** `phase-2/realtime-admin`
+> **Branch:** `phase-2/realtime-admin` → merged to `main`
 
 ### 2.5 — JWT Authentication ✅
 - [x] `app/core/security.py` — bcrypt hashing, JWT access/refresh tokens, TokenPayload
