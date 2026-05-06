@@ -232,11 +232,18 @@ class TestLogin:
         self,
         auth_client: AsyncClient,
         test_user: User,
+        test_tenant: MagicMock,
     ) -> None:
         """Successful login should return tokens."""
-        with patch("app.api.v1.auth.SQLUserRepository") as mock_user_cls:
+        with (
+            patch("app.api.v1.auth.SQLUserRepository") as mock_user_cls,
+            patch("app.api.v1.auth.SQLTenantRepository") as mock_tenant_cls,
+        ):
             mock_user_repo = mock_user_cls.return_value
             mock_user_repo.get_by_email = AsyncMock(return_value=test_user)
+
+            mock_tenant_repo = mock_tenant_cls.return_value
+            mock_tenant_repo.get_by_id = AsyncMock(return_value=test_tenant)
 
             response = await auth_client.post(
                 "/api/v1/auth/login",
@@ -306,6 +313,7 @@ class TestRefresh:
         self,
         auth_client: AsyncClient,
         test_user: User,
+        test_tenant: MagicMock,
     ) -> None:
         """Valid refresh token should return new access token."""
         from app.core.security import create_refresh_token
@@ -316,9 +324,15 @@ class TestRefresh:
             secret_key="change-me-to-another-random-secret",
         )
 
-        with patch("app.api.v1.auth.SQLUserRepository") as mock_user_cls:
+        with (
+            patch("app.api.v1.auth.SQLUserRepository") as mock_user_cls,
+            patch("app.api.v1.auth.SQLTenantRepository") as mock_tenant_cls,
+        ):
             mock_user_repo = mock_user_cls.return_value
             mock_user_repo.get_by_id = AsyncMock(return_value=test_user)
+
+            mock_tenant_repo = mock_tenant_cls.return_value
+            mock_tenant_repo.get_by_id = AsyncMock(return_value=test_tenant)
 
             response = await auth_client.post(
                 "/api/v1/auth/refresh",
