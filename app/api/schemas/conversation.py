@@ -15,6 +15,7 @@ class MessageResponse(BaseModel):
     id: str = Field(..., description="Message UUID")
     role: MessageRole = Field(..., description="Message author role")
     content: str = Field(..., description="Message text content")
+    thinking: str = Field("", description="LLM reasoning trace (assistant only)")
     sources_json: list[dict[str, object]] = Field(default_factory=list, description="Source citations")
     model_used: str = Field("", description="LLM model used (assistant only)")
     tokens_in: int = Field(0, description="Input tokens used")

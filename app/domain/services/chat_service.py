@@ -213,6 +213,7 @@ class ChatService:
                 user_id=user_id,
                 user_message=message,
                 assistant_message=answer_text,
+                assistant_thinking="",
                 sources=[],
                 model_used="",
                 is_new=is_new_conversation,
@@ -234,21 +235,24 @@ class ChatService:
         grouped_sources = _group_sources_by_document(relevant_docs)
 
         system_prompt = (
-            "You are a knowledgeable and professional customer support assistant. "
-            "Your role is to help users by answering their questions accurately "
-            "based on the company's internal documentation.\n\n"
+            "You are the official AI customer support assistant for this company. "
+            "You are friendly, professional, and empathetic. "
+            "Always respond as if you are speaking directly to a customer who needs help.\n\n"
             "## Rules\n"
             "1. Answer ONLY using the provided context below. "
             "Do NOT use any outside knowledge or make assumptions.\n"
             "2. If the context does not contain enough information to fully answer "
-            "the question, clearly state what you do know and what you cannot confirm.\n"
+            "the question, clearly state what you do know and what you cannot confirm. "
+            "Suggest the customer contact support for further assistance.\n"
             "3. Do NOT reference internal labels like 'Source 1' or 'Source 3' in your response. "
-            "Instead, refer to information naturally (e.g., 'According to the benefits documentation...').\n"
+            "Instead, refer to information naturally (e.g., 'According to our return policy...').\n"
             "4. Keep your answers concise, well-structured, and easy to read. "
             "Use bullet points or numbered lists for multiple items.\n"
-            "5. Be friendly, professional, and empathetic in tone.\n"
+            "5. Use a warm, helpful tone — as if chatting with a customer in a live support session. "
+            "Greet them if it's a general question. End with an offer to help further.\n"
             "6. If the question is completely unrelated to the provided context, "
-            "politely let the user know you can only help with topics covered in the documentation.\n"
+            "politely let the customer know you can only help with topics covered in the documentation.\n"
+            "7. Always respond in English.\n"
         )
 
         messages: list[dict[str, str]] = [
@@ -270,12 +274,20 @@ class ChatService:
 
         # Stream LLM tokens and accumulate full answer
         full_answer_parts: list[str] = []
-        async for token in self._llm_provider.stream(messages=messages):  # type: ignore[attr-defined]
-            full_answer_parts.append(token)
-            yield {"type": "token", "data": token}
+        full_thinking_parts: list[str] = []
+        async for token_frame in self._llm_provider.stream(messages=messages):  # type: ignore[attr-defined]
+            frame_kind = token_frame.get("type", "content") if isinstance(token_frame, dict) else "content"
+            token_text = token_frame.get("text", "") if isinstance(token_frame, dict) else token_frame
+            if frame_kind == "thinking":
+                full_thinking_parts.append(token_text)
+                yield {"type": "thinking", "data": token_text}
+            else:
+                full_answer_parts.append(token_text)
+                yield {"type": "token", "data": token_text}
 
         model_used = getattr(self._llm_provider, "default_model", "")
         full_answer = "".join(full_answer_parts)
+        full_thinking = "".join(full_thinking_parts)
 
         # Done frame
         yield {
@@ -286,6 +298,7 @@ class ChatService:
                 "sources": grouped_sources,
                 "escalated": False,
                 "escalation_reason": "",
+                "thinking_text": full_thinking,
             },
         }
 
@@ -296,6 +309,7 @@ class ChatService:
             user_id=user_id,
             user_message=message,
             assistant_message=full_answer,
+            assistant_thinking=full_thinking,
             sources=grouped_sources,
             model_used=model_used,
             is_new=is_new_conversation,
@@ -309,6 +323,7 @@ class ChatService:
         user_id: str,
         user_message: str,
         assistant_message: str,
+        assistant_thinking: str,
         sources: list[dict[str, Any]],
         model_used: str,
         is_new: bool,
@@ -327,6 +342,7 @@ class ChatService:
             user_id: User who initiated the chat.
             user_message: The user's original question.
             assistant_message: The full AI response.
+            assistant_thinking: The full LLM reasoning trace.
             sources: Grouped source citations.
             model_used: LLM model name.
             is_new: Whether this is a brand-new conversation.
@@ -368,6 +384,7 @@ class ChatService:
                         conversation_id=conversation_id,
                         role=MessageRole.ASSISTANT,
                         content=saved_content,
+                        thinking=assistant_thinking,
                         sources_json=sources,
                         model_used=model_used,
                     )

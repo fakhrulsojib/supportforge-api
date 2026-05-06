@@ -28,7 +28,7 @@ class LLMProvider(ABC):
         messages: list[dict[str, str]],
         model: str | None = None,
         temperature: float = 0.7,
-        max_tokens: int = 1024,
+        max_tokens: int = 8192,
     ) -> str:
         """Generate a complete response from the LLM.
 
@@ -52,8 +52,8 @@ class LLMProvider(ABC):
         messages: list[dict[str, str]],
         model: str | None = None,
         temperature: float = 0.7,
-        max_tokens: int = 1024,
-    ) -> AsyncGenerator[str, None]:
+        max_tokens: int = 8192,
+    ) -> AsyncGenerator[dict[str, str], None]:
         """Stream a response from the LLM token-by-token.
 
         Args:
@@ -63,7 +63,9 @@ class LLMProvider(ABC):
             max_tokens: Maximum tokens in the response.
 
         Yields:
-            Token strings as they are generated.
+            Dicts with ``type`` (``"content"`` or ``"thinking"``) and
+            ``text`` (the token string). Models without a thinking
+            phase yield only ``"content"`` frames.
 
         Raises:
             LLMError: On any communication or processing failure.

@@ -64,7 +64,7 @@ class OllamaAdapter(LLMProvider):
         messages: list[dict[str, str]],
         model: str | None = None,
         temperature: float = 0.7,
-        max_tokens: int = 1024,
+        max_tokens: int = 8192,
     ) -> str:
         """Generate a complete response from Ollama.
 
@@ -110,13 +110,15 @@ class OllamaAdapter(LLMProvider):
         messages: list[dict[str, str]],
         model: str | None = None,
         temperature: float = 0.7,
-        max_tokens: int = 1024,
-    ) -> AsyncGenerator[str, None]:
+        max_tokens: int = 8192,
+    ) -> AsyncGenerator[dict[str, str], None]:
         """Stream response tokens from Ollama.
 
         Uses the native ``/api/chat`` endpoint with ``stream=true``.
-        Ollama sends newline-delimited JSON objects, each containing
-        a ``message.content`` field with the next token.
+        Ollama sends newline-delimited JSON objects. For reasoning models
+        (e.g. qwen3), tokens may appear in ``message.thinking`` (internal
+        reasoning) or ``message.content`` (visible answer). Both are
+        yielded with a ``type`` discriminator.
         """
         resolved_model = model or self.default_model
         try:
@@ -139,9 +141,13 @@ class OllamaAdapter(LLMProvider):
                         continue
                     try:
                         chunk = json.loads(line)
-                        content = chunk.get("message", {}).get("content", "")
+                        msg = chunk.get("message", {})
+                        thinking = msg.get("thinking", "")
+                        content = msg.get("content", "")
+                        if thinking:
+                            yield {"type": "thinking", "text": thinking}
                         if content:
-                            yield content
+                            yield {"type": "content", "text": content}
                     except json.JSONDecodeError:
                         continue
         except httpx.ConnectError as e:

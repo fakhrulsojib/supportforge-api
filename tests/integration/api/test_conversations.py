@@ -105,10 +105,14 @@ class TestListConversations:
         """Should return paginated conversations for tenant."""
         with (
             patch("app.api.v1.conversations.SQLConversationRepository") as mock_repo_cls,
+            patch("app.api.v1.conversations.SQLMessageRepository") as mock_msg_cls,
             patch("app.core.dependencies.SQLUserRepository") as mock_user_cls,
         ):
             mock_repo = mock_repo_cls.return_value
-            mock_repo.list_by_tenant = AsyncMock(return_value=[sample_conversation])
+            mock_repo.list_by_user = AsyncMock(return_value=[sample_conversation])
+
+            mock_msg = mock_msg_cls.return_value
+            mock_msg.list_by_conversation = AsyncMock(return_value=[])
 
             mock_user_repo = mock_user_cls.return_value
             mock_user_repo.get_by_id = AsyncMock(return_value=viewer_user)

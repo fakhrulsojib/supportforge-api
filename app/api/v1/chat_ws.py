@@ -7,10 +7,11 @@ handshakes do not support custom headers.
 JSON Frame Protocol:
     → Client sends: ``{"message": "user question", "conversation_id": "optional"}``
     ← Server sends:
-        ``{"type": "source", "data": {"content": "...", "score": 0.9, "id": "..."}}``
-        ``{"type": "token", "data": "partial text"}``
-        ``{"type": "done", "data": {"conversation_id": "...", ...}}``
-        ``{"type": "error", "data": {"message": "..."}}``
+        ``{"type": "source",   "data": {"content": "...", "score": 0.9, "id": "..."}}``
+        ``{"type": "thinking", "data": "reasoning text"}``
+        ``{"type": "token",    "data": "partial text"}``
+        ``{"type": "done",     "data": {"conversation_id": "...", "thinking_text": "...", ...}}``
+        ``{"type": "error",    "data": {"message": "..."}}``
 """
 
 from __future__ import annotations

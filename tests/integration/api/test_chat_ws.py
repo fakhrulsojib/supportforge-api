@@ -185,7 +185,7 @@ class TestWebSocketStreaming:
     ) -> None:
         """Sending a message should produce token + done frames."""
 
-        async def _mock_stream(message: str, tenant_id: str, conversation_id: str | None = None):
+        async def _mock_stream(message: str, tenant_id: str, conversation_id: str | None = None, **kwargs):
             """Mock streaming that yields tokens."""
             yield {"type": "token", "data": "Hello "}
             yield {"type": "token", "data": "world!"}
@@ -244,6 +244,7 @@ class TestWebSocketStreaming:
             message: str,
             tenant_id: str,
             conversation_id: str | None = None,
+            **kwargs,
         ):
             captured_calls.append({"tenant_id": tenant_id})
             yield {"type": "done", "data": {"conversation_id": "c1"}}
@@ -298,7 +299,7 @@ class TestWebSocketStreaming:
         """LLM failure during streaming should produce an error frame."""
         from app.core.exceptions import LLMError
 
-        async def _mock_stream_error(message: str, tenant_id: str, conversation_id: str | None = None):
+        async def _mock_stream_error(message: str, tenant_id: str, conversation_id: str | None = None, **kwargs):
             yield {"type": "token", "data": "partial"}
             raise LLMError("Connection lost")
 
