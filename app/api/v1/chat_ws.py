@@ -108,6 +108,7 @@ async def websocket_chat(
                 async for frame in chat_service.stream_message(
                     message=message,
                     tenant_id=tenant_id,
+                    user_id=user_id,
                     conversation_id=conversation_id,
                 ):
                     await ws_manager.send_json(websocket, frame)

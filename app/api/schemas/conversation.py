@@ -41,6 +41,7 @@ class ConversationSummaryResponse(BaseModel):
     tenant_id: str = Field(..., description="Tenant UUID")
     user_id: str = Field("", description="User UUID")
     status: ConversationStatus = Field(..., description="Conversation status")
+    title: str = Field("", description="Preview title from first user message")
     started_at: datetime | None = Field(None, description="Conversation start time")
 
 

@@ -32,12 +32,21 @@ class SQLConversationRepository(ConversationRepository):
             status=model.status,
         )
 
-    async def create(self, tenant_id: str, user_id: str) -> Conversation:
-        """Create a new conversation."""
+    async def create(self, tenant_id: str, user_id: str, conversation_id: str = "") -> Conversation:
+        """Create a new conversation.
+
+        Args:
+            tenant_id: Tenant owning the conversation.
+            user_id: User who started the conversation.
+            conversation_id: Optional pre-assigned UUID. If empty, the
+                ORM default (``uuid4``) generates one automatically.
+        """
         model = ConversationModel(
             tenant_id=tenant_id,
             user_id=user_id or None,
         )
+        if conversation_id:
+            model.id = conversation_id
         self._session.add(model)
         await self._session.flush()
         return self._to_domain(model)

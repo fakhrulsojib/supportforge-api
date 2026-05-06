@@ -62,19 +62,32 @@ async def list_conversations(
     """
     limit = min(limit, 100)
     repo = SQLConversationRepository(session)
+    msg_repo = SQLMessageRepository(session)
     conversations = await repo.list_by_tenant(user.tenant_id, limit=limit, offset=offset)
 
-    return ConversationListResponse(
-        conversations=[
+    summaries: list[ConversationSummaryResponse] = []
+    for c in conversations:
+        # Get the first message as the conversation title
+        messages = await msg_repo.list_by_conversation(c.id, limit=1)
+        title = ""
+        if messages:
+            # Truncate to 60 chars for sidebar display
+            raw = messages[0].content.strip()
+            title = raw[:60] + ("…" if len(raw) > 60 else "")
+
+        summaries.append(
             ConversationSummaryResponse(
                 id=c.id,
                 tenant_id=c.tenant_id,
                 user_id=c.user_id,
                 status=c.status,
+                title=title,
                 started_at=c.started_at,
             )
-            for c in conversations
-        ],
+        )
+
+    return ConversationListResponse(
+        conversations=summaries,
         total=len(conversations),
         limit=limit,
         offset=offset,
