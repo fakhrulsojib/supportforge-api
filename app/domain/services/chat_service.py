@@ -137,6 +137,7 @@ class ChatService:
         tenant_id: str,
         user_id: str = "",
         conversation_id: str | None = None,
+        temperature: float = 0.7,
     ) -> AsyncGenerator[dict[str, Any], None]:
         """Stream a chat response token-by-token via the RAG pipeline.
 
@@ -259,7 +260,8 @@ class ChatService:
             "'I don't have specific information about that in our documentation right now, "
             "but I'd be happy to help you with something else or escalate this to our team.'\n"
             "4. NEVER invent policies, numbers, deadlines, or contact details that are not "
-            "explicitly stated in the context.\n\n"
+            "explicitly stated in the context.\n"
+            "5. Do NOT overthink simple queries. Be direct and reach a conclusion quickly.\n\n"
 
             "## Response Format\n"
             "- Keep answers concise and scannable. Use bullet points or numbered lists "
@@ -318,7 +320,7 @@ class ChatService:
         # Stream LLM tokens and accumulate full answer
         full_answer_parts: list[str] = []
         full_thinking_parts: list[str] = []
-        async for token_frame in self._llm_provider.stream(messages=messages):  # type: ignore[attr-defined]
+        async for token_frame in self._llm_provider.stream(messages=messages, temperature=temperature):  # type: ignore[attr-defined]
             frame_kind = token_frame.get("type", "content") if isinstance(token_frame, dict) else "content"
             token_text = token_frame.get("text", "") if isinstance(token_frame, dict) else token_frame
             if frame_kind == "thinking":

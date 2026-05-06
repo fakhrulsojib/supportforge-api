@@ -22,6 +22,7 @@ from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 from app.config import get_settings
 from app.core.exceptions import AuthError, LLMError, SupportForgeError
 from app.core.security import verify_token
+from app.infrastructure.database.repositories.tenant_repo import SQLTenantRepository
 from app.infrastructure.database.repositories.user_repo import SQLUserRepository
 
 logger = structlog.get_logger(__name__)
@@ -77,6 +78,16 @@ async def websocket_chat(
     tenant_id = user.tenant_id
     user_id = user.id
 
+    # Read per-tenant LLM temperature from config_json
+    tenant_temperature = 0.7  # default
+    async with AsyncSessionLocal() as tenant_session:
+        tenant_repo = SQLTenantRepository(tenant_session)
+        tenant = await tenant_repo.get_by_id(tenant_id)
+        if tenant and tenant.config_json:
+            raw = tenant.config_json.get("temperature")
+            if isinstance(raw, (int, float)) and 0.0 <= float(raw) <= 1.0:
+                tenant_temperature = float(raw)
+
     # ── Connection ───────────────────────────────────────────────
     ws_manager = getattr(websocket.app.state, "ws_manager", None)
     chat_service = getattr(websocket.app.state, "chat_service", None)
@@ -111,6 +122,7 @@ async def websocket_chat(
                     tenant_id=tenant_id,
                     user_id=user_id,
                     conversation_id=conversation_id,
+                    temperature=tenant_temperature,
                 ):
                     await ws_manager.send_json(websocket, frame)
             except (LLMError, SupportForgeError) as e:

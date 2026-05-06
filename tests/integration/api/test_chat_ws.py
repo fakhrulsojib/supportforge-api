@@ -14,6 +14,7 @@ from starlette.testclient import TestClient
 
 from app.core.security import create_access_token
 from app.domain.models.enums import UserRole
+from app.domain.models.tenant import Tenant
 from app.domain.models.user import User
 from app.main import create_app
 
@@ -200,11 +201,17 @@ class TestWebSocketStreaming:
 
         app_with_mocks.state.chat_service.stream_message = _mock_stream
 
-        with patch(
-            "app.api.v1.chat_ws.SQLUserRepository"
-        ) as mock_repo_cls:
+        with (
+            patch("app.api.v1.chat_ws.SQLUserRepository") as mock_repo_cls,
+            patch("app.api.v1.chat_ws.SQLTenantRepository") as mock_tenant_cls,
+        ):
             mock_repo = mock_repo_cls.return_value
             mock_repo.get_by_id = AsyncMock(return_value=test_user)
+
+            mock_tenant_repo = mock_tenant_cls.return_value
+            mock_tenant_repo.get_by_id = AsyncMock(
+                return_value=Tenant(id="tenant-ws-1", name="Test", slug="test")
+            )
 
             with ws_client.websocket_connect(
                 f"/api/v1/ws/chat?token={valid_token}"
@@ -251,11 +258,17 @@ class TestWebSocketStreaming:
 
         app_with_mocks.state.chat_service.stream_message = _capturing_stream
 
-        with patch(
-            "app.api.v1.chat_ws.SQLUserRepository"
-        ) as mock_repo_cls:
+        with (
+            patch("app.api.v1.chat_ws.SQLUserRepository") as mock_repo_cls,
+            patch("app.api.v1.chat_ws.SQLTenantRepository") as mock_tenant_cls,
+        ):
             mock_repo = mock_repo_cls.return_value
             mock_repo.get_by_id = AsyncMock(return_value=test_user)
+
+            mock_tenant_repo = mock_tenant_cls.return_value
+            mock_tenant_repo.get_by_id = AsyncMock(
+                return_value=Tenant(id="tenant-ws-1", name="Test", slug="test")
+            )
 
             with ws_client.websocket_connect(
                 f"/api/v1/ws/chat?token={valid_token}"
@@ -275,11 +288,17 @@ class TestWebSocketStreaming:
         test_user: User,
     ) -> None:
         """Empty message should produce an error frame."""
-        with patch(
-            "app.api.v1.chat_ws.SQLUserRepository"
-        ) as mock_repo_cls:
+        with (
+            patch("app.api.v1.chat_ws.SQLUserRepository") as mock_repo_cls,
+            patch("app.api.v1.chat_ws.SQLTenantRepository") as mock_tenant_cls,
+        ):
             mock_repo = mock_repo_cls.return_value
             mock_repo.get_by_id = AsyncMock(return_value=test_user)
+
+            mock_tenant_repo = mock_tenant_cls.return_value
+            mock_tenant_repo.get_by_id = AsyncMock(
+                return_value=Tenant(id="tenant-ws-1", name="Test", slug="test")
+            )
 
             with ws_client.websocket_connect(
                 f"/api/v1/ws/chat?token={valid_token}"
@@ -305,11 +324,17 @@ class TestWebSocketStreaming:
 
         app_with_mocks.state.chat_service.stream_message = _mock_stream_error
 
-        with patch(
-            "app.api.v1.chat_ws.SQLUserRepository"
-        ) as mock_repo_cls:
+        with (
+            patch("app.api.v1.chat_ws.SQLUserRepository") as mock_repo_cls,
+            patch("app.api.v1.chat_ws.SQLTenantRepository") as mock_tenant_cls,
+        ):
             mock_repo = mock_repo_cls.return_value
             mock_repo.get_by_id = AsyncMock(return_value=test_user)
+
+            mock_tenant_repo = mock_tenant_cls.return_value
+            mock_tenant_repo.get_by_id = AsyncMock(
+                return_value=Tenant(id="tenant-ws-1", name="Test", slug="test")
+            )
 
             with ws_client.websocket_connect(
                 f"/api/v1/ws/chat?token={valid_token}"
