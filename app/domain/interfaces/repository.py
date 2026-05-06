@@ -70,6 +70,11 @@ class ConversationRepository(ABC):
     async def list_by_tenant(self, tenant_id: str, limit: int = 50, offset: int = 0) -> list[Conversation]: ...
 
     @abstractmethod
+    async def list_by_user(
+        self, tenant_id: str, user_id: str, limit: int = 50, offset: int = 0,
+    ) -> list[Conversation]: ...
+
+    @abstractmethod
     async def update_status(self, conversation_id: str, status: ConversationStatus) -> Conversation | None: ...
 
 
