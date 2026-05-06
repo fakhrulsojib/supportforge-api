@@ -141,6 +141,10 @@ class ChatService:
     ) -> AsyncGenerator[dict[str, Any], None]:
         """Stream a chat response token-by-token via the RAG pipeline.
 
+        Args:
+            temperature: LLM sampling temperature (0.0–1.0). Values outside
+                this range are clamped to the default.
+
         Runs retrieval and grading synchronously, then streams the
         LLM generation step as individual token frames. Persists the
         conversation and messages to the database on completion.
@@ -159,6 +163,10 @@ class ChatService:
         Yields:
             Structured frame dicts for WebSocket delivery.
         """
+        # Clamp temperature to valid range
+        if not isinstance(temperature, (int, float)) or temperature < 0.0 or temperature > 1.0:
+            temperature = 0.7
+
         is_new_conversation = not conversation_id
         if not conversation_id:
             conversation_id = str(uuid.uuid4())

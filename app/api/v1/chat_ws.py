@@ -65,9 +65,10 @@ async def websocket_chat(
         await websocket.close(code=4001, reason=str(e.message))
         return
 
-    # Look up the user to verify they still exist
+    # Look up user and tenant config in a single session
     from app.infrastructure.database.connection import AsyncSessionLocal
 
+    tenant_temperature = 0.7  # default
     async with AsyncSessionLocal() as session:
         user_repo = SQLUserRepository(session)
         user = await user_repo.get_by_id(payload.user_id)
@@ -75,18 +76,16 @@ async def websocket_chat(
             await websocket.close(code=4001, reason="User not found")
             return
 
-    tenant_id = user.tenant_id
-    user_id = user.id
-
-    # Read per-tenant LLM temperature from config_json
-    tenant_temperature = 0.7  # default
-    async with AsyncSessionLocal() as tenant_session:
-        tenant_repo = SQLTenantRepository(tenant_session)
-        tenant = await tenant_repo.get_by_id(tenant_id)
+        # Read per-tenant LLM temperature from config_json
+        tenant_repo = SQLTenantRepository(session)
+        tenant = await tenant_repo.get_by_id(user.tenant_id)
         if tenant and tenant.config_json:
             raw = tenant.config_json.get("temperature")
             if isinstance(raw, (int, float)) and 0.0 <= float(raw) <= 1.0:
                 tenant_temperature = float(raw)
+
+    tenant_id = user.tenant_id
+    user_id = user.id
 
     # ── Connection ───────────────────────────────────────────────
     ws_manager = getattr(websocket.app.state, "ws_manager", None)

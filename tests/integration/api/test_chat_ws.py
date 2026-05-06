@@ -102,11 +102,17 @@ class TestWebSocketConnect:
         test_user: User,
     ) -> None:
         """Valid JWT token should allow WebSocket connection."""
-        with patch(
-            "app.api.v1.chat_ws.SQLUserRepository"
-        ) as mock_repo_cls:
+        with (
+            patch("app.api.v1.chat_ws.SQLUserRepository") as mock_repo_cls,
+            patch("app.api.v1.chat_ws.SQLTenantRepository") as mock_tenant_cls,
+        ):
             mock_repo = mock_repo_cls.return_value
             mock_repo.get_by_id = AsyncMock(return_value=test_user)
+
+            mock_tenant_repo = mock_tenant_cls.return_value
+            mock_tenant_repo.get_by_id = AsyncMock(
+                return_value=Tenant(id="tenant-ws-1", name="Test", slug="test")
+            )
 
             with ws_client.websocket_connect(
                 f"/api/v1/ws/chat?token={valid_token}"
