@@ -9,7 +9,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-from app.domain.models.enums import ConversationStatus, FeedbackType, MessageRole, ValidationStatus
+from app.domain.models.enums import ConversationStatus, EscalationTrigger, FeedbackType, MessageRole, ValidationStatus
 
 
 class Conversation(BaseModel):
@@ -21,6 +21,7 @@ class Conversation(BaseModel):
     started_at: datetime | None = None
     ended_at: datetime | None = None
     status: ConversationStatus = ConversationStatus.ACTIVE
+    escalation_trigger: EscalationTrigger = EscalationTrigger.NONE
 
 
 class Message(BaseModel):
