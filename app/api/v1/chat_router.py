@@ -27,9 +27,6 @@ logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["chat"])
 
-# Statuses that are blocked from chat
-_BLOCKED_STATUSES = {TenantStatus.SUSPENDED, TenantStatus.ARCHIVED}
-
 
 @router.post("/chat", response_model=ChatResponse)
 async def chat_endpoint(
@@ -55,9 +52,11 @@ async def chat_endpoint(
         ChatResponse with AI-generated answer and source citations.
     """
     # ── Tenant status gate ───────────────────────────────────────
+    # Only ACTIVE tenants can access chat. Pending, suspended, and
+    # archived tenants are all blocked.
     tenant_repo = SQLTenantRepository(session)
     tenant = await tenant_repo.get_by_id(user.tenant_id)
-    if tenant and tenant.status in _BLOCKED_STATUSES:
+    if not tenant or tenant.status != TenantStatus.ACTIVE:
         raise TenantSuspendedError(tenant_id=user.tenant_id)
 
     result = await chat_service.process_message(

@@ -138,14 +138,17 @@ supportforge-api/
 | `POST` | `/api/v1/auth/register` | — | Register user (superadmin blocked) |
 | `POST` | `/api/v1/auth/login` | — | Login |
 | `POST` | `/api/v1/auth/refresh` | — | Refresh token |
-| `POST` | `/api/v1/chat` | JWT | Send chat message |
+| `POST` | `/api/v1/chat` | JWT | Send chat message (blocked for suspended/archived tenants) |
 | `GET` | `/api/v1/conversations` | JWT | List conversations |
 | `GET` | `/api/v1/conversations/{id}` | JWT | Get conversation detail |
 | `PATCH` | `/api/v1/conversations/messages/{id}/feedback` | JWT | Update message feedback |
-| `POST` | `/api/v1/tenants` | Admin | Create tenant |
+| `POST` | `/api/v1/tenants` | Admin | Create tenant _(deprecated — use platform endpoint)_ |
 | `GET` | `/api/v1/tenants/{slug}` | JWT | Get tenant by slug |
 | `PATCH` | `/api/v1/tenants/{id}` | Admin | Update tenant |
 | `DELETE` | `/api/v1/tenants/{id}` | Admin | Delete tenant |
+| `POST` | `/api/v1/platform/tenants` | Superadmin | Create tenant (provisioning) |
+| `GET` | `/api/v1/platform/tenants` | Superadmin | List tenants (paginated, status filter) |
+| `PATCH` | `/api/v1/platform/tenants/{id}/status` | Superadmin | Update tenant lifecycle status |
 | `POST` | `/api/v1/ingest/upload` | Admin | Upload document |
 | `GET` | `/api/v1/ingest/documents` | Admin | List documents |
 | `DELETE` | `/api/v1/ingest/documents/{id}` | Admin | Delete document |

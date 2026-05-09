@@ -111,9 +111,10 @@ class RateLimitError(SupportForgeError):
 
 
 class TenantSuspendedError(SupportForgeError):
-    """Raised when a suspended/archived tenant tries to access services."""
+    """Raised when a non-active tenant tries to access services."""
 
     def __init__(self, tenant_id: str = "") -> None:
+        self.tenant_id = tenant_id
         detail = (
             "Your organization's account is currently suspended. "
             "Please contact your administrator."

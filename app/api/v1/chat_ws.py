@@ -83,10 +83,11 @@ async def websocket_chat(
         tenant = await tenant_repo.get_by_id(user.tenant_id)
 
         # ── Tenant status gate ───────────────────────────────────
-        if tenant and tenant.status in {TenantStatus.SUSPENDED, TenantStatus.ARCHIVED}:
+        # Only ACTIVE tenants can access chat via WebSocket.
+        if not tenant or tenant.status != TenantStatus.ACTIVE:
             await websocket.close(
                 code=4003,
-                reason="Tenant suspended — chat access is disabled",
+                reason="Tenant not active — chat access is disabled",
             )
             return
 
