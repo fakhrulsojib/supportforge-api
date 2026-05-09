@@ -251,7 +251,7 @@ class TestChatServiceStreaming:
 
     @pytest.mark.asyncio
     async def test_stream_message_escalation_path(self) -> None:
-        """When should_escalate is True, yield escalation frames."""
+        """When should_escalate is True (no docs), yield context-aware escalation frames."""
         service = ChatService(
             llm_provider=AsyncMock(),
             vector_store=AsyncMock(),
@@ -261,7 +261,6 @@ class TestChatServiceStreaming:
         with (
             patch("app.domain.services.chat_service.retrieve_node", new_callable=AsyncMock) as mock_retrieve,
             patch("app.domain.services.chat_service.grade_node", new_callable=AsyncMock) as mock_grade,
-            patch("app.domain.services.chat_service.escalation_node", new_callable=AsyncMock) as mock_esc,
         ):
             mock_retrieve.return_value = {
                 "query": "test",
@@ -289,19 +288,6 @@ class TestChatServiceStreaming:
                 "tokens_in": 0,
                 "tokens_out": 0,
             }
-            mock_esc.return_value = {
-                "query": "test",
-                "tenant_id": "t1",
-                "retrieved_docs": [],
-                "relevant_docs": [],
-                "answer": "Escalating to human agent.",
-                "sources": [],
-                "should_escalate": True,
-                "escalation_reason": "No docs found",
-                "model_used": "",
-                "tokens_in": 0,
-                "tokens_out": 0,
-            }
 
             frames = []
             async for frame in service.stream_message(
@@ -309,13 +295,15 @@ class TestChatServiceStreaming:
             ):
                 frames.append(frame)
 
-        # Should have: 1 token (escalation message) + 1 done = 2 frames
+        # Should have: 1 token (context-aware escalation message) + 1 done = 2 frames
         assert len(frames) == 2
         assert frames[0]["type"] == "token"
-        assert "Escalating" in frames[0]["data"]
+        # Uses the NO_CONTEXT context-aware message instead of generic escalation_node
+        assert "wasn't able to find" in frames[0]["data"]
         assert frames[1]["type"] == "done"
         assert frames[1]["data"]["escalated"] is True
         assert frames[1]["data"]["escalation_reason"] == "No docs found"
+        assert frames[1]["data"]["escalation_trigger"] == "no_context"
 
     @pytest.mark.asyncio
     async def test_stream_message_preserves_conversation_id(self) -> None:
@@ -886,7 +874,6 @@ class TestChatServiceOutputValidation:
         with (
             patch("app.domain.services.chat_service.retrieve_node", new_callable=AsyncMock) as mock_retrieve,
             patch("app.domain.services.chat_service.grade_node", new_callable=AsyncMock) as mock_grade,
-            patch("app.domain.services.chat_service.escalation_node", new_callable=AsyncMock) as mock_esc,
         ):
             mock_retrieve.return_value = {
                 "query": "test", "tenant_id": "t1",
@@ -899,14 +886,6 @@ class TestChatServiceOutputValidation:
                 "query": "test", "tenant_id": "t1",
                 "retrieved_docs": [], "relevant_docs": [],
                 "answer": "", "sources": [],
-                "should_escalate": True, "escalation_reason": "No docs found",
-                "model_used": "", "tokens_in": 0, "tokens_out": 0,
-            }
-            mock_esc.return_value = {
-                "query": "test", "tenant_id": "t1",
-                "retrieved_docs": [], "relevant_docs": [],
-                "answer": "Escalating to human agent.",
-                "sources": [],
                 "should_escalate": True, "escalation_reason": "No docs found",
                 "model_used": "", "tokens_in": 0, "tokens_out": 0,
             }
