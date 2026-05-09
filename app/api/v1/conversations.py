@@ -43,7 +43,7 @@ async def list_conversations(
     session: AsyncSession = Depends(get_async_session),
     user: User = Depends(get_current_user),
 ) -> ConversationListResponse:
-    """List conversations for the authenticated user's tenant.
+    """List conversations owned by the authenticated user.
 
     Args:
         limit: Page size (max 100).
@@ -62,19 +62,34 @@ async def list_conversations(
     """
     limit = min(limit, 100)
     repo = SQLConversationRepository(session)
-    conversations = await repo.list_by_tenant(user.tenant_id, limit=limit, offset=offset)
+    msg_repo = SQLMessageRepository(session)
+    conversations = await repo.list_by_user(
+        tenant_id=user.tenant_id, user_id=user.id, limit=limit, offset=offset,
+    )
 
-    return ConversationListResponse(
-        conversations=[
+    summaries: list[ConversationSummaryResponse] = []
+    for c in conversations:
+        # Get the first message as the conversation title
+        messages = await msg_repo.list_by_conversation(c.id, limit=1)
+        title = ""
+        if messages:
+            # Truncate to 60 chars for sidebar display
+            raw = messages[0].content.strip()
+            title = raw[:60] + ("…" if len(raw) > 60 else "")
+
+        summaries.append(
             ConversationSummaryResponse(
                 id=c.id,
                 tenant_id=c.tenant_id,
                 user_id=c.user_id,
                 status=c.status,
+                title=title,
                 started_at=c.started_at,
             )
-            for c in conversations
-        ],
+        )
+
+    return ConversationListResponse(
+        conversations=summaries,
         total=len(conversations),
         limit=limit,
         offset=offset,
@@ -104,8 +119,8 @@ async def get_conversation(
     if not conversation:
         raise ConversationNotFoundError(conversation_id=conversation_id)
 
-    # Verify tenant isolation
-    if conversation.tenant_id != user.tenant_id:
+    # Verify tenant + user isolation — each user sees only their own
+    if conversation.tenant_id != user.tenant_id or conversation.user_id != user.id:
         raise ConversationNotFoundError(conversation_id=conversation_id)
 
     messages = await msg_repo.list_by_conversation(conversation_id)
@@ -167,8 +182,12 @@ async def update_message_feedback(
         )
 
     conversation = await conv_repo.get_by_id(existing.conversation_id)
-    if not conversation or conversation.tenant_id != user.tenant_id:
-        # Return 404 to prevent cross-tenant message existence leakage
+    if (
+        not conversation
+        or conversation.tenant_id != user.tenant_id
+        or conversation.user_id != user.id
+    ):
+        # Return 404 to prevent cross-user message existence leakage
         raise SupportForgeError(
             message=f"Message '{message_id}' not found",
             status_code=404,

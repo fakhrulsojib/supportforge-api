@@ -204,6 +204,7 @@ class TestGetTenantAPI:
         ):
             mock_repo = mock_repo_cls.return_value
             mock_repo.get_by_slug = AsyncMock(return_value=None)
+            mock_repo.get_by_id = AsyncMock(return_value=None)
 
             mock_user_repo = mock_user_cls.return_value
             mock_user_repo.get_by_id = AsyncMock(return_value=admin_user)

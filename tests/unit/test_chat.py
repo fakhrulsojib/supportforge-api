@@ -187,8 +187,8 @@ class TestChatServiceStreaming:
         mock_llm.default_model = "test-model"
 
         async def _mock_stream(*args, **kwargs):
-            yield "Hello "
-            yield "world!"
+            yield {"type": "content", "text": "Hello "}
+            yield {"type": "content", "text": "world!"}
 
         mock_llm.stream = _mock_stream
         mock_vs = AsyncMock()
@@ -362,6 +362,163 @@ class TestChatServiceStreaming:
         done_frame = [f for f in frames if f["type"] == "done"][0]
         assert done_frame["data"]["conversation_id"] == "my-conv-42"
 
+
+class TestChatServiceThinking:
+    """Test suite for thinking frame support in stream_message()."""
+
+    @staticmethod
+    def _make_rag_state(*, with_docs: bool = True) -> tuple[dict, dict]:
+        """Helper to create retrieve and grade mock return values."""
+        doc = {"content": "doc text", "score": 0.9, "id": "d1"}
+        base = {
+            "query": "test", "tenant_id": "t1",
+            "retrieved_docs": [doc] if with_docs else [],
+            "relevant_docs": [doc] if with_docs else [],
+            "answer": "", "sources": [],
+            "should_escalate": False, "escalation_reason": "",
+            "model_used": "", "tokens_in": 0, "tokens_out": 0,
+        }
+        return base, base.copy()
+
+    @pytest.mark.asyncio
+    async def test_stream_yields_thinking_and_content_frames(self) -> None:
+        """Thinking tokens yield 'thinking' frames; content tokens yield 'token' frames."""
+        mock_llm = AsyncMock()
+        mock_llm.default_model = "qwen3:4b"
+
+        async def _mock_stream(*args, **kwargs):
+            yield {"type": "thinking", "text": "Let me reason..."}
+            yield {"type": "thinking", "text": " about this."}
+            yield {"type": "content", "text": "The answer is 42."}
+
+        mock_llm.stream = _mock_stream
+        service = ChatService(
+            llm_provider=mock_llm,
+            vector_store=AsyncMock(),
+            embedding_service=AsyncMock(),
+        )
+        retrieve_state, grade_state = self._make_rag_state()
+
+        with (
+            patch("app.domain.services.chat_service.retrieve_node", new_callable=AsyncMock) as mr,
+            patch("app.domain.services.chat_service.grade_node", new_callable=AsyncMock) as mg,
+        ):
+            mr.return_value = retrieve_state
+            mg.return_value = grade_state
+
+            frames = []
+            async for f in service.stream_message(message="test", tenant_id="t1"):
+                frames.append(f)
+
+        thinking_frames = [f for f in frames if f["type"] == "thinking"]
+        token_frames = [f for f in frames if f["type"] == "token"]
+        done_frames = [f for f in frames if f["type"] == "done"]
+
+        assert len(thinking_frames) == 2
+        assert thinking_frames[0]["data"] == "Let me reason..."
+        assert thinking_frames[1]["data"] == " about this."
+        assert len(token_frames) == 1
+        assert token_frames[0]["data"] == "The answer is 42."
+        assert len(done_frames) == 1
+        assert done_frames[0]["data"]["thinking_text"] == "Let me reason... about this."
+
+    @pytest.mark.asyncio
+    async def test_stream_no_thinking_yields_empty_thinking_text(self) -> None:
+        """Models without thinking should yield empty thinking_text in done frame."""
+        mock_llm = AsyncMock()
+        mock_llm.default_model = "llama3"
+
+        async def _mock_stream(*args, **kwargs):
+            yield {"type": "content", "text": "Direct answer."}
+
+        mock_llm.stream = _mock_stream
+        service = ChatService(
+            llm_provider=mock_llm,
+            vector_store=AsyncMock(),
+            embedding_service=AsyncMock(),
+        )
+        retrieve_state, grade_state = self._make_rag_state()
+
+        with (
+            patch("app.domain.services.chat_service.retrieve_node", new_callable=AsyncMock) as mr,
+            patch("app.domain.services.chat_service.grade_node", new_callable=AsyncMock) as mg,
+        ):
+            mr.return_value = retrieve_state
+            mg.return_value = grade_state
+
+            frames = []
+            async for f in service.stream_message(message="test", tenant_id="t1"):
+                frames.append(f)
+
+        thinking_frames = [f for f in frames if f["type"] == "thinking"]
+        done_frame = [f for f in frames if f["type"] == "done"][0]
+        assert len(thinking_frames) == 0
+        assert done_frame["data"]["thinking_text"] == ""
+
+    @pytest.mark.asyncio
+    async def test_stream_thinking_only_no_content(self) -> None:
+        """If model only produces thinking but no content, done frame should still emit."""
+        mock_llm = AsyncMock()
+        mock_llm.default_model = "qwen3:4b"
+
+        async def _mock_stream(*args, **kwargs):
+            yield {"type": "thinking", "text": "Internal reasoning only."}
+
+        mock_llm.stream = _mock_stream
+        service = ChatService(
+            llm_provider=mock_llm,
+            vector_store=AsyncMock(),
+            embedding_service=AsyncMock(),
+        )
+        retrieve_state, grade_state = self._make_rag_state()
+
+        with (
+            patch("app.domain.services.chat_service.retrieve_node", new_callable=AsyncMock) as mr,
+            patch("app.domain.services.chat_service.grade_node", new_callable=AsyncMock) as mg,
+        ):
+            mr.return_value = retrieve_state
+            mg.return_value = grade_state
+
+            frames = []
+            async for f in service.stream_message(message="test", tenant_id="t1"):
+                frames.append(f)
+
+        token_frames = [f for f in frames if f["type"] == "token"]
+        done_frame = [f for f in frames if f["type"] == "done"][0]
+        assert len(token_frames) == 0
+        assert done_frame["data"]["thinking_text"] == "Internal reasoning only."
+
+    @pytest.mark.asyncio
+    async def test_stream_backward_compat_string_tokens(self) -> None:
+        """Plain string yields (non-dict) should still work as content frames."""
+        mock_llm = AsyncMock()
+        mock_llm.default_model = "legacy-model"
+
+        async def _mock_stream(*args, **kwargs):
+            yield "plain string token"
+
+        mock_llm.stream = _mock_stream
+        service = ChatService(
+            llm_provider=mock_llm,
+            vector_store=AsyncMock(),
+            embedding_service=AsyncMock(),
+        )
+        retrieve_state, grade_state = self._make_rag_state()
+
+        with (
+            patch("app.domain.services.chat_service.retrieve_node", new_callable=AsyncMock) as mr,
+            patch("app.domain.services.chat_service.grade_node", new_callable=AsyncMock) as mg,
+        ):
+            mr.return_value = retrieve_state
+            mg.return_value = grade_state
+
+            frames = []
+            async for f in service.stream_message(message="test", tenant_id="t1"):
+                frames.append(f)
+
+        token_frames = [f for f in frames if f["type"] == "token"]
+        assert len(token_frames) == 1
+        assert token_frames[0]["data"] == "plain string token"
 
 class TestChatEndpoint:
     """Test suite for POST /api/v1/chat endpoint (JWT-protected)."""

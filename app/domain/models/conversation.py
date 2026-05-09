@@ -30,6 +30,7 @@ class Message(BaseModel):
     conversation_id: str = ""
     role: MessageRole
     content: str = Field(..., min_length=1)
+    thinking: str = ""
     sources_json: list[dict[str, object]] = Field(default_factory=list)
     model_used: str = ""
     tokens_in: int = 0

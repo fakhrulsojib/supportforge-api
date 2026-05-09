@@ -127,6 +127,7 @@ class MessageModel(Base):
     )
     role: Mapped[MessageRole] = mapped_column(Enum(MessageRole), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
+    thinking: Mapped[str] = mapped_column(Text, nullable=False, default="")
     sources_json: Mapped[list] = mapped_column(JSON, nullable=False, default=list)  # type: ignore[assignment]
     model_used: Mapped[str] = mapped_column(String(100), nullable=False, default="")
     tokens_in: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

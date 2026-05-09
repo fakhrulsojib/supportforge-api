@@ -1,17 +1,20 @@
-"""Ollama LLM adapter using OpenAI-compatible API.
+"""Ollama LLM adapter using native /api/chat endpoint.
 
 Connects to a self-hosted Ollama instance behind Cloudflare Access.
 Authentication is handled by injecting CF service token headers
 into every request via httpx.
+
+Uses the native Ollama API (not the OpenAI-compatible endpoint)
+to avoid Cloudflare WAF blocks on OpenAI-style request headers.
 """
 
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING
 
 import httpx
 import structlog
-from openai import AsyncOpenAI
 
 from app.core.exceptions import LLMError
 from app.domain.interfaces.llm_provider import LLMProvider
@@ -25,13 +28,12 @@ logger = structlog.get_logger(__name__)
 class OllamaAdapter(LLMProvider):
     """Concrete LLM provider backed by a self-hosted Ollama instance.
 
-    Uses the OpenAI-compatible API endpoint (``/v1/chat/completions``)
-    with Cloudflare Access service token headers for authentication.
+    Uses the native ``/api/chat`` endpoint with Cloudflare Access
+    service token headers for authentication.
 
     Attributes:
         base_url: Ollama API base URL.
         default_model: Default chat model name.
-        _client: AsyncOpenAI client instance.
     """
 
     def __init__(
@@ -52,13 +54,9 @@ class OllamaAdapter(LLMProvider):
 
         self._http_client = httpx.AsyncClient(
             headers=headers,
-            timeout=httpx.Timeout(60.0, connect=10.0),
-        )
-
-        self._client = AsyncOpenAI(
-            base_url=f"{base_url}/v1",
-            api_key="ollama",  # Ollama accepts any string  # noqa: S106
-            http_client=self._http_client,
+            # qwen3 has a "thinking" phase (30–60s) before first token.
+            # read timeout must be high enough to cover that delay.
+            timeout=httpx.Timeout(300.0, connect=10.0),
         )
 
     async def generate(
@@ -66,20 +64,30 @@ class OllamaAdapter(LLMProvider):
         messages: list[dict[str, str]],
         model: str | None = None,
         temperature: float = 0.7,
-        max_tokens: int = 1024,
+        max_tokens: int = 8192,
     ) -> str:
-        """Generate a complete response from Ollama."""
+        """Generate a complete response from Ollama.
+
+        Uses the native ``/api/chat`` endpoint with ``stream=false``.
+        """
         resolved_model = model or self.default_model
         try:
-            response = await self._client.chat.completions.create(
-                model=resolved_model,
-                messages=messages,  # type: ignore[arg-type]
-                temperature=temperature,
-                max_tokens=max_tokens,
-                stream=False,
+            response = await self._http_client.post(
+                f"{self.base_url}/api/chat",
+                json={
+                    "model": resolved_model,
+                    "messages": messages,
+                    "stream": False,
+                    "options": {
+                        "temperature": temperature,
+                        "num_predict": max_tokens,
+                    },
+                },
             )
-            content = response.choices[0].message.content  # type: ignore[union-attr]
-            return content or ""
+            response.raise_for_status()
+            data = response.json()
+            content = data.get("message", {}).get("content", "")
+            return content
         except httpx.ConnectError as e:
             logger.error("ollama_connection_failed", error=str(e))
             msg = f"Cannot connect to Ollama at {self.base_url}: {e}"
@@ -87,6 +95,10 @@ class OllamaAdapter(LLMProvider):
         except httpx.TimeoutException as e:
             logger.error("ollama_timeout", error=str(e))
             msg = f"Ollama request timed out: {e}"
+            raise LLMError(msg) from e
+        except httpx.HTTPStatusError as e:
+            logger.error("ollama_http_error", status=e.response.status_code, error=str(e))
+            msg = f"Ollama API error ({e.response.status_code}): {e}"
             raise LLMError(msg) from e
         except Exception as e:
             logger.error("ollama_generate_error", error=str(e), error_type=type(e).__name__)
@@ -98,21 +110,46 @@ class OllamaAdapter(LLMProvider):
         messages: list[dict[str, str]],
         model: str | None = None,
         temperature: float = 0.7,
-        max_tokens: int = 1024,
-    ) -> AsyncGenerator[str, None]:
-        """Stream response tokens from Ollama."""
+        max_tokens: int = 8192,
+    ) -> AsyncGenerator[dict[str, str], None]:
+        """Stream response tokens from Ollama.
+
+        Uses the native ``/api/chat`` endpoint with ``stream=true``.
+        Ollama sends newline-delimited JSON objects. For reasoning models
+        (e.g. qwen3), tokens may appear in ``message.thinking`` (internal
+        reasoning) or ``message.content`` (visible answer). Both are
+        yielded with a ``type`` discriminator.
+        """
         resolved_model = model or self.default_model
         try:
-            response = await self._client.chat.completions.create(
-                model=resolved_model,
-                messages=messages,  # type: ignore[arg-type]
-                temperature=temperature,
-                max_tokens=max_tokens,
-                stream=True,
-            )
-            async for chunk in response:  # type: ignore[union-attr]
-                if chunk.choices and chunk.choices[0].delta.content:
-                    yield chunk.choices[0].delta.content
+            async with self._http_client.stream(
+                "POST",
+                f"{self.base_url}/api/chat",
+                json={
+                    "model": resolved_model,
+                    "messages": messages,
+                    "stream": True,
+                    "options": {
+                        "temperature": temperature,
+                        "num_predict": max_tokens,
+                    },
+                },
+            ) as response:
+                response.raise_for_status()
+                async for line in response.aiter_lines():
+                    if not line.strip():
+                        continue
+                    try:
+                        chunk = json.loads(line)
+                        msg = chunk.get("message", {})
+                        thinking = msg.get("thinking", "")
+                        content = msg.get("content", "")
+                        if thinking:
+                            yield {"type": "thinking", "text": thinking}
+                        if content:
+                            yield {"type": "content", "text": content}
+                    except json.JSONDecodeError:
+                        continue
         except httpx.ConnectError as e:
             logger.error("ollama_stream_connection_failed", error=str(e))
             msg = f"Cannot connect to Ollama at {self.base_url}: {e}"
@@ -121,6 +158,12 @@ class OllamaAdapter(LLMProvider):
             logger.error("ollama_stream_timeout", error=str(e))
             msg = f"Ollama stream timed out: {e}"
             raise LLMError(msg) from e
+        except httpx.HTTPStatusError as e:
+            logger.error("ollama_stream_http_error", status=e.response.status_code)
+            msg = f"Ollama stream error ({e.response.status_code}): {e}"
+            raise LLMError(msg) from e
+        except LLMError:
+            raise
         except Exception as e:
             logger.error("ollama_stream_error", error=str(e), error_type=type(e).__name__)
             msg = f"Ollama streaming failed: {e}"

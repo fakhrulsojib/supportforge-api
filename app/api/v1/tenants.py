@@ -18,6 +18,7 @@ from app.api.schemas.tenant import (
     TenantUpdateRequest,
 )
 from app.core.dependencies import get_current_user, require_role
+from app.core.exceptions import TenantNotFoundError
 from app.domain.models.enums import UserRole
 from app.domain.models.tenant import TenantCreate
 from app.domain.services.tenant_service import TenantService
@@ -103,16 +104,18 @@ async def list_tenants(
     )
 
 
-@router.get("/{slug}", response_model=TenantResponse)
+@router.get("/{slug_or_id}", response_model=TenantResponse)
 async def get_tenant(
-    slug: str,
+    slug_or_id: str,
     session: AsyncSession = Depends(get_async_session),
     user: User = Depends(get_current_user),
 ) -> TenantResponse:
-    """Get a tenant by slug (any authenticated user).
+    """Get a tenant by slug or ID (any authenticated user).
+
+    Tries slug lookup first, then falls back to ID lookup.
 
     Args:
-        slug: Tenant slug.
+        slug_or_id: Tenant slug or UUID.
         session: Database session.
         user: Authenticated user.
 
@@ -120,7 +123,14 @@ async def get_tenant(
         TenantResponse.
     """
     service = _get_tenant_service(session)
-    tenant = await service.get_tenant_by_slug(slug)
+    tenant = None
+    try:
+        tenant = await service.get_tenant_by_slug(slug_or_id)
+    except TenantNotFoundError:
+        repo = SQLTenantRepository(session)
+        tenant = await repo.get_by_id(slug_or_id)
+    if not tenant:
+        raise TenantNotFoundError(tenant_id=slug_or_id)
     return TenantResponse(
         id=tenant.id,
         name=tenant.name,

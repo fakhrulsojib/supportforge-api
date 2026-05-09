@@ -15,6 +15,7 @@ class MessageResponse(BaseModel):
     id: str = Field(..., description="Message UUID")
     role: MessageRole = Field(..., description="Message author role")
     content: str = Field(..., description="Message text content")
+    thinking: str = Field("", description="LLM reasoning trace (assistant only)")
     sources_json: list[dict[str, object]] = Field(default_factory=list, description="Source citations")
     model_used: str = Field("", description="LLM model used (assistant only)")
     tokens_in: int = Field(0, description="Input tokens used")
@@ -41,6 +42,7 @@ class ConversationSummaryResponse(BaseModel):
     tenant_id: str = Field(..., description="Tenant UUID")
     user_id: str = Field("", description="User UUID")
     status: ConversationStatus = Field(..., description="Conversation status")
+    title: str = Field("", description="Preview title from first user message")
     started_at: datetime | None = Field(None, description="Conversation start time")
 
 

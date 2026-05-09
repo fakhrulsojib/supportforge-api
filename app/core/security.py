@@ -121,6 +121,7 @@ def create_access_token(
     secret_key: str,
     algorithm: str = "HS256",
     expires_minutes: int = 15,
+    tenant_name: str = "",
 ) -> str:
     """Create a signed JWT access token.
 
@@ -144,6 +145,8 @@ def create_access_token(
         "iat": now,
         "exp": now + timedelta(minutes=expires_minutes),
     }
+    if tenant_name:
+        payload["tenant_name"] = tenant_name
     return jwt.encode(payload, secret_key, algorithm=algorithm)
 
 

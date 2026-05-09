@@ -61,13 +61,18 @@ class ConversationRepository(ABC):
     """Port for conversation data persistence."""
 
     @abstractmethod
-    async def create(self, tenant_id: str, user_id: str) -> Conversation: ...
+    async def create(self, tenant_id: str, user_id: str, conversation_id: str = "") -> Conversation: ...
 
     @abstractmethod
     async def get_by_id(self, conversation_id: str) -> Conversation | None: ...
 
     @abstractmethod
     async def list_by_tenant(self, tenant_id: str, limit: int = 50, offset: int = 0) -> list[Conversation]: ...
+
+    @abstractmethod
+    async def list_by_user(
+        self, tenant_id: str, user_id: str, limit: int = 50, offset: int = 0,
+    ) -> list[Conversation]: ...
 
     @abstractmethod
     async def update_status(self, conversation_id: str, status: ConversationStatus) -> Conversation | None: ...

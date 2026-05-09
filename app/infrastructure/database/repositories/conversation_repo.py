@@ -32,12 +32,21 @@ class SQLConversationRepository(ConversationRepository):
             status=model.status,
         )
 
-    async def create(self, tenant_id: str, user_id: str) -> Conversation:
-        """Create a new conversation."""
+    async def create(self, tenant_id: str, user_id: str, conversation_id: str = "") -> Conversation:
+        """Create a new conversation.
+
+        Args:
+            tenant_id: Tenant owning the conversation.
+            user_id: User who started the conversation.
+            conversation_id: Optional pre-assigned UUID. If empty, the
+                ORM default (``uuid4``) generates one automatically.
+        """
         model = ConversationModel(
             tenant_id=tenant_id,
             user_id=user_id or None,
         )
+        if conversation_id:
+            model.id = conversation_id
         self._session.add(model)
         await self._session.flush()
         return self._to_domain(model)
@@ -52,6 +61,23 @@ class SQLConversationRepository(ConversationRepository):
         stmt = (
             select(ConversationModel)
             .where(ConversationModel.tenant_id == tenant_id)
+            .order_by(ConversationModel.started_at.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        result = await self._session.execute(stmt)
+        return [self._to_domain(m) for m in result.scalars().all()]
+
+    async def list_by_user(
+        self, tenant_id: str, user_id: str, limit: int = 50, offset: int = 0
+    ) -> list[Conversation]:
+        """List conversations for a specific user within a tenant."""
+        stmt = (
+            select(ConversationModel)
+            .where(
+                ConversationModel.tenant_id == tenant_id,
+                ConversationModel.user_id == user_id,
+            )
             .order_by(ConversationModel.started_at.desc())
             .limit(limit)
             .offset(offset)
@@ -82,6 +108,7 @@ class SQLMessageRepository(MessageRepository):
             conversation_id=model.conversation_id,
             role=model.role,
             content=model.content,
+            thinking=model.thinking,
             sources_json=model.sources_json,
             model_used=model.model_used,
             tokens_in=model.tokens_in,
@@ -96,6 +123,7 @@ class SQLMessageRepository(MessageRepository):
             conversation_id=message.conversation_id,
             role=message.role,
             content=message.content,
+            thinking=message.thinking,
             sources_json=message.sources_json,
             model_used=message.model_used,
             tokens_in=message.tokens_in,

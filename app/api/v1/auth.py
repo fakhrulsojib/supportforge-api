@@ -125,6 +125,7 @@ async def register(
         secret_key=settings.jwt_secret_key,
         algorithm=settings.jwt_algorithm,
         expires_minutes=settings.jwt_access_token_expire_minutes,
+        tenant_name=tenant.name,
     )
     refresh_token = create_refresh_token(
         user_id=user.id,
@@ -171,6 +172,11 @@ async def login(
 
     logger.info("user_login", user_id=user.id, tenant_id=user.tenant_id)
 
+    # Look up tenant name for JWT display
+    tenant_repo = SQLTenantRepository(session)
+    tenant = await tenant_repo.get_by_id(user.tenant_id)
+    tenant_name = tenant.name if tenant else ""
+
     access_token = create_access_token(
         user_id=user.id,
         tenant_id=user.tenant_id,
@@ -178,6 +184,7 @@ async def login(
         secret_key=settings.jwt_secret_key,
         algorithm=settings.jwt_algorithm,
         expires_minutes=settings.jwt_access_token_expire_minutes,
+        tenant_name=tenant_name,
     )
     refresh_token = create_refresh_token(
         user_id=user.id,
@@ -229,6 +236,11 @@ async def refresh(
     if not user:
         raise AuthError("User no longer exists")
 
+    # Look up tenant name for JWT display
+    tenant_repo = SQLTenantRepository(session)
+    tenant = await tenant_repo.get_by_id(user.tenant_id)
+    tenant_name = tenant.name if tenant else ""
+
     access_token = create_access_token(
         user_id=user.id,
         tenant_id=user.tenant_id,
@@ -236,6 +248,7 @@ async def refresh(
         secret_key=settings.jwt_secret_key,
         algorithm=settings.jwt_algorithm,
         expires_minutes=settings.jwt_access_token_expire_minutes,
+        tenant_name=tenant_name,
     )
 
     # C2: Rotate the refresh token — issue a fresh one

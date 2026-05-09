@@ -36,9 +36,16 @@ class ChromaAdapter(VectorStore):
         return f"{self._collection_prefix}{tenant_id}"
 
     def _get_or_create_collection(self, tenant_id: str) -> chromadb.Collection:
-        """Get or create a collection for the tenant."""
+        """Get or create a collection for the tenant.
+
+        Uses cosine distance so similarity scores map to [0, 1]
+        and are compatible with the RAG pipeline's relevance threshold.
+        """
         name = self._collection_name(tenant_id)
-        return self._client.get_or_create_collection(name=name)
+        return self._client.get_or_create_collection(
+            name=name,
+            metadata={"hnsw:space": "cosine"},
+        )
 
     async def add_documents(
         self,
@@ -84,9 +91,9 @@ class ChromaAdapter(VectorStore):
             ids = results["ids"][0] if results["ids"] else [""] * len(documents)
 
             for doc, meta, dist, doc_id in zip(documents, metadatas, distances, ids, strict=False):
-                # ChromaDB returns distances (lower = more similar)
-                # Convert to similarity score (higher = more similar)
-                similarity = 1.0 / (1.0 + dist)
+                # ChromaDB cosine distance ∈ [0, 2] where 0 = identical.
+                # Convert to similarity ∈ [0, 1]: similarity = 1 - distance.
+                similarity = max(0.0, 1.0 - dist)
                 search_results.append(
                     SearchResult(
                         content=doc or "",
