@@ -68,6 +68,7 @@ async def create_tenant(
         id=tenant.id,
         name=tenant.name,
         slug=tenant.slug,
+        status=tenant.status,
         config_json=tenant.config_json,
         created_at=tenant.created_at,
     )
@@ -95,6 +96,7 @@ async def list_tenants(
                 id=t.id,
                 name=t.name,
                 slug=t.slug,
+                status=t.status,
                 config_json=t.config_json,
                 created_at=t.created_at,
             )
@@ -135,6 +137,7 @@ async def get_tenant(
         id=tenant.id,
         name=tenant.name,
         slug=tenant.slug,
+        status=tenant.status,
         config_json=tenant.config_json,
         created_at=tenant.created_at,
     )
@@ -165,6 +168,7 @@ async def update_tenant(
         id=tenant.id,
         name=tenant.name,
         slug=tenant.slug,
+        status=tenant.status,
         config_json=tenant.config_json,
         created_at=tenant.created_at,
     )

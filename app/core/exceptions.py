@@ -108,3 +108,18 @@ class RateLimitError(SupportForgeError):
             status_code=429,
             error_code="RATE_LIMIT_EXCEEDED",
         )
+
+
+class TenantSuspendedError(SupportForgeError):
+    """Raised when a suspended/archived tenant tries to access services."""
+
+    def __init__(self, tenant_id: str = "") -> None:
+        detail = (
+            "Your organization's account is currently suspended. "
+            "Please contact your administrator."
+        )
+        super().__init__(
+            message=detail,
+            status_code=403,
+            error_code="TENANT_SUSPENDED",
+        )
