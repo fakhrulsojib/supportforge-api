@@ -162,6 +162,12 @@ def sample_conversation() -> Conversation:
     )
 
 
+@pytest.fixture
+def conv_owner_user() -> User:
+    """The user who owns the sample conversation (for email resolution)."""
+    return User(id="user-1", tenant_id="t-1", email="user@test.com", role=UserRole.VIEWER)
+
+
 # ── RBAC Tests ───────────────────────────────────────────────────
 
 
@@ -288,11 +294,13 @@ class TestListNegativeFeedback:
         negative_message: Message,
         user_question_message: Message,
         sample_conversation: Conversation,
+        conv_owner_user: User,
     ) -> None:
         """Admin should see negative feedback with user question context."""
         with (
             patch("app.api.v1.review.SQLMessageRepository") as mock_msg_cls,
             patch("app.api.v1.review.SQLConversationRepository") as mock_conv_cls,
+            patch("app.api.v1.review.SQLUserRepository") as mock_review_user_cls,
             patch("app.core.dependencies.SQLUserRepository") as mock_user_cls,
         ):
             mock_msg = mock_msg_cls.return_value
@@ -303,6 +311,9 @@ class TestListNegativeFeedback:
 
             mock_conv = mock_conv_cls.return_value
             mock_conv.get_by_id = AsyncMock(return_value=sample_conversation)
+
+            mock_review_user = mock_review_user_cls.return_value
+            mock_review_user.get_by_id = AsyncMock(return_value=conv_owner_user)
 
             mock_user_repo = mock_user_cls.return_value
             mock_user_repo.get_by_id = AsyncMock(return_value=admin_user)
@@ -319,6 +330,7 @@ class TestListNegativeFeedback:
         assert data["items"][0]["message_id"] == "msg-neg-1"
         assert data["items"][0]["user_question"] == "How do I reset my password?"
         assert data["items"][0]["feedback"] == "negative"
+        assert data["items"][0]["user_email"] == "user@test.com"
 
     @pytest.mark.asyncio
     async def test_list_negative_feedback_empty(
@@ -396,11 +408,13 @@ class TestListEscalations:
         admin_user: User,
         escalated_conversation: Conversation,
         user_question_message: Message,
+        conv_owner_user: User,
     ) -> None:
         """Admin should see escalated conversations."""
         with (
             patch("app.api.v1.review.SQLConversationRepository") as mock_conv_cls,
             patch("app.api.v1.review.SQLMessageRepository") as mock_msg_cls,
+            patch("app.api.v1.review.SQLUserRepository") as mock_review_user_cls,
             patch("app.core.dependencies.SQLUserRepository") as mock_user_cls,
         ):
             mock_conv = mock_conv_cls.return_value
@@ -408,6 +422,9 @@ class TestListEscalations:
 
             mock_msg = mock_msg_cls.return_value
             mock_msg.list_by_conversation = AsyncMock(return_value=[user_question_message])
+
+            mock_review_user = mock_review_user_cls.return_value
+            mock_review_user.get_by_id = AsyncMock(return_value=conv_owner_user)
 
             mock_user_repo = mock_user_cls.return_value
             mock_user_repo.get_by_id = AsyncMock(return_value=admin_user)
@@ -422,6 +439,7 @@ class TestListEscalations:
         assert data["total"] == 1
         assert data["items"][0]["conversation_id"] == "conv-esc-1"
         assert data["items"][0]["trigger"] == "sentiment"
+        assert data["items"][0]["user_email"] == "user@test.com"
 
     @pytest.mark.asyncio
     async def test_list_escalations_with_trigger_filter(
@@ -465,11 +483,13 @@ class TestListFlagged:
         flagged_message: Message,
         user_question_message: Message,
         sample_conversation: Conversation,
+        conv_owner_user: User,
     ) -> None:
         """Admin should see flagged messages."""
         with (
             patch("app.api.v1.review.SQLMessageRepository") as mock_msg_cls,
             patch("app.api.v1.review.SQLConversationRepository") as mock_conv_cls,
+            patch("app.api.v1.review.SQLUserRepository") as mock_review_user_cls,
             patch("app.core.dependencies.SQLUserRepository") as mock_user_cls,
         ):
             mock_msg = mock_msg_cls.return_value
@@ -480,6 +500,9 @@ class TestListFlagged:
 
             mock_conv = mock_conv_cls.return_value
             mock_conv.get_by_id = AsyncMock(return_value=sample_conversation)
+
+            mock_review_user = mock_review_user_cls.return_value
+            mock_review_user.get_by_id = AsyncMock(return_value=conv_owner_user)
 
             mock_user_repo = mock_user_cls.return_value
             mock_user_repo.get_by_id = AsyncMock(return_value=admin_user)
@@ -493,6 +516,7 @@ class TestListFlagged:
         data = response.json()
         assert data["total"] == 1
         assert data["items"][0]["validation_status"] == "flagged"
+        assert data["items"][0]["user_email"] == "user@test.com"
 
 
 # ── Mark Reviewed Tests ──────────────────────────────────────────

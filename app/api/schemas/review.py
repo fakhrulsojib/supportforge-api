@@ -23,6 +23,7 @@ class ReviewItemResponse(BaseModel):
 
     message_id: str = Field(..., description="Message UUID")
     conversation_id: str = Field(..., description="Parent conversation UUID")
+    user_email: str = Field("", description="Email of the user who sent the message")
     user_question: str = Field("", description="The preceding user question")
     ai_answer: str = Field(..., description="The AI-generated answer")
     sources_json: list[dict[str, object]] = Field(default_factory=list, description="Source citations")
@@ -48,6 +49,7 @@ class EscalationItemResponse(BaseModel):
     """A single escalated conversation in the review queue."""
 
     conversation_id: str = Field(..., description="Conversation UUID")
+    user_email: str = Field("", description="Email of the user who started the conversation")
     trigger: EscalationTrigger = Field(..., description="Escalation trigger type")
     first_message: str = Field("", description="First user message (preview)")
     status: ConversationStatus = Field(..., description="Conversation status")

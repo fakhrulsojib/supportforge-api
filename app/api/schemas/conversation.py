@@ -30,6 +30,7 @@ class ConversationDetailResponse(BaseModel):
     id: str = Field(..., description="Conversation UUID")
     tenant_id: str = Field(..., description="Tenant UUID")
     user_id: str = Field("", description="User UUID")
+    user_email: str = Field("", description="Email of the user who owns the conversation")
     status: ConversationStatus = Field(..., description="Conversation status")
     messages: list[MessageResponse] = Field(default_factory=list, description="Conversation messages")
     started_at: datetime | None = Field(None, description="Conversation start time")

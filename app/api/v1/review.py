@@ -34,6 +34,7 @@ from app.infrastructure.database.repositories.conversation_repo import (
     SQLConversationRepository,
     SQLMessageRepository,
 )
+from app.infrastructure.database.repositories.user_repo import SQLUserRepository
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -72,6 +73,8 @@ async def list_negative_feedback(
         Paginated list of negative feedback items.
     """
     msg_repo = SQLMessageRepository(session)
+    conv_repo = SQLConversationRepository(session)
+    user_repo = SQLUserRepository(session)
 
     messages, total = await msg_repo.list_negative_feedback(
         tenant_id=user.tenant_id,
@@ -86,6 +89,16 @@ async def list_negative_feedback(
     msg_ids = [m.id for m in messages]
     preceding_map = await msg_repo.get_preceding_user_messages_batch(msg_ids)
 
+    # Batch-resolve user emails from conversation owners
+    conv_ids = list({m.conversation_id for m in messages})
+    email_map: dict[str, str] = {}
+    for cid in conv_ids:
+        conv = await conv_repo.get_by_id(cid)
+        if conv and conv.user_id:
+            owner = await user_repo.get_by_id(conv.user_id)
+            if owner:
+                email_map[cid] = owner.email
+
     items: list[ReviewItemResponse] = []
     for msg in messages:
         preceding = preceding_map.get(msg.id)
@@ -95,6 +108,7 @@ async def list_negative_feedback(
             ReviewItemResponse(
                 message_id=msg.id,
                 conversation_id=msg.conversation_id,
+                user_email=email_map.get(msg.conversation_id, ""),
                 user_question=user_question,
                 ai_answer=msg.content,
                 sources_json=msg.sources_json,
@@ -141,6 +155,7 @@ async def list_escalations(
     """
     conv_repo = SQLConversationRepository(session)
     msg_repo = SQLMessageRepository(session)
+    user_repo = SQLUserRepository(session)
 
     # Parse trigger filter
     trigger_enum: EscalationTrigger | None = None
@@ -165,9 +180,17 @@ async def list_escalations(
         if messages:
             first_message = messages[0].content[:200]
 
+        # Resolve owner email
+        owner_email = ""
+        if conv.user_id:
+            owner = await user_repo.get_by_id(conv.user_id)
+            if owner:
+                owner_email = owner.email
+
         items.append(
             EscalationItemResponse(
                 conversation_id=conv.id,
+                user_email=owner_email,
                 trigger=conv.escalation_trigger,
                 first_message=first_message,
                 status=conv.status,
@@ -205,6 +228,8 @@ async def list_flagged_messages(
         Paginated list of flagged messages.
     """
     msg_repo = SQLMessageRepository(session)
+    conv_repo = SQLConversationRepository(session)
+    user_repo = SQLUserRepository(session)
 
     messages, total = await msg_repo.list_flagged_messages(
         tenant_id=user.tenant_id,
@@ -219,6 +244,16 @@ async def list_flagged_messages(
     msg_ids = [m.id for m in messages]
     preceding_map = await msg_repo.get_preceding_user_messages_batch(msg_ids)
 
+    # Batch-resolve user emails from conversation owners
+    conv_ids = list({m.conversation_id for m in messages})
+    email_map: dict[str, str] = {}
+    for cid in conv_ids:
+        conv = await conv_repo.get_by_id(cid)
+        if conv and conv.user_id:
+            owner = await user_repo.get_by_id(conv.user_id)
+            if owner:
+                email_map[cid] = owner.email
+
     items: list[ReviewItemResponse] = []
     for msg in messages:
         preceding = preceding_map.get(msg.id)
@@ -228,6 +263,7 @@ async def list_flagged_messages(
             ReviewItemResponse(
                 message_id=msg.id,
                 conversation_id=msg.conversation_id,
+                user_email=email_map.get(msg.conversation_id, ""),
                 user_question=user_question,
                 ai_answer=msg.content,
                 sources_json=msg.sources_json,

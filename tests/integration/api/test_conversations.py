@@ -144,6 +144,7 @@ class TestGetConversation:
         with (
             patch("app.api.v1.conversations.SQLConversationRepository") as mock_conv_cls,
             patch("app.api.v1.conversations.SQLMessageRepository") as mock_msg_cls,
+            patch("app.api.v1.conversations.SQLUserRepository") as mock_conv_user_cls,
             patch("app.core.dependencies.SQLUserRepository") as mock_user_cls,
         ):
             mock_conv = mock_conv_cls.return_value
@@ -151,6 +152,9 @@ class TestGetConversation:
 
             mock_msg = mock_msg_cls.return_value
             mock_msg.list_by_conversation = AsyncMock(return_value=[sample_message])
+
+            mock_conv_user = mock_conv_user_cls.return_value
+            mock_conv_user.get_by_id = AsyncMock(return_value=viewer_user)
 
             mock_user_repo = mock_user_cls.return_value
             mock_user_repo.get_by_id = AsyncMock(return_value=viewer_user)
@@ -164,6 +168,7 @@ class TestGetConversation:
         data = response.json()
         assert data["id"] == "conv-1"
         assert len(data["messages"]) == 1
+        assert data["user_email"] == "viewer@test.com"
 
     @pytest.mark.asyncio
     async def test_get_not_found(

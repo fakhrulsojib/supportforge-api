@@ -25,6 +25,7 @@ from app.infrastructure.database.repositories.conversation_repo import (
     SQLConversationRepository,
     SQLMessageRepository,
 )
+from app.infrastructure.database.repositories.user_repo import SQLUserRepository
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -128,10 +129,19 @@ async def get_conversation(
 
     messages = await msg_repo.list_by_conversation(conversation_id)
 
+    # Resolve owner email for admin context
+    user_email = ""
+    if conversation.user_id:
+        user_repo = SQLUserRepository(session)
+        owner = await user_repo.get_by_id(conversation.user_id)
+        if owner:
+            user_email = owner.email
+
     return ConversationDetailResponse(
         id=conversation.id,
         tenant_id=conversation.tenant_id,
         user_id=conversation.user_id,
+        user_email=user_email,
         status=conversation.status,
         messages=[
             MessageResponse(
