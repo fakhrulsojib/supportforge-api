@@ -28,6 +28,7 @@ from app.domain.models.enums import (
     EscalationTrigger,
     FeedbackType,
     MessageRole,
+    TenantStatus,
     UserRole,
     ValidationStatus,
 )
@@ -56,6 +57,10 @@ class TenantModel(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     slug: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
     config_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)  # type: ignore[assignment]
+    status: Mapped[TenantStatus] = mapped_column(
+        Enum(TenantStatus), nullable=False, default=TenantStatus.ACTIVE,
+        server_default="active",
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
 
     # Relationships
@@ -67,7 +72,10 @@ class TenantModel(Base):
         "DocumentModel", back_populates="tenant", cascade="all, delete-orphan"
     )
 
-    __table_args__ = (Index("ix_tenants_slug", "slug"),)
+    __table_args__ = (
+        Index("ix_tenants_slug", "slug"),
+        Index("ix_tenants_status", "status"),
+    )
 
 
 class UserModel(Base):

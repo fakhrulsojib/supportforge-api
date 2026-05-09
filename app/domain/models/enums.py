@@ -78,3 +78,16 @@ class EscalationTrigger(str, enum.Enum):
     SENTIMENT = "sentiment"
     REPETITION = "repetition"
     EXPLICIT_REQUEST = "explicit_request"
+
+
+class TenantStatus(str, enum.Enum):
+    """Lifecycle status of a tenant.
+
+    Controls whether a tenant's users can access services like chat.
+    Suspended and archived tenants are blocked from chat (both REST and WS).
+    """
+
+    PENDING = "pending"
+    ACTIVE = "active"
+    SUSPENDED = "suspended"
+    ARCHIVED = "archived"

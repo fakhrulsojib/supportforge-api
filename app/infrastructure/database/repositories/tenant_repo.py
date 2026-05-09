@@ -27,6 +27,7 @@ class SQLTenantRepository(TenantRepository):
             name=model.name,
             slug=model.slug,
             config_json=model.config_json,
+            status=model.status,
             created_at=model.created_at,
         )
 
@@ -36,6 +37,7 @@ class SQLTenantRepository(TenantRepository):
             name=tenant.name,
             slug=tenant.slug,
             config_json=tenant.config_json,
+            status=tenant.status,
         )
         self._session.add(model)
         await self._session.flush()
