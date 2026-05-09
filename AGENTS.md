@@ -28,6 +28,9 @@ SupportForge is a production-grade, multi-tenant AI customer support agent. This
 | Phase 11 | `phase-11/ab-testing-config` | Tenant config (model, temperature, prompt variant), admin settings UI |
 | Phase 12 | `phase-12/webhook-integration` | Webhook service for escalation/feedback/new conversation events |
 | Phase 13 | `phase-13/deployment-e2e` | Docker prod, deployment guides, E2E test suite, tech debt cleanup |
+| Phase 14 | `phase-14/platform-superadmin` | Platform superadmin role, tenant provisioning (superadmin-only) |
+| Phase 15 | `phase-15/user-approval` | User registration approval workflow, role management |
+| Phase 16 | `phase-16/moderation-dashboard` | Central moderation dashboard for superadmin + tenant admin |
 
 ### Branch Rules
 
