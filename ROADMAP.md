@@ -220,3 +220,30 @@
 - [ ] Rate limiting tests
 - [ ] Coverage ≥ 95%, mutation kill rate > 80%
 - [ ] **Gap (from Phase 2 review):** Per-tenant admin scoping tests (resolves Known Limitation M-5)
+
+---
+
+## Phase 5 — Output Validation (Anti-Hallucination Guard) ✅
+
+> **Branch:** `phase-5/output-validation`
+
+### 5.1 — Domain Model Updates ✅
+- [x] `ValidationStatus` enum: `passed`, `flagged`, `none`
+- [x] `validation_status` field on `Message` domain model (default: `none`)
+- [x] `validation_status` column on `MessageModel` ORM model
+- [x] Repo layer maps field in both directions
+
+### 5.2 — OutputValidator Domain Service ✅
+- [x] `app/domain/services/output_validator.py` — pure domain service (zero framework imports)
+- [x] Cross-referenced checks: fabricated phone, email, URL, price, percentage
+- [x] Forbidden patterns: LaTeX (`\boxed`, `\text`, `\frac`), third-person refs
+- [x] `ValidationResult` + `ValidationViolation` dataclasses
+- [x] Disclaimer text appended on flagged responses
+- [x] 34 unit tests covering all rules, context pass-through, edge cases
+
+### 5.3 — ChatService Integration ✅
+- [x] Validation runs after streaming completes, before done frame
+- [x] Disclaimer appended to stored (not streamed) message on flagged responses
+- [x] Structured log warnings (`output_validation_failed`) with conversation_id, rule, snippet
+- [x] `validation_status` included in done frame and persisted to database
+- [x] 6 integration tests (clean passes, fabricated flagged, log verification, context pass-through, LaTeX flagged, escalation bypass)
