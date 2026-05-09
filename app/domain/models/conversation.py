@@ -37,4 +37,6 @@ class Message(BaseModel):
     tokens_out: int = 0
     feedback: FeedbackType = FeedbackType.NONE
     validation_status: ValidationStatus = ValidationStatus.NONE
+    moderation_reason: str = ""
+    moderation_matched_term: str = ""
     created_at: datetime | None = None

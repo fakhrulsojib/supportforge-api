@@ -92,6 +92,7 @@ class ChatService:
         tenant_id: str,
         conversation_id: str | None = None,
         tenant_blocklist: list[str] | None = None,
+        user_id: str = "",
     ) -> dict[str, Any]:
         """Process a user message through the RAG pipeline.
 
@@ -101,11 +102,13 @@ class ChatService:
             conversation_id: Optional existing conversation ID.
             tenant_blocklist: Tenant-specific list of banned terms for
                 content moderation. Loaded from tenant ``config_json``.
+            user_id: Authenticated user's ID (for conversation persistence).
 
         Returns:
             Dict with answer, sources, escalation status, etc.
         """
         # Generate conversation ID if not provided
+        is_new_conversation = not conversation_id
         if not conversation_id:
             conversation_id = str(uuid.uuid4())
 
@@ -127,6 +130,23 @@ class ChatService:
                 reason=input_check.reason,
                 matched_term=input_check.matched_term[:100],
             )
+
+            # Persist blocked exchange for admin audit trail
+            await self._persist_exchange(
+                conversation_id=conversation_id,
+                tenant_id=tenant_id,
+                user_id=user_id,
+                user_message=message,
+                assistant_message=input_check.canned_response,
+                assistant_thinking="",
+                sources=[],
+                model_used="",
+                is_new=is_new_conversation,
+                validation_status=ValidationStatus.FLAGGED.value,
+                moderation_reason=input_check.reason,
+                moderation_matched_term=input_check.matched_term,
+            )
+
             return {
                 "answer": input_check.canned_response,
                 "conversation_id": conversation_id,
@@ -259,6 +279,8 @@ class ChatService:
                 model_used="",
                 is_new=is_new_conversation,
                 validation_status=ValidationStatus.FLAGGED.value,
+                moderation_reason=input_check.reason,
+                moderation_matched_term=input_check.matched_term,
             )
             return
 
@@ -480,6 +502,12 @@ class ChatService:
         }
 
         # Persist to database
+        moderation_reason = ""
+        moderation_matched = ""
+        if output_check.flagged:
+            moderation_reason = output_check.reason
+            moderation_matched = output_check.matched_term
+
         await self._persist_exchange(
             conversation_id=conversation_id,
             tenant_id=tenant_id,
@@ -491,6 +519,8 @@ class ChatService:
             model_used=model_used,
             is_new=is_new_conversation,
             validation_status=validation_status.value,
+            moderation_reason=moderation_reason,
+            moderation_matched_term=moderation_matched,
         )
 
     # ── Conversation History (sliding window) ───────────────────
@@ -575,6 +605,8 @@ class ChatService:
         model_used: str,
         is_new: bool,
         validation_status: str = "none",
+        moderation_reason: str = "",
+        moderation_matched_term: str = "",
     ) -> None:
         """Save the conversation and its messages to the database.
 
@@ -595,6 +627,12 @@ class ChatService:
             model_used: LLM model name.
             is_new: Whether this is a brand-new conversation.
             validation_status: Output validation result (``passed``, ``flagged``, or ``none``).
+            moderation_reason: Machine-readable reason for moderation action
+                (e.g. ``jailbreak_detected``, ``blocklist_match``). Empty if
+                no moderation was triggered.
+            moderation_matched_term: The specific term or pattern that
+                triggered moderation. Truncated to 200 chars. Empty if no
+                moderation was triggered.
         """
         try:
             from app.domain.models.conversation import Message
@@ -644,6 +682,8 @@ class ChatService:
                         sources_json=sources,
                         model_used=model_used,
                         validation_status=vs_enum,
+                        moderation_reason=moderation_reason,
+                        moderation_matched_term=moderation_matched_term[:200],
                     )
                 )
 

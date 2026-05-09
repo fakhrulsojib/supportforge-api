@@ -68,9 +68,7 @@ class SQLConversationRepository(ConversationRepository):
         result = await self._session.execute(stmt)
         return [self._to_domain(m) for m in result.scalars().all()]
 
-    async def list_by_user(
-        self, tenant_id: str, user_id: str, limit: int = 50, offset: int = 0
-    ) -> list[Conversation]:
+    async def list_by_user(self, tenant_id: str, user_id: str, limit: int = 50, offset: int = 0) -> list[Conversation]:
         """List conversations for a specific user within a tenant."""
         stmt = (
             select(ConversationModel)
@@ -115,6 +113,8 @@ class SQLMessageRepository(MessageRepository):
             tokens_out=model.tokens_out,
             feedback=model.feedback,
             validation_status=model.validation_status,
+            moderation_reason=model.moderation_reason,
+            moderation_matched_term=model.moderation_matched_term,
             created_at=model.created_at,
         )
 
@@ -131,6 +131,8 @@ class SQLMessageRepository(MessageRepository):
             tokens_out=message.tokens_out,
             feedback=message.feedback,
             validation_status=message.validation_status,
+            moderation_reason=message.moderation_reason,
+            moderation_matched_term=message.moderation_matched_term,
         )
         self._session.add(model)
         await self._session.flush()
