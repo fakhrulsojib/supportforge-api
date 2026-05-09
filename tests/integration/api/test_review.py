@@ -297,7 +297,9 @@ class TestListNegativeFeedback:
         ):
             mock_msg = mock_msg_cls.return_value
             mock_msg.list_negative_feedback = AsyncMock(return_value=([negative_message], 1))
-            mock_msg.get_preceding_user_message = AsyncMock(return_value=user_question_message)
+            mock_msg.get_preceding_user_messages_batch = AsyncMock(
+                return_value={"msg-neg-1": user_question_message},
+            )
 
             mock_conv = mock_conv_cls.return_value
             mock_conv.get_by_id = AsyncMock(return_value=sample_conversation)
@@ -333,6 +335,7 @@ class TestListNegativeFeedback:
         ):
             mock_msg = mock_msg_cls.return_value
             mock_msg.list_negative_feedback = AsyncMock(return_value=([], 0))
+            mock_msg.get_preceding_user_messages_batch = AsyncMock(return_value={})
 
             mock_user_repo = mock_user_cls.return_value
             mock_user_repo.get_by_id = AsyncMock(return_value=admin_user)
@@ -362,6 +365,7 @@ class TestListNegativeFeedback:
         ):
             mock_msg = mock_msg_cls.return_value
             mock_msg.list_negative_feedback = AsyncMock(return_value=([], 0))
+            mock_msg.get_preceding_user_messages_batch = AsyncMock(return_value={})
 
             mock_user_repo = mock_user_cls.return_value
             mock_user_repo.get_by_id = AsyncMock(return_value=admin_user)
@@ -470,7 +474,9 @@ class TestListFlagged:
         ):
             mock_msg = mock_msg_cls.return_value
             mock_msg.list_flagged_messages = AsyncMock(return_value=([flagged_message], 1))
-            mock_msg.get_preceding_user_message = AsyncMock(return_value=user_question_message)
+            mock_msg.get_preceding_user_messages_batch = AsyncMock(
+                return_value={"msg-flag-1": user_question_message},
+            )
 
             mock_conv = mock_conv_cls.return_value
             mock_conv.get_by_id = AsyncMock(return_value=sample_conversation)
@@ -604,6 +610,64 @@ class TestMarkReviewed:
             )
 
         assert response.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_mark_reviewed_already_reviewed_overwrites(
+        self,
+        review_client: AsyncClient,
+        admin_token: str,
+        admin_user: User,
+        sample_conversation: Conversation,
+    ) -> None:
+        """Re-reviewing an already reviewed message should update the timestamp."""
+        original_time = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        new_time = datetime.now(timezone.utc)
+
+        already_reviewed = Message(
+            id="msg-neg-1",
+            conversation_id="conv-1",
+            role=MessageRole.ASSISTANT,
+            content="Already reviewed answer",
+            feedback=FeedbackType.NEGATIVE,
+            reviewed_at=original_time,
+            reviewed_by="other-admin",
+        )
+
+        re_reviewed = Message(
+            id="msg-neg-1",
+            conversation_id="conv-1",
+            role=MessageRole.ASSISTANT,
+            content="Already reviewed answer",
+            feedback=FeedbackType.NEGATIVE,
+            reviewed_at=new_time,
+            reviewed_by="admin-1",
+        )
+
+        with (
+            patch("app.api.v1.review.SQLMessageRepository") as mock_msg_cls,
+            patch("app.api.v1.review.SQLConversationRepository") as mock_conv_cls,
+            patch("app.core.dependencies.SQLUserRepository") as mock_user_cls,
+        ):
+            mock_msg = mock_msg_cls.return_value
+            mock_msg.get_by_id = AsyncMock(return_value=already_reviewed)
+            mock_msg.update_review_status = AsyncMock(return_value=re_reviewed)
+
+            mock_conv = mock_conv_cls.return_value
+            mock_conv.get_by_id = AsyncMock(return_value=sample_conversation)
+
+            mock_user_repo = mock_user_cls.return_value
+            mock_user_repo.get_by_id = AsyncMock(return_value=admin_user)
+
+            response = await review_client.patch(
+                "/api/v1/admin/feedback/msg-neg-1/review",
+                headers={"Authorization": f"Bearer {admin_token}"},
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["reviewed_by"] == "admin-1"
+        # Timestamp should be the new one, not the original
+        assert data["reviewed_at"] != original_time.isoformat()
 
 
 # ── Stats Tests ──────────────────────────────────────────────────

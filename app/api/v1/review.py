@@ -82,15 +82,14 @@ async def list_negative_feedback(
         offset=offset,
     )
 
+    # Batch-fetch preceding user questions (avoids N+1)
+    msg_ids = [m.id for m in messages]
+    preceding_map = await msg_repo.get_preceding_user_messages_batch(msg_ids)
+
     items: list[ReviewItemResponse] = []
     for msg in messages:
-        # Fetch preceding user question for context
-        user_question = ""
-        preceding = await msg_repo.get_preceding_user_message(
-            msg.conversation_id, msg.id,
-        )
-        if preceding:
-            user_question = preceding.content
+        preceding = preceding_map.get(msg.id)
+        user_question = preceding.content if preceding else ""
 
         items.append(
             ReviewItemResponse(
@@ -215,14 +214,14 @@ async def list_flagged_messages(
         offset=offset,
     )
 
+    # Batch-fetch preceding user questions (avoids N+1)
+    msg_ids = [m.id for m in messages]
+    preceding_map = await msg_repo.get_preceding_user_messages_batch(msg_ids)
+
     items: list[ReviewItemResponse] = []
     for msg in messages:
-        user_question = ""
-        preceding = await msg_repo.get_preceding_user_message(
-            msg.conversation_id, msg.id,
-        )
-        if preceding:
-            user_question = preceding.content
+        preceding = preceding_map.get(msg.id)
+        user_question = preceding.content if preceding else ""
 
         items.append(
             ReviewItemResponse(

@@ -12,6 +12,7 @@ from app.domain.models.enums import (
     ConversationStatus,
     EscalationTrigger,
     FeedbackType,
+    MessageRole,
     ValidationStatus,
 )
 from app.infrastructure.database.models import ConversationModel, MessageModel
@@ -156,10 +157,14 @@ class SQLConversationRepository(ConversationRepository):
 
     async def count_open_escalations(self, tenant_id: str) -> int:
         """Count unresolved escalated conversations for a tenant."""
-        stmt = select(func.count()).where(
-            ConversationModel.tenant_id == tenant_id,
-            ConversationModel.escalation_trigger != EscalationTrigger.NONE,
-            ConversationModel.status == ConversationStatus.ESCALATED,
+        stmt = (
+            select(func.count())
+            .select_from(ConversationModel)
+            .where(
+                ConversationModel.tenant_id == tenant_id,
+                ConversationModel.escalation_trigger != EscalationTrigger.NONE,
+                ConversationModel.status == ConversationStatus.ESCALATED,
+            )
         )
         result = await self._session.execute(stmt)
         return result.scalar() or 0
@@ -274,12 +279,9 @@ class SQLMessageRepository(MessageRepository):
         Returns:
             The preceding user message, or None.
         """
-        # Get the assistant message's creation time
         assistant = await self._session.get(MessageModel, assistant_message_id)
         if not assistant:
             return None
-
-        from app.domain.models.enums import MessageRole
 
         stmt = (
             select(MessageModel)
@@ -294,6 +296,61 @@ class SQLMessageRepository(MessageRepository):
         result = await self._session.execute(stmt)
         model = result.scalars().first()
         return self._to_domain(model) if model else None
+
+    async def get_preceding_user_messages_batch(
+        self, message_ids: list[str],
+    ) -> dict[str, Message]:
+        """Batch-fetch the preceding user message for each assistant message.
+
+        Resolves the N+1 query problem by fetching all assistant messages
+        in one query, then all candidate user messages in a second query,
+        and matching them in Python.
+
+        Args:
+            message_ids: List of assistant message UUIDs.
+
+        Returns:
+            Dict mapping assistant message_id -> preceding user Message.
+            Missing entries mean no preceding user message was found.
+        """
+        if not message_ids:
+            return {}
+
+        # 1. Fetch all assistant messages to get their conversation_id + created_at
+        stmt = select(MessageModel).where(MessageModel.id.in_(message_ids))
+        result = await self._session.execute(stmt)
+        assistants = {m.id: m for m in result.scalars().all()}
+
+        if not assistants:
+            return {}
+
+        # 2. Get unique conversation IDs
+        conv_ids = {m.conversation_id for m in assistants.values()}
+
+        # 3. Fetch all USER messages from those conversations
+        stmt = (
+            select(MessageModel)
+            .where(
+                MessageModel.conversation_id.in_(conv_ids),
+                MessageModel.role == MessageRole.USER,
+            )
+            .order_by(MessageModel.conversation_id, MessageModel.created_at.desc())
+        )
+        result = await self._session.execute(stmt)
+        user_messages = list(result.scalars().all())
+
+        # 4. For each assistant, find the latest user message before it
+        preceding_map: dict[str, Message] = {}
+        for msg_id, assistant in assistants.items():
+            for um in user_messages:
+                if (
+                    um.conversation_id == assistant.conversation_id
+                    and um.created_at < assistant.created_at
+                ):
+                    preceding_map[msg_id] = self._to_domain(um)
+                    break  # user_messages sorted desc, first match is latest
+
+        return preceding_map
 
     async def list_negative_feedback(
         self,

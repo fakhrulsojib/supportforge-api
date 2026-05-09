@@ -14,7 +14,12 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from app.domain.models.conversation import Conversation, Message
     from app.domain.models.document import Document, DocumentChunk
-    from app.domain.models.enums import ConversationStatus, DocumentStatus, FeedbackType
+    from app.domain.models.enums import (
+        ConversationStatus,
+        DocumentStatus,
+        EscalationTrigger,
+        FeedbackType,
+    )
     from app.domain.models.tenant import Tenant, TenantCreate
     from app.domain.models.user import User, UserCreate
 
@@ -77,6 +82,26 @@ class ConversationRepository(ABC):
     @abstractmethod
     async def update_status(self, conversation_id: str, status: ConversationStatus) -> Conversation | None: ...
 
+    @abstractmethod
+    async def update_escalation_trigger(
+        self, conversation_id: str, trigger: EscalationTrigger,
+    ) -> Conversation | None: ...
+
+    @abstractmethod
+    async def list_escalated(
+        self,
+        tenant_id: str,
+        *,
+        trigger: EscalationTrigger | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[list[Conversation], int]: ...
+
+    @abstractmethod
+    async def count_open_escalations(self, tenant_id: str) -> int: ...
+
 
 class MessageRepository(ABC):
     """Port for message data persistence."""
@@ -92,6 +117,44 @@ class MessageRepository(ABC):
 
     @abstractmethod
     async def update_feedback(self, message_id: str, feedback: FeedbackType) -> Message | None: ...
+
+    @abstractmethod
+    async def update_review_status(self, message_id: str, reviewed_by: str) -> Message | None: ...
+
+    @abstractmethod
+    async def get_preceding_user_message(
+        self, conversation_id: str, assistant_message_id: str,
+    ) -> Message | None: ...
+
+    @abstractmethod
+    async def list_negative_feedback(
+        self,
+        tenant_id: str,
+        *,
+        reviewed: bool | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[list[Message], int]: ...
+
+    @abstractmethod
+    async def list_flagged_messages(
+        self,
+        tenant_id: str,
+        *,
+        reviewed: bool | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[list[Message], int]: ...
+
+    @abstractmethod
+    async def count_unreviewed_negative(self, tenant_id: str) -> int: ...
+
+    @abstractmethod
+    async def count_unreviewed_flagged(self, tenant_id: str) -> int: ...
 
 
 class DocumentRepository(ABC):
