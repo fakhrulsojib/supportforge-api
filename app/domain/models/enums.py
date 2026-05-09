@@ -59,3 +59,17 @@ class ValidationStatus(str, enum.Enum):
     PASSED = "passed"
     FLAGGED = "flagged"
     NONE = "none"
+
+
+class EscalationTrigger(str, enum.Enum):
+    """What triggered an escalation to a human agent.
+
+    Tracks the specific detection method that caused the conversation
+    to be escalated, for analytics and review purposes.
+    """
+
+    NONE = "none"
+    NO_CONTEXT = "no_context"
+    SENTIMENT = "sentiment"
+    REPETITION = "repetition"
+    EXPLICIT_REQUEST = "explicit_request"
