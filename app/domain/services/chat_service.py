@@ -201,6 +201,8 @@ class ChatService:
                 conversation_id=conversation_id,
                 trigger=trigger.value,
                 reason=escalation_check.reason,
+                sentiment_score=escalation_check.sentiment_score,
+                repetition_count=escalation_check.repetition_count,
             )
 
             await self._persist_exchange(
@@ -249,12 +251,16 @@ class ChatService:
                 matched_term=output_check.matched_term[:100],
             )
 
+        should_escalate = result.get("should_escalate", False)
+        trigger_val = EscalationTrigger.NO_CONTEXT.value if should_escalate else "none"
+
         return {
             "answer": answer,
             "conversation_id": conversation_id,
             "sources": grouped_sources,
-            "escalated": result.get("should_escalate", False),
+            "escalated": should_escalate,
             "escalation_reason": result.get("escalation_reason", ""),
+            "escalation_trigger": trigger_val,
             "model_used": result.get("model_used", ""),
         }
 

@@ -246,11 +246,11 @@ class EscalationDetector:
         """Score frustration signals in the message.
 
         Signals:
-            - ALL CAPS (>60% uppercase alpha, min 5 chars) → +0.4
+            - ALL CAPS (>60% uppercase alpha, min 5 chars) → +0.5
             - Excessive punctuation (!!!  ???) → +0.3
             - Negative phrases → +0.3 per match
 
-        Score capped at 1.0. Escalates at ≥0.7.
+        Score capped at 1.0. Escalates at ≥0.6.
         """
         score = 0.0
 
