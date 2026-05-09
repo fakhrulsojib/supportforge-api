@@ -40,13 +40,17 @@ def _get_tenant_service(session: AsyncSession) -> TenantService:
     return TenantService(tenant_repo=SQLTenantRepository(session))
 
 
-@router.post("/", response_model=TenantResponse, status_code=201)
+@router.post("/", response_model=TenantResponse, status_code=201, deprecated=True)
 async def create_tenant(
     request: TenantCreateRequest,
     session: AsyncSession = Depends(get_async_session),
     user: User = Depends(require_role(UserRole.ADMIN)),
 ) -> TenantResponse:
     """Create a new tenant (admin only).
+
+    .. deprecated::
+        Use ``POST /api/v1/platform/tenants`` (superadmin-only) instead.
+        This endpoint will be removed in a future release.
 
     Args:
         request: Tenant creation data.
