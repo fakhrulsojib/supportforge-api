@@ -62,5 +62,6 @@ async def chat_endpoint(
         sources=sources,
         escalated=result.get("escalated", False),
         escalation_reason=result.get("escalation_reason", ""),
+        escalation_trigger=result.get("escalation_trigger", "none"),
         model_used=result.get("model_used", ""),
     )

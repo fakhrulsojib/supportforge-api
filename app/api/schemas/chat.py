@@ -30,5 +30,6 @@ class ChatResponse(BaseModel):
     sources: list[SourceCitation] = Field(default_factory=list, description="Source citations")
     escalated: bool = Field(False, description="Whether the query was escalated to a human")
     escalation_reason: str = Field("", description="Reason for escalation, if any")
+    escalation_trigger: str = Field("none", description="The type of escalation trigger")
     model_used: str = Field("", description="LLM model used for generation")
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="Response timestamp")

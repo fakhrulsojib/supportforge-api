@@ -25,6 +25,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from app.domain.models.enums import (
     ConversationStatus,
     DocumentStatus,
+    EscalationTrigger,
     FeedbackType,
     MessageRole,
     UserRole,
@@ -103,6 +104,10 @@ class ConversationModel(Base):
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     status: Mapped[ConversationStatus] = mapped_column(
         Enum(ConversationStatus), nullable=False, default=ConversationStatus.ACTIVE
+    )
+    escalation_trigger: Mapped[EscalationTrigger] = mapped_column(
+        Enum(EscalationTrigger), nullable=False, default=EscalationTrigger.NONE,
+        server_default="none",
     )
 
     # Relationships

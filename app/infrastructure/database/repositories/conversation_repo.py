@@ -8,7 +8,7 @@ from sqlalchemy import select
 
 from app.domain.interfaces.repository import ConversationRepository, MessageRepository
 from app.domain.models.conversation import Conversation, Message
-from app.domain.models.enums import ConversationStatus, FeedbackType
+from app.domain.models.enums import ConversationStatus, EscalationTrigger, FeedbackType
 from app.infrastructure.database.models import ConversationModel, MessageModel
 
 if TYPE_CHECKING:
@@ -30,6 +30,7 @@ class SQLConversationRepository(ConversationRepository):
             started_at=model.started_at,
             ended_at=model.ended_at,
             status=model.status,
+            escalation_trigger=model.escalation_trigger,
         )
 
     async def create(self, tenant_id: str, user_id: str, conversation_id: str = "") -> Conversation:
@@ -89,6 +90,17 @@ class SQLConversationRepository(ConversationRepository):
         if not model:
             return None
         model.status = status
+        await self._session.flush()
+        return self._to_domain(model)
+
+    async def update_escalation_trigger(
+        self, conversation_id: str, trigger: EscalationTrigger,
+    ) -> Conversation | None:
+        """Update a conversation's escalation trigger."""
+        model = await self._session.get(ConversationModel, conversation_id)
+        if not model:
+            return None
+        model.escalation_trigger = trigger
         await self._session.flush()
         return self._to_domain(model)
 

@@ -251,7 +251,7 @@ class TestChatServiceStreaming:
 
     @pytest.mark.asyncio
     async def test_stream_message_escalation_path(self) -> None:
-        """When should_escalate is True, yield escalation frames."""
+        """When should_escalate is True (no docs), yield context-aware escalation frames."""
         service = ChatService(
             llm_provider=AsyncMock(),
             vector_store=AsyncMock(),
@@ -261,7 +261,6 @@ class TestChatServiceStreaming:
         with (
             patch("app.domain.services.chat_service.retrieve_node", new_callable=AsyncMock) as mock_retrieve,
             patch("app.domain.services.chat_service.grade_node", new_callable=AsyncMock) as mock_grade,
-            patch("app.domain.services.chat_service.escalation_node", new_callable=AsyncMock) as mock_esc,
         ):
             mock_retrieve.return_value = {
                 "query": "test",
@@ -289,19 +288,6 @@ class TestChatServiceStreaming:
                 "tokens_in": 0,
                 "tokens_out": 0,
             }
-            mock_esc.return_value = {
-                "query": "test",
-                "tenant_id": "t1",
-                "retrieved_docs": [],
-                "relevant_docs": [],
-                "answer": "Escalating to human agent.",
-                "sources": [],
-                "should_escalate": True,
-                "escalation_reason": "No docs found",
-                "model_used": "",
-                "tokens_in": 0,
-                "tokens_out": 0,
-            }
 
             frames = []
             async for frame in service.stream_message(
@@ -309,13 +295,15 @@ class TestChatServiceStreaming:
             ):
                 frames.append(frame)
 
-        # Should have: 1 token (escalation message) + 1 done = 2 frames
+        # Should have: 1 token (context-aware escalation message) + 1 done = 2 frames
         assert len(frames) == 2
         assert frames[0]["type"] == "token"
-        assert "Escalating" in frames[0]["data"]
+        # Uses the NO_CONTEXT context-aware message instead of generic escalation_node
+        assert "wasn't able to find" in frames[0]["data"]
         assert frames[1]["type"] == "done"
         assert frames[1]["data"]["escalated"] is True
         assert frames[1]["data"]["escalation_reason"] == "No docs found"
+        assert frames[1]["data"]["escalation_trigger"] == "no_context"
 
     @pytest.mark.asyncio
     async def test_stream_message_preserves_conversation_id(self) -> None:
@@ -886,7 +874,6 @@ class TestChatServiceOutputValidation:
         with (
             patch("app.domain.services.chat_service.retrieve_node", new_callable=AsyncMock) as mock_retrieve,
             patch("app.domain.services.chat_service.grade_node", new_callable=AsyncMock) as mock_grade,
-            patch("app.domain.services.chat_service.escalation_node", new_callable=AsyncMock) as mock_esc,
         ):
             mock_retrieve.return_value = {
                 "query": "test", "tenant_id": "t1",
@@ -899,14 +886,6 @@ class TestChatServiceOutputValidation:
                 "query": "test", "tenant_id": "t1",
                 "retrieved_docs": [], "relevant_docs": [],
                 "answer": "", "sources": [],
-                "should_escalate": True, "escalation_reason": "No docs found",
-                "model_used": "", "tokens_in": 0, "tokens_out": 0,
-            }
-            mock_esc.return_value = {
-                "query": "test", "tenant_id": "t1",
-                "retrieved_docs": [], "relevant_docs": [],
-                "answer": "Escalating to human agent.",
-                "sources": [],
                 "should_escalate": True, "escalation_reason": "No docs found",
                 "model_used": "", "tokens_in": 0, "tokens_out": 0,
             }
@@ -1269,3 +1248,136 @@ class TestChatServiceContentModeration:
         assert call_kwargs["moderation_reason"] == "jailbreak_detected"
         assert call_kwargs["moderation_matched_term"] != ""
         assert call_kwargs["validation_status"] == "flagged"
+
+class TestChatServiceSmartEscalation:
+    """Test suite for smart escalation integration in stream_message() and process_message()."""
+
+    @pytest.mark.asyncio
+    async def test_stream_sentiment_escalation(self) -> None:
+        """When user sends frustrated message, it escalates with SENTIMENT trigger."""
+        service = ChatService(
+            llm_provider=AsyncMock(),
+            vector_store=AsyncMock(),
+            embedding_service=AsyncMock(),
+        )
+
+        with (
+            patch.object(service, "_load_conversation_history", new_callable=AsyncMock) as mock_history,
+            patch.object(service, "_persist_exchange", new_callable=AsyncMock) as mock_persist,
+        ):
+            mock_history.return_value = []
+
+            frames = []
+            async for frame in service.stream_message(
+                message="THIS IS RIDICULOUS!!! I AM FED UP WITH THIS TERRIBLE SERVICE!!!",
+                tenant_id="t1",
+            ):
+                frames.append(frame)
+
+        # Escalation message (token) + done frame
+        assert len(frames) == 2
+        assert frames[0]["type"] == "token"
+        assert "frustrating" in frames[0]["data"].lower() or "apologize" in frames[0]["data"].lower()
+
+        done = frames[1]["data"]
+        assert done["escalated"] is True
+        assert done["escalation_trigger"] == "sentiment"
+
+        # Check persistence
+        mock_persist.assert_called_once()
+        kwargs = mock_persist.call_args.kwargs
+        assert kwargs["escalation_trigger"] == "sentiment"
+        assert kwargs["assistant_message"] == frames[0]["data"]
+
+    @pytest.mark.asyncio
+    async def test_stream_explicit_request_escalation(self) -> None:
+        """Explicitly asking for human agent bypasses RAG and escalates."""
+        service = ChatService(
+            llm_provider=AsyncMock(),
+            vector_store=AsyncMock(),
+            embedding_service=AsyncMock(),
+        )
+
+        with (
+            patch.object(service, "_load_conversation_history", new_callable=AsyncMock) as mock_history,
+            patch.object(service, "_persist_exchange", new_callable=AsyncMock) as mock_persist,
+        ):
+            mock_history.return_value = []
+
+            frames = []
+            async for frame in service.stream_message(
+                message="I want to speak to a human please.",
+                tenant_id="t1",
+            ):
+                frames.append(frame)
+
+        assert frames[0]["type"] == "token"
+        assert "connect you with a human support agent" in frames[0]["data"].lower()
+
+        done = frames[1]["data"]
+        assert done["escalated"] is True
+        assert done["escalation_trigger"] == "explicit_request"
+
+    @pytest.mark.asyncio
+    async def test_stream_repetition_escalation(self) -> None:
+        """Repeated questions trigger escalation."""
+        service = ChatService(
+            llm_provider=AsyncMock(),
+            vector_store=AsyncMock(),
+            embedding_service=AsyncMock(),
+        )
+
+        with (
+            patch.object(service, "_load_conversation_history", new_callable=AsyncMock) as mock_history,
+            patch.object(service, "_persist_exchange", new_callable=AsyncMock) as mock_persist,
+        ):
+            # Same query 3 times in a row
+            mock_history.return_value = [
+                {"role": "user", "content": "How do I reset my password?"},
+                {"role": "assistant", "content": "Go to settings."},
+                {"role": "user", "content": "How do I reset my password?"},
+                {"role": "assistant", "content": "Click the forgot password link."},
+                {"role": "user", "content": "How do I reset my password?"},
+                {"role": "assistant", "content": "Look at your profile."},
+            ]
+
+            frames = []
+            async for frame in service.stream_message(
+                message="How do I reset my password?",
+                tenant_id="t1",
+            ):
+                frames.append(frame)
+
+        assert frames[0]["type"] == "token"
+        assert "more thorough answer" in frames[0]["data"].lower()
+
+        done = frames[1]["data"]
+        assert done["escalated"] is True
+        assert done["escalation_trigger"] == "repetition"
+
+    @pytest.mark.asyncio
+    async def test_process_message_explicit_escalation(self) -> None:
+        """REST endpoint correctly processes explicit escalation."""
+        service = ChatService(
+            llm_provider=AsyncMock(),
+            vector_store=AsyncMock(),
+            embedding_service=AsyncMock(),
+        )
+
+        with (
+            patch.object(service, "_load_conversation_history", new_callable=AsyncMock) as mock_history,
+            patch.object(service, "_persist_exchange", new_callable=AsyncMock) as mock_persist,
+        ):
+            mock_history.return_value = []
+
+            result = await service.process_message(
+                message="Let me speak to a manager",
+                tenant_id="t1",
+            )
+
+        assert result["escalated"] is True
+        assert result["escalation_trigger"] == "explicit_request"
+        assert "connect you with a human" in result["answer"].lower()
+
+        mock_persist.assert_called_once()
+        assert mock_persist.call_args.kwargs["escalation_trigger"] == "explicit_request"
