@@ -672,3 +672,245 @@ class TestChatEndpoint:
         call_kwargs = app_with_mocks.state.chat_service.process_message.call_args
         assert call_kwargs.kwargs.get("tenant_id") == "tenant-chat-1" or \
             call_kwargs[1].get("tenant_id") == "tenant-chat-1"
+
+
+class TestChatServiceOutputValidation:
+    """Test suite for output validation integration in stream_message()."""
+
+    @staticmethod
+    def _make_rag_state(*, with_docs: bool = True) -> tuple[dict, dict]:
+        """Helper to create retrieve and grade mock return values."""
+        doc = {"content": "doc text about orders", "score": 0.9, "id": "d1"}
+        base = {
+            "query": "test", "tenant_id": "t1",
+            "retrieved_docs": [doc] if with_docs else [],
+            "relevant_docs": [doc] if with_docs else [],
+            "answer": "", "sources": [],
+            "should_escalate": False, "escalation_reason": "",
+            "model_used": "", "tokens_in": 0, "tokens_out": 0,
+        }
+        return base, base.copy()
+
+    @pytest.mark.asyncio
+    async def test_stream_message_clean_output_passes_validation(self) -> None:
+        """Clean LLM output should yield validation_status=passed in done frame."""
+        mock_llm = AsyncMock()
+        mock_llm.default_model = "test-model"
+
+        async def _mock_stream(*args, **kwargs):
+            yield {"type": "content", "text": "Your order will arrive soon."}
+
+        mock_llm.stream = _mock_stream
+        service = ChatService(
+            llm_provider=mock_llm,
+            vector_store=AsyncMock(),
+            embedding_service=AsyncMock(),
+        )
+        retrieve_state, grade_state = self._make_rag_state()
+
+        with (
+            patch("app.domain.services.chat_service.retrieve_node", new_callable=AsyncMock) as mr,
+            patch("app.domain.services.chat_service.grade_node", new_callable=AsyncMock) as mg,
+        ):
+            mr.return_value = retrieve_state
+            mg.return_value = grade_state
+
+            frames = []
+            async for f in service.stream_message(message="test", tenant_id="t1"):
+                frames.append(f)
+
+        done_frame = [f for f in frames if f["type"] == "done"][0]
+        assert done_frame["data"]["validation_status"] == "passed"
+
+    @pytest.mark.asyncio
+    async def test_stream_message_fabricated_phone_flags_validation(self) -> None:
+        """Fabricated phone number in LLM output should yield validation_status=flagged."""
+        mock_llm = AsyncMock()
+        mock_llm.default_model = "test-model"
+
+        async def _mock_stream(*args, **kwargs):
+            yield {"type": "content", "text": "Call us at 555-999-8888 for help."}
+
+        mock_llm.stream = _mock_stream
+        service = ChatService(
+            llm_provider=mock_llm,
+            vector_store=AsyncMock(),
+            embedding_service=AsyncMock(),
+        )
+        retrieve_state, grade_state = self._make_rag_state()
+
+        with (
+            patch("app.domain.services.chat_service.retrieve_node", new_callable=AsyncMock) as mr,
+            patch("app.domain.services.chat_service.grade_node", new_callable=AsyncMock) as mg,
+        ):
+            mr.return_value = retrieve_state
+            mg.return_value = grade_state
+
+            frames = []
+            async for f in service.stream_message(message="test", tenant_id="t1"):
+                frames.append(f)
+
+        done_frame = [f for f in frames if f["type"] == "done"][0]
+        assert done_frame["data"]["validation_status"] == "flagged"
+
+    @pytest.mark.asyncio
+    async def test_stream_message_validation_logs_on_failure(self) -> None:
+        """Validation failures should emit structured log warnings."""
+        mock_llm = AsyncMock()
+        mock_llm.default_model = "test-model"
+
+        async def _mock_stream(*args, **kwargs):
+            yield {"type": "content", "text": "Email us at fake@hallucinated.com."}
+
+        mock_llm.stream = _mock_stream
+        service = ChatService(
+            llm_provider=mock_llm,
+            vector_store=AsyncMock(),
+            embedding_service=AsyncMock(),
+        )
+        retrieve_state, grade_state = self._make_rag_state()
+
+        with (
+            patch("app.domain.services.chat_service.retrieve_node", new_callable=AsyncMock) as mr,
+            patch("app.domain.services.chat_service.grade_node", new_callable=AsyncMock) as mg,
+            patch("app.domain.services.chat_service.logger") as mock_logger,
+        ):
+            mr.return_value = retrieve_state
+            mg.return_value = grade_state
+
+            frames = []
+            async for f in service.stream_message(message="test", tenant_id="t1"):
+                frames.append(f)
+
+        # Should have called logger.warning with output_validation_failed
+        warning_calls = mock_logger.warning.call_args_list
+        validation_warnings = [
+            c for c in warning_calls
+            if c.args and c.args[0] == "output_validation_failed"
+        ]
+        assert len(validation_warnings) >= 1
+        # Check structured metadata
+        assert validation_warnings[0].kwargs["rule_violated"] == "fabricated_email"
+        assert "fake@hallucinated.com" in validation_warnings[0].kwargs["snippet"]
+
+    @pytest.mark.asyncio
+    async def test_stream_message_context_phone_not_flagged(self) -> None:
+        """Phone number present in retrieved context should NOT be flagged."""
+        mock_llm = AsyncMock()
+        mock_llm.default_model = "test-model"
+
+        async def _mock_stream(*args, **kwargs):
+            yield {"type": "content", "text": "Call us at 800-555-1234."}
+
+        mock_llm.stream = _mock_stream
+        service = ChatService(
+            llm_provider=mock_llm,
+            vector_store=AsyncMock(),
+            embedding_service=AsyncMock(),
+        )
+        # Context contains the same phone number
+        doc = {
+            "content": "For support, call 800-555-1234.",
+            "score": 0.9,
+            "id": "d1",
+        }
+        retrieve_state = {
+            "query": "test", "tenant_id": "t1",
+            "retrieved_docs": [doc], "relevant_docs": [doc],
+            "answer": "", "sources": [],
+            "should_escalate": False, "escalation_reason": "",
+            "model_used": "", "tokens_in": 0, "tokens_out": 0,
+        }
+
+        with (
+            patch("app.domain.services.chat_service.retrieve_node", new_callable=AsyncMock) as mr,
+            patch("app.domain.services.chat_service.grade_node", new_callable=AsyncMock) as mg,
+        ):
+            mr.return_value = retrieve_state
+            mg.return_value = retrieve_state.copy()
+
+            frames = []
+            async for f in service.stream_message(message="test", tenant_id="t1"):
+                frames.append(f)
+
+        done_frame = [f for f in frames if f["type"] == "done"][0]
+        assert done_frame["data"]["validation_status"] == "passed"
+
+    @pytest.mark.asyncio
+    async def test_stream_message_forbidden_latex_always_flagged(self) -> None:
+        """LaTeX patterns should be flagged even if context contains them."""
+        mock_llm = AsyncMock()
+        mock_llm.default_model = "test-model"
+
+        async def _mock_stream(*args, **kwargs):
+            yield {"type": "content", "text": "The answer is \\boxed{42}."}
+
+        mock_llm.stream = _mock_stream
+        service = ChatService(
+            llm_provider=mock_llm,
+            vector_store=AsyncMock(),
+            embedding_service=AsyncMock(),
+        )
+        retrieve_state, grade_state = self._make_rag_state()
+
+        with (
+            patch("app.domain.services.chat_service.retrieve_node", new_callable=AsyncMock) as mr,
+            patch("app.domain.services.chat_service.grade_node", new_callable=AsyncMock) as mg,
+        ):
+            mr.return_value = retrieve_state
+            mg.return_value = grade_state
+
+            frames = []
+            async for f in service.stream_message(message="test", tenant_id="t1"):
+                frames.append(f)
+
+        done_frame = [f for f in frames if f["type"] == "done"][0]
+        assert done_frame["data"]["validation_status"] == "flagged"
+
+    @pytest.mark.asyncio
+    async def test_stream_message_escalation_skips_validation(self) -> None:
+        """Escalated responses bypass the validation pipeline."""
+        service = ChatService(
+            llm_provider=AsyncMock(),
+            vector_store=AsyncMock(),
+            embedding_service=AsyncMock(),
+        )
+
+        with (
+            patch("app.domain.services.chat_service.retrieve_node", new_callable=AsyncMock) as mock_retrieve,
+            patch("app.domain.services.chat_service.grade_node", new_callable=AsyncMock) as mock_grade,
+            patch("app.domain.services.chat_service.escalation_node", new_callable=AsyncMock) as mock_esc,
+        ):
+            mock_retrieve.return_value = {
+                "query": "test", "tenant_id": "t1",
+                "retrieved_docs": [], "relevant_docs": [],
+                "answer": "", "sources": [],
+                "should_escalate": False, "escalation_reason": "",
+                "model_used": "", "tokens_in": 0, "tokens_out": 0,
+            }
+            mock_grade.return_value = {
+                "query": "test", "tenant_id": "t1",
+                "retrieved_docs": [], "relevant_docs": [],
+                "answer": "", "sources": [],
+                "should_escalate": True, "escalation_reason": "No docs found",
+                "model_used": "", "tokens_in": 0, "tokens_out": 0,
+            }
+            mock_esc.return_value = {
+                "query": "test", "tenant_id": "t1",
+                "retrieved_docs": [], "relevant_docs": [],
+                "answer": "Escalating to human agent.",
+                "sources": [],
+                "should_escalate": True, "escalation_reason": "No docs found",
+                "model_used": "", "tokens_in": 0, "tokens_out": 0,
+            }
+
+            frames = []
+            async for frame in service.stream_message(
+                message="test query", tenant_id="t1"
+            ):
+                frames.append(frame)
+
+        done_frame = [f for f in frames if f["type"] == "done"][0]
+        # Escalation path returns early without validation_status key
+        assert "validation_status" not in done_frame["data"]
+        assert done_frame["data"]["escalated"] is True
