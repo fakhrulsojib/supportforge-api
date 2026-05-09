@@ -56,7 +56,13 @@ _JAILBREAK_PATTERNS: list[re.Pattern[str]] = [
     # Persona injection
     re.compile(r"pretend\s+(?:you\s+are|to\s+be)\b", re.IGNORECASE),
     re.compile(r"\bact\s+as\b", re.IGNORECASE),
-    re.compile(r"\byou\s+are\s+now\b", re.IGNORECASE),
+    # "you are now" requires jailbreak-specific persona context to avoid
+    # false positives on legitimate messages like "you are now eligible"
+    re.compile(
+        r"\byou\s+are\s+now\s+(?:DAN|a\s+different|an?\s+unrestricted|"
+        r"free\s+from|no\s+longer\s+bound|without\s+restrictions)",
+        re.IGNORECASE,
+    ),
     # Known jailbreak modes
     re.compile(r"\bDAN\s+mode\b", re.IGNORECASE),
     re.compile(r"\bdeveloper\s+mode\b", re.IGNORECASE),
@@ -65,10 +71,19 @@ _JAILBREAK_PATTERNS: list[re.Pattern[str]] = [
     re.compile(r"\bsystem\s+prompt\b", re.IGNORECASE),
     re.compile(r"reveal\s+your\s+prompt", re.IGNORECASE),
     re.compile(r"show\s+your\s+instructions", re.IGNORECASE),
-    # Rule circumvention
+    # Rule circumvention — require system-specific trailing words to avoid
+    # blocking legitimate messages like "disregard your last email"
     re.compile(r"forget\s+your\s+rules", re.IGNORECASE),
-    re.compile(r"disregard\s+your\b", re.IGNORECASE),
-    re.compile(r"override\s+your\b", re.IGNORECASE),
+    re.compile(
+        r"disregard\s+your\s+(?:programming|instructions|rules|training|"
+        r"guidelines|restrictions|directives|prompt)",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"override\s+your\s+(?:programming|instructions|rules|training|"
+        r"guidelines|restrictions|directives|safety|filters|prompt)",
+        re.IGNORECASE,
+    ),
 ]
 
 

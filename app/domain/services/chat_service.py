@@ -91,6 +91,7 @@ class ChatService:
         message: str,
         tenant_id: str,
         conversation_id: str | None = None,
+        tenant_blocklist: list[str] | None = None,
     ) -> dict[str, Any]:
         """Process a user message through the RAG pipeline.
 
@@ -98,6 +99,8 @@ class ChatService:
             message: User's message text.
             tenant_id: Tenant context.
             conversation_id: Optional existing conversation ID.
+            tenant_blocklist: Tenant-specific list of banned terms for
+                content moderation. Loaded from tenant ``config_json``.
 
         Returns:
             Dict with answer, sources, escalation status, etc.
@@ -106,12 +109,34 @@ class ChatService:
         if not conversation_id:
             conversation_id = str(uuid.uuid4())
 
+        blocklist = tenant_blocklist or []
+
         logger.info(
             "chat_process_message",
             tenant_id=tenant_id,
             conversation_id=conversation_id,
             message_length=len(message),
         )
+
+        # ── Input content moderation (before RAG) ────────────────
+        input_check = self._content_moderator.check_input(message, blocklist)
+        if input_check.blocked:
+            logger.warning(
+                "content_moderation_input_blocked",
+                conversation_id=conversation_id,
+                reason=input_check.reason,
+                matched_term=input_check.matched_term[:100],
+            )
+            return {
+                "answer": input_check.canned_response,
+                "conversation_id": conversation_id,
+                "sources": [],
+                "escalated": False,
+                "escalation_reason": "",
+                "model_used": "",
+                "moderation_blocked": True,
+                "moderation_reason": input_check.reason,
+            }
 
         # Run the RAG pipeline
         result = await run_rag_pipeline(
@@ -124,9 +149,20 @@ class ChatService:
 
         # Group sources by document (de-duplicate chunks from same file)
         grouped_sources = _group_sources_by_document(result.get("relevant_docs", []))
+        answer = result.get("answer", "")
+
+        # ── Output content moderation ────────────────────────────
+        output_check = self._content_moderator.check_output(answer, blocklist)
+        if output_check.flagged:
+            logger.warning(
+                "content_moderation_output_flagged",
+                conversation_id=conversation_id,
+                reason=output_check.reason,
+                matched_term=output_check.matched_term[:100],
+            )
 
         return {
-            "answer": result.get("answer", ""),
+            "answer": answer,
             "conversation_id": conversation_id,
             "sources": grouped_sources,
             "escalated": result.get("should_escalate", False),
@@ -145,12 +181,6 @@ class ChatService:
     ) -> AsyncGenerator[dict[str, Any], None]:
         """Stream a chat response token-by-token via the RAG pipeline.
 
-        Args:
-            temperature: LLM sampling temperature (0.0–1.0). Values outside
-                this range are clamped to the default.
-            tenant_blocklist: Tenant-specific list of banned terms for
-                content moderation. Loaded from tenant ``config_json``.
-
         Runs retrieval and grading synchronously, then streams the
         LLM generation step as individual token frames. Persists the
         conversation and messages to the database on completion.
@@ -165,6 +195,10 @@ class ChatService:
             tenant_id: Tenant context.
             user_id: Authenticated user's ID (for conversation persistence).
             conversation_id: Optional existing conversation ID.
+            temperature: LLM sampling temperature (0.0–1.0). Values outside
+                this range are clamped to the default.
+            tenant_blocklist: Tenant-specific list of banned terms for
+                content moderation. Loaded from tenant ``config_json``.
 
         Yields:
             Structured frame dicts for WebSocket delivery.
@@ -194,7 +228,7 @@ class ChatService:
                 "content_moderation_input_blocked",
                 conversation_id=conversation_id,
                 reason=input_check.reason,
-                matched_term=input_check.matched_term,
+                matched_term=input_check.matched_term[:100],
             )
             yield {
                 "type": "token",
@@ -428,7 +462,7 @@ class ChatService:
                 "content_moderation_output_flagged",
                 conversation_id=conversation_id,
                 reason=output_check.reason,
-                matched_term=output_check.matched_term,
+                matched_term=output_check.matched_term[:100],
             )
 
         # Done frame
