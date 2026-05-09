@@ -18,7 +18,16 @@ SupportForge is a production-grade, multi-tenant AI customer support agent. This
 | Phase 1 | `phase-1/core-rag-engine` | FastAPI scaffold, DB, Ollama, ChromaDB, RAG pipeline, chat endpoint, Docker |
 | Phase 2 | `phase-2/realtime-admin` | WebSocket streaming, doc upload, auth, RBAC, Redis cache |
 | Phase 3 | _(frontend repo)_ | React + Vite frontend — see `supportforge-ui` |
-| Phase 4 | `phase-4/production-polish` | A/B testing, rate limiting, widget, webhooks, email digest, E2E tests |
+| Phase 4 | `phase-4/response-timeout` | First-token timeout, streaming fallback, retry logic |
+| Phase 5 | `phase-5/output-validation` | Anti-hallucination guard, post-generation rule checks |
+| Phase 6 | `phase-6/content-moderation` | Input/output moderation, jailbreak detection, blocklist |
+| Phase 7 | `phase-7/smart-escalation` | Sentiment + repetition + explicit request escalation |
+| Phase 8 | `phase-8/rate-limiting` | Redis sliding window middleware, fail-closed, token blacklist |
+| Phase 9 | `phase-9/pii-masking` | PII detection (CC, SSN, phone, email), masking before LLM + storage |
+| Phase 10 | `phase-10/feedback-review-queue` | Admin review endpoints + UI for negative feedback, escalations, flagged messages |
+| Phase 11 | `phase-11/ab-testing-config` | Tenant config (model, temperature, prompt variant), admin settings UI |
+| Phase 12 | `phase-12/webhook-integration` | Webhook service for escalation/feedback/new conversation events |
+| Phase 13 | `phase-13/deployment-e2e` | Docker prod, deployment guides, E2E test suite, tech debt cleanup |
 
 ### Branch Rules
 
@@ -32,11 +41,22 @@ SupportForge is a production-grade, multi-tenant AI customer support agent. This
 
 > **One sub-phase per conversation.** Large phases (e.g., Phase 2 has 7 sub-phases) MUST be implemented one sub-phase at a time. Commit after each sub-phase. This prevents context loss and ensures each unit of work receives full validation. Do NOT implement multiple sub-phases in a single session.
 
+### Cross-Repo Phases
+
+Some phases (10, 11, 13) span both `supportforge-api` and `supportforge-ui`. When working on a cross-repo phase:
+1. The **backend portion** follows this file's pipeline (Steps 1–9)
+2. The **frontend portion** follows `supportforge-ui/AGENTS.md`'s pipeline (Steps 1–8)
+3. Execute backend tasks first, then frontend tasks (frontend depends on API endpoints)
+4. Commit in **each repo separately** with its own conventional commit message
+5. Use the **same branch name** in both repos
+
 ---
 
 ## Task Execution Pipeline
 
 > **This is the exact sequence an agent MUST follow for every task.** No step may be skipped. Each step has a gate condition that must be satisfied before proceeding to the next.
+>
+> **Failure protocol:** If a gate fails, fix the issue and re-run. **Maximum 3 attempts per gate.** After 3 failures on the same gate, STOP and report the error with full context (command output, file paths, error messages). Do NOT continue to the next step.
 
 ### Step 1 — Orient
 
@@ -105,7 +125,7 @@ ruff format --check app/
 
 > **This step exists because automated validation (Step 4) only catches syntax, types, and test failures — it does NOT catch design flaws, security gaps, or cross-cutting inconsistencies. Those are the issues that code reviewers find.**
 
-1. Run `git diff --cached` (full diff — **NOT** `--stat`) and read through every changed line as if you are an independent reviewer seeing this code for the first time.
+1. Stage all changes first: `git add -A`, then run `git diff --cached` (full diff — **NOT** `--stat`) and read through every changed line as if you are an independent reviewer seeing this code for the first time.
 2. For **every file**, systematically ask:
    - **Security:** Does this endpoint have auth? Does it validate tenant ownership? Are credentials masked?
    - **Consistency:** Does this code follow the same patterns as other files in the same layer? (Same error handling, same response format, same naming)
@@ -262,7 +282,16 @@ API Layer (FastAPI routes + Pydantic schemas)
 └── api/schemas/  → Request/response DTOs
 ```
 
-### Test File Mapping
+### Test File Naming Convention
+
+For **any** module not listed below, derive the test path using this rule:
+- `app/{layer}/{path}/module.py` → `tests/unit/{path}/test_module.py` (domain services, utilities, workers)
+- `app/api/v1/endpoint.py` → `tests/integration/api/test_endpoint.py` (API routes)
+- `app/infrastructure/{adapter}/adapter.py` → `tests/unit/infrastructure/test_adapter.py` (infra adapters)
+
+**Every new module MUST have a corresponding test file.** No exceptions.
+
+### Test File Mapping (existing modules)
 
 | Source | Test |
 |---|---|
