@@ -52,7 +52,7 @@ SupportForge is a production-grade, multi-tenant AI customer support agent. This
 
 ### Cross-Repo Phases
 
-Some phases (10, 11, 13) span both `supportforge-api` and `supportforge-ui`. When working on a cross-repo phase:
+Some phases (8, 20, 22) span both `supportforge-api` and `supportforge-ui`. When working on a cross-repo phase:
 1. The **backend portion** follows this file's pipeline (Steps 1–9)
 2. The **frontend portion** follows `supportforge-ui/AGENTS.md`'s pipeline (Steps 1–8)
 3. Execute backend tasks first, then frontend tasks (frontend depends on API endpoints)
