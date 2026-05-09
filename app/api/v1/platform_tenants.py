@@ -39,7 +39,7 @@ def _get_tenant_service(session: AsyncSession) -> TenantService:
     return TenantService(tenant_repo=SQLTenantRepository(session))
 
 
-@router.post("/", response_model=PlatformTenantResponse, status_code=201)
+@router.post("", response_model=PlatformTenantResponse, status_code=201)
 async def platform_create_tenant(
     request: PlatformTenantCreateRequest,
     session: AsyncSession = Depends(get_async_session),
@@ -79,7 +79,7 @@ async def platform_create_tenant(
     )
 
 
-@router.get("/", response_model=PlatformTenantListResponse)
+@router.get("", response_model=PlatformTenantListResponse)
 async def platform_list_tenants(
     status: TenantStatus | None = Query(None, description="Filter by status"),
     limit: int = Query(50, ge=1, le=100, description="Page size"),

@@ -145,7 +145,7 @@ class TestPlatformCreateTenant:
             mock_user_repo.get_by_id = AsyncMock(return_value=superadmin_user)
 
             response = await platform_client.post(
-                "/api/v1/platform/tenants/",
+                "/api/v1/platform/tenants",
                 json={"name": "New Corp", "slug": "new-corp"},
                 headers={"Authorization": f"Bearer {superadmin_token}"},
             )
@@ -169,7 +169,7 @@ class TestPlatformCreateTenant:
             mock_user_repo.get_by_id = AsyncMock(return_value=admin_user)
 
             response = await platform_client.post(
-                "/api/v1/platform/tenants/",
+                "/api/v1/platform/tenants",
                 json={"name": "Forbidden", "slug": "forbidden"},
                 headers={"Authorization": f"Bearer {admin_token}"},
             )
@@ -189,7 +189,7 @@ class TestPlatformCreateTenant:
             mock_user_repo.get_by_id = AsyncMock(return_value=viewer_user)
 
             response = await platform_client.post(
-                "/api/v1/platform/tenants/",
+                "/api/v1/platform/tenants",
                 json={"name": "Nope", "slug": "nope"},
                 headers={"Authorization": f"Bearer {viewer_token}"},
             )
@@ -203,7 +203,7 @@ class TestPlatformCreateTenant:
     ) -> None:
         """Missing auth header should return 401."""
         response = await platform_client.post(
-            "/api/v1/platform/tenants/",
+            "/api/v1/platform/tenants",
             json={"name": "No Auth", "slug": "no-auth"},
         )
         assert response.status_code == 401
@@ -228,7 +228,7 @@ class TestPlatformCreateTenant:
             mock_user_repo.get_by_id = AsyncMock(return_value=superadmin_user)
 
             response = await platform_client.post(
-                "/api/v1/platform/tenants/",
+                "/api/v1/platform/tenants",
                 json={"name": "New Corp", "slug": "new-corp"},
                 headers={"Authorization": f"Bearer {superadmin_token}"},
             )
@@ -262,7 +262,7 @@ class TestPlatformListTenants:
             mock_user_repo.get_by_id = AsyncMock(return_value=superadmin_user)
 
             response = await platform_client.get(
-                "/api/v1/platform/tenants/",
+                "/api/v1/platform/tenants",
                 headers={"Authorization": f"Bearer {superadmin_token}"},
             )
 
@@ -296,7 +296,7 @@ class TestPlatformListTenants:
             mock_user_repo.get_by_id = AsyncMock(return_value=superadmin_user)
 
             response = await platform_client.get(
-                "/api/v1/platform/tenants/?status=suspended",
+                "/api/v1/platform/tenants?status=suspended",
                 headers={"Authorization": f"Bearer {superadmin_token}"},
             )
 
@@ -325,7 +325,7 @@ class TestPlatformListTenants:
             mock_user_repo.get_by_id = AsyncMock(return_value=superadmin_user)
 
             response = await platform_client.get(
-                "/api/v1/platform/tenants/",
+                "/api/v1/platform/tenants",
                 headers={"Authorization": f"Bearer {superadmin_token}"},
             )
 
@@ -345,7 +345,7 @@ class TestPlatformListTenants:
             mock_user_repo.get_by_id = AsyncMock(return_value=admin_user)
 
             response = await platform_client.get(
-                "/api/v1/platform/tenants/",
+                "/api/v1/platform/tenants",
                 headers={"Authorization": f"Bearer {admin_token}"},
             )
 
