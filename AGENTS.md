@@ -22,15 +22,21 @@ SupportForge is a production-grade, multi-tenant AI customer support agent. This
 | Phase 5 | `phase-5/output-validation` | Anti-hallucination guard, post-generation rule checks |
 | Phase 6 | `phase-6/content-moderation` | Input/output moderation, jailbreak detection, blocklist |
 | Phase 7 | `phase-7/smart-escalation` | Sentiment + repetition + explicit request escalation |
-| Phase 8 | `phase-8/rate-limiting` | Redis sliding window middleware, fail-closed, token blacklist |
-| Phase 9 | `phase-9/pii-masking` | PII detection (CC, SSN, phone, email), masking before LLM + storage |
-| Phase 10 | `phase-10/feedback-review-queue` | Admin review endpoints + UI for negative feedback, escalations, flagged messages |
-| Phase 11 | `phase-11/ab-testing-config` | Tenant config (model, temperature, prompt variant), admin settings UI |
-| Phase 12 | `phase-12/webhook-integration` | Webhook service for escalation/feedback/new conversation events |
-| Phase 13 | `phase-13/deployment-e2e` | Docker prod, deployment guides, E2E test suite, tech debt cleanup |
-| Phase 14 | `phase-14/platform-superadmin` | Platform superadmin role, tenant provisioning (superadmin-only) |
-| Phase 15 | `phase-15/user-approval` | User registration approval workflow, role management |
-| Phase 16 | `phase-16/moderation-dashboard` | Central moderation dashboard for superadmin + tenant admin |
+| Phase 8 | `phase-8/feedback-review-queue` | Admin review endpoints + UI for negative feedback, escalations, flagged messages |
+| Phase 9 | `phase-9/failed-query-logging` | Failed query model, persistence, admin API, analytics integration |
+| Phase 10 | `phase-10/platform-superadmin` | Platform superadmin role, JWT claims, cross-tenant access |
+| Phase 11 | `phase-11/tenant-provisioning-api` | Tenant CRUD, status lifecycle, chat gate for suspended tenants |
+| Phase 12 | `phase-12/tenant-provisioning-ui` | Superadmin frontend for tenant management |
+| Phase 13 | `phase-13/rate-limiting` | Redis sliding window middleware, fail-closed, token blacklist |
+| Phase 14 | `phase-14/pii-masking` | PII detection (CC, SSN, phone, email), masking before LLM + storage |
+| Phase 15 | `phase-15/user-approval` | User registration approval workflow (backend) |
+| Phase 16 | `phase-16/role-management` | Role management API (promote, demote, last-admin protection) |
+| Phase 17 | `phase-17/user-management-ui` | User management + approval frontend |
+| Phase 18 | `phase-18/moderation-dashboard-api` | Cross-tenant moderation query API |
+| Phase 19 | `phase-19/moderation-dashboard-ui` | Moderation dashboard frontend |
+| Phase 20 | `phase-20/ab-testing-config` | Tenant config (model, temperature, prompt variant), admin settings UI |
+| Phase 21 | `phase-21/webhook-integration` | Webhook service for escalation/feedback/new conversation events |
+| Phase 22 | `phase-22/deployment-e2e` | Docker prod, deployment guides, E2E test suite, tech debt cleanup |
 
 ### Branch Rules
 

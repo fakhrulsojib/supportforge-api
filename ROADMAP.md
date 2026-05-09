@@ -169,56 +169,41 @@
 
 ---
 
-## Phase 4 — Production Polish 🔲
+## Upcoming Phases (8–22) 🔲
 
-> **Branch:** `phase-4/production-polish`
+> See `supportforge_plan.md` for detailed task lists and gotchas.
 
-### 4.1 — A/B Testing
-- [ ] Tenant config: model, prompt variant, temperature
-- [ ] Admin config endpoint
-- [ ] Per-message variant logging
+| Phase | Name | Priority | Status |
+|---|---|---|---|
+| 8 | Feedback Review Queue | High | 🔲 |
+| 9 | Failed Query Logging & Analytics | High | 🔲 |
+| 10 | Platform Superadmin Role | High | 🔲 |
+| 11 | Tenant Provisioning API | High | 🔲 |
+| 12 | Tenant Provisioning UI | High | 🔲 |
+| 13 | Rate Limiting Middleware | Medium | 🔲 |
+| 14 | PII Detection & Masking | Medium | 🔲 |
+| 15 | User Approval Workflow | Medium | 🔲 |
+| 16 | Role Management API | Medium | 🔲 |
+| 17 | User Management UI | Medium | 🔲 |
+| 18 | Moderation Dashboard API | Medium | 🔲 |
+| 19 | Moderation Dashboard UI | Medium | 🔲 |
+| 20 | A/B Testing & Tenant Config | Low | 🔲 |
+| 21 | Webhook Integration | Low | 🔲 |
+| 22 | Deployment, Docs & E2E | Low | 🔲 |
 
-### 4.2 — Rate Limiting
-- [ ] Redis-backed rate limiting middleware
-- [ ] Per-tenant + per-user limits (configurable)
-- [ ] 429 + Retry-After header
-- [ ] **Gap (from Phase 2 review):** Fix `RedisAdapter.incr()` fallback — currently returns `0` on failure which bypasses rate limiting. Should return `limit + 1` (deny by default) or raise
-- [ ] **Gap (from Phase 2 review):** Add `expire(key, ttl)` or `incr_with_ttl()` to `CachePort` for atomic rate limit counter + TTL
-- [ ] **Gap (from Phase 2 review):** Add Redis-backed refresh token blacklist (resolves Known Limitation M-2)
+### Known Gaps (from Phase 2 review)
+- [ ] Fix `RedisAdapter.incr()` fail-open bug → Phase 13
+- [ ] Add `incr_with_ttl()` to `CachePort` → Phase 13
+- [ ] Add Redis-backed refresh token blacklist → Phase 13
+- [ ] Generate Alembic migrations → Phase 22
+- [ ] Bump `__version__` to `0.2.0` → Phase 22
+- [ ] Remove backward-compatibility shims → Phase 22
+- [ ] Replace `mypy ignore_errors = true` → Phase 22
+- [ ] Fix `.env.example` interpolation → Phase 22
+- [ ] Per-tenant admin scoping tests → Phase 22
 
-### 4.3 — Embeddable Chat Widget
-- [ ] Standalone JS bundle in `widget/`
-- [ ] Shadow DOM isolation
-- [ ] Tenant-scoped WebSocket
+---
 
-### 4.4 — Webhook Integration
-- [ ] Tenant webhook_url config
-- [ ] Events: new conversation, escalation, negative feedback
-- [ ] Slack + Discord format support
-- [ ] Retry with exponential backoff
-
-### 4.5 — Email Digest
-- [ ] Daily scheduled aggregation
-- [ ] HTML email with unresolved conversations, feedback, top queries
-- [ ] SMTP integration
-
-### 4.6 — Deployment & Documentation
-- [ ] `docker-compose.prod.yml` with Nginx, SSL, resource limits
-- [ ] Deployment guides: Docker Compose, Railway, Render
-- [ ] README update with badges, screenshots, architecture diagram
-- [ ] **Gap (from Phase 2 review):** Generate Alembic migration for Phase 2 model changes (new fields, new tables)
-- [ ] **Gap (from Phase 2 review):** Bump `__version__` to `0.2.0` (Phase 2 deprecation warning already references it)
-- [ ] **Gap (from Phase 2 review):** Remove backward-compatibility shims (`app/api/v1/schemas.py`, `app/api/v1/chat_service.py`)
-- [ ] **Gap (from Phase 2 review):** Replace `mypy ignore_errors = true` with targeted `# type: ignore[specific-error]` annotations in infrastructure layer
-- [ ] **Gap (from Phase 2 review):** Fix `.env.example` — remove `${VAR}` shell interpolation syntax (pydantic-settings doesn't expand these)
-
-### 4.7 — End-to-End Test Suite
-- [ ] Full user journey tests
-- [ ] Multi-tenant isolation tests
-- [ ] Auth flow tests
-- [ ] Rate limiting tests
-- [ ] Coverage ≥ 95%, mutation kill rate > 80%
-- [ ] **Gap (from Phase 2 review):** Per-tenant admin scoping tests (resolves Known Limitation M-5)
 
 ---
 
