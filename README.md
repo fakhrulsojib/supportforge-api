@@ -138,7 +138,7 @@ supportforge-api/
 | `POST` | `/api/v1/auth/register` | — | Register user (superadmin blocked) |
 | `POST` | `/api/v1/auth/login` | — | Login |
 | `POST` | `/api/v1/auth/refresh` | — | Refresh token |
-| `POST` | `/api/v1/chat` | JWT | Send chat message (blocked for suspended/archived tenants) |
+| `POST` | `/api/v1/chat` | JWT | Send chat message (active tenants only) |
 | `GET` | `/api/v1/conversations` | JWT | List conversations |
 | `GET` | `/api/v1/conversations/{id}` | JWT | Get conversation detail |
 | `PATCH` | `/api/v1/conversations/messages/{id}/feedback` | JWT | Update message feedback |
