@@ -339,9 +339,12 @@ class ChatService:
         for source in grouped_sources:
             yield {"type": "source", "data": source}
 
-        # Stream LLM tokens and accumulate full answer
+        # ── Stream LLM tokens ────────────────────────────────────
         full_answer_parts: list[str] = []
         full_thinking_parts: list[str] = []
+        escalated = False
+        escalation_reason = ""
+
         async for token_frame in self._llm_provider.stream(messages=messages, temperature=temperature):  # type: ignore[attr-defined]
             frame_kind = token_frame.get("type", "content") if isinstance(token_frame, dict) else "content"
             token_text = token_frame.get("text", "") if isinstance(token_frame, dict) else token_frame
@@ -356,6 +359,25 @@ class ChatService:
         full_answer = "".join(full_answer_parts)
         full_thinking = "".join(full_thinking_parts)
 
+        # ── Post-generation output validation ────────────────────
+        from app.domain.models.enums import ValidationStatus
+        from app.domain.services.output_validator import OutputValidator
+
+        context_texts = [doc.get("content", "") for doc in relevant_docs]
+        validator = OutputValidator()
+        validation_result = validator.validate(full_answer, context_texts)
+        validation_status = validation_result.status
+
+        if validation_status == ValidationStatus.FLAGGED:
+            full_answer += "\n\n" + validation_result.disclaimer
+            for violation in validation_result.violations:
+                logger.warning(
+                    "output_validation_failed",
+                    conversation_id=conversation_id,
+                    rule_violated=violation.rule,
+                    snippet=violation.snippet,
+                )
+
         # Done frame
         yield {
             "type": "done",
@@ -363,9 +385,10 @@ class ChatService:
                 "conversation_id": conversation_id,
                 "model_used": model_used,
                 "sources": grouped_sources,
-                "escalated": False,
-                "escalation_reason": "",
+                "escalated": escalated,
+                "escalation_reason": escalation_reason,
                 "thinking_text": full_thinking,
+                "validation_status": validation_status.value,
             },
         }
 
@@ -380,6 +403,7 @@ class ChatService:
             sources=grouped_sources,
             model_used=model_used,
             is_new=is_new_conversation,
+            validation_status=validation_status.value,
         )
 
     # ── Conversation History (sliding window) ───────────────────
@@ -466,6 +490,7 @@ class ChatService:
         sources: list[dict[str, Any]],
         model_used: str,
         is_new: bool,
+        validation_status: str = "none",
     ) -> None:
         """Save the conversation and its messages to the database.
 
@@ -485,15 +510,22 @@ class ChatService:
             sources: Grouped source citations.
             model_used: LLM model name.
             is_new: Whether this is a brand-new conversation.
+            validation_status: Output validation result (``passed``, ``flagged``, or ``none``).
         """
         try:
             from app.domain.models.conversation import Message
-            from app.domain.models.enums import MessageRole
+            from app.domain.models.enums import MessageRole, ValidationStatus as VS
             from app.infrastructure.database.connection import AsyncSessionLocal
             from app.infrastructure.database.repositories.conversation_repo import (
                 SQLConversationRepository,
                 SQLMessageRepository,
             )
+
+            # Resolve validation status enum
+            try:
+                vs_enum = VS(validation_status)
+            except ValueError:
+                vs_enum = VS.NONE
 
             async with AsyncSessionLocal() as session:
                 conv_repo = SQLConversationRepository(session)
@@ -526,6 +558,7 @@ class ChatService:
                         thinking=assistant_thinking,
                         sources_json=sources,
                         model_used=model_used,
+                        validation_status=vs_enum,
                     )
                 )
 
