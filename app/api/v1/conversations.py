@@ -37,7 +37,7 @@ logger = structlog.get_logger(__name__)
 router = APIRouter(prefix="/api/v1/conversations", tags=["conversations"])
 
 
-@router.get("/", response_model=ConversationListResponse)
+@router.get("", response_model=ConversationListResponse)
 async def list_conversations(
     limit: int = 50,
     offset: int = 0,

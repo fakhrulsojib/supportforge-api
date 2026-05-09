@@ -117,7 +117,7 @@ class TestCreateTenantAPI:
             mock_user_repo.get_by_id = AsyncMock(return_value=admin_user)
 
             response = await tenant_client.post(
-                "/api/v1/tenants/",
+                "/api/v1/tenants",
                 json={"name": "Acme Corp", "slug": "acme-corp"},
                 headers={"Authorization": f"Bearer {admin_token}"},
             )
@@ -140,7 +140,7 @@ class TestCreateTenantAPI:
             mock_user_repo.get_by_id = AsyncMock(return_value=viewer_user)
 
             response = await tenant_client.post(
-                "/api/v1/tenants/",
+                "/api/v1/tenants",
                 json={"name": "Forbidden", "slug": "forbidden"},
                 headers={"Authorization": f"Bearer {viewer_token}"},
             )
@@ -154,7 +154,7 @@ class TestCreateTenantAPI:
     ) -> None:
         """Missing auth header should return 401 (HTTPBearer rejects)."""
         response = await tenant_client.post(
-            "/api/v1/tenants/",
+            "/api/v1/tenants",
             json={"name": "No Auth", "slug": "no-auth"},
         )
         assert response.status_code == 401
@@ -288,7 +288,7 @@ class TestListTenantsAPI:
             mock_user_repo.get_by_id = AsyncMock(return_value=admin_user)
 
             response = await tenant_client.get(
-                "/api/v1/tenants/",
+                "/api/v1/tenants",
                 headers={"Authorization": f"Bearer {admin_token}"},
             )
 
@@ -310,7 +310,7 @@ class TestListTenantsAPI:
             mock_user_repo.get_by_id = AsyncMock(return_value=viewer_user)
 
             response = await tenant_client.get(
-                "/api/v1/tenants/",
+                "/api/v1/tenants",
                 headers={"Authorization": f"Bearer {viewer_token}"},
             )
 
@@ -335,7 +335,7 @@ class TestListTenantsAPI:
             mock_user_repo.get_by_id = AsyncMock(return_value=admin_user)
 
             response = await tenant_client.get(
-                "/api/v1/tenants/",
+                "/api/v1/tenants",
                 headers={"Authorization": f"Bearer {admin_token}"},
             )
 
@@ -448,7 +448,7 @@ class TestCreateTenantDuplicateSlug:
             mock_user_repo.get_by_id = AsyncMock(return_value=admin_user)
 
             response = await tenant_client.post(
-                "/api/v1/tenants/",
+                "/api/v1/tenants",
                 json={"name": "Acme Corp", "slug": "acme-corp"},
                 headers={"Authorization": f"Bearer {admin_token}"},
             )

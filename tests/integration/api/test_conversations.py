@@ -118,7 +118,7 @@ class TestListConversations:
             mock_user_repo.get_by_id = AsyncMock(return_value=viewer_user)
 
             response = await conv_client.get(
-                "/api/v1/conversations/",
+                "/api/v1/conversations",
                 headers={"Authorization": f"Bearer {viewer_token}"},
             )
 

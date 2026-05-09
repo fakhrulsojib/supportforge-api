@@ -40,7 +40,7 @@ def _get_tenant_service(session: AsyncSession) -> TenantService:
     return TenantService(tenant_repo=SQLTenantRepository(session))
 
 
-@router.post("/", response_model=TenantResponse, status_code=201, deprecated=True)
+@router.post("", response_model=TenantResponse, status_code=201, deprecated=True)
 async def create_tenant(
     request: TenantCreateRequest,
     session: AsyncSession = Depends(get_async_session),
@@ -78,7 +78,7 @@ async def create_tenant(
     )
 
 
-@router.get("/", response_model=TenantListResponse)
+@router.get("", response_model=TenantListResponse)
 async def list_tenants(
     session: AsyncSession = Depends(get_async_session),
     user: User = Depends(require_role(UserRole.ADMIN)),
