@@ -289,3 +289,28 @@
 - [x] Blocked exchanges persisted in both REST and WebSocket paths for audit trail
 - [x] 5 tests (domain model defaults/set, persist field verification on input block, output flag, REST block)
 
+---
+
+## Phase 7 — Smart Escalation (Sentiment + Repetition + Explicit Request) ✅
+
+> **Branch:** `phase-7/smart-escalation`
+
+### 7.1 — EscalationDetector Domain Service ✅
+- [x] `app/domain/services/escalation_detector.py` with pure domain logic
+- [x] Sentiment detection: CAPS, punctuation, negative phrases
+- [x] Repetition detection: Jaccard similarity on last 3 user messages
+- [x] Explicit request detection: compiled regex patterns for handoff
+- [x] 42 unit tests covering all detection methods and priority logic
+
+### 7.2 — Domain Model Updates ✅
+- [x] `EscalationTrigger` enum
+- [x] `escalation_trigger` field on `Conversation` domain model
+- [x] `escalation_trigger` column on `ConversationModel` ORM model
+- [x] Repo layer mapping and `update_escalation_trigger()` method
+
+### 7.3 — ChatService Integration ✅
+- [x] Integrate detectors into `ChatService.stream_message()` and `process_message()`
+- [x] Context-aware escalation messages based on trigger type
+- [x] Fallback to NO_CONTEXT if RAG retrieval returns no docs
+- [x] Persist `escalation_trigger` to database
+- [x] Integration tests for sentiment, repetition, explicit, and NO_CONTEXT paths

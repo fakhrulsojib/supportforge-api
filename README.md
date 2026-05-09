@@ -25,6 +25,7 @@ SupportForge is a multi-tenant AI customer support agent powered by a self-hoste
 - **Analytics** — Daily stats, intent classification, satisfaction metrics
 - **Output Validation** — Anti-hallucination guard detects fabricated contact info, prices, and forbidden patterns with context cross-referencing
 - **Content Moderation** — Input filtering (jailbreak detection, tenant blocklist) and output flagging with full DB audit trail
+- **Smart Escalation** — Context-aware human handoff triggered by frustrated sentiment, repeated questions, or explicit user requests
 
 ## Architecture
 
