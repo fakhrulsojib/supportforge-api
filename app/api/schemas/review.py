@@ -29,6 +29,7 @@ class ReviewItemResponse(BaseModel):
     feedback: FeedbackType = Field(..., description="Feedback type")
     validation_status: ValidationStatus = Field(ValidationStatus.NONE, description="Output validation result")
     moderation_reason: str = Field("", description="Content moderation reason")
+    moderation_matched_term: str = Field("", description="Specific term that triggered moderation")
     reviewed_at: datetime | None = Field(None, description="When the item was reviewed")
     reviewed_by: str = Field("", description="Reviewer user ID")
     created_at: datetime | None = Field(None, description="Message creation timestamp")
