@@ -485,3 +485,117 @@ class TestPlatformUpdateTenantStatus:
             )
 
         assert response.status_code == 422
+
+
+# ── Chat gate enforcement ───────────────────────────────────────
+
+class TestChatGateEnforcement:
+    """Tests for tenant status gate on REST chat endpoint."""
+
+    @pytest.mark.asyncio
+    async def test_suspended_tenant_chat_rejected(
+        self,
+        platform_client: AsyncClient,
+        admin_token: str,
+        admin_user: User,
+    ) -> None:
+        """Suspended tenant should get 403 when trying to chat."""
+        suspended_tenant = Tenant(
+            id="t-1", name="Test", slug="test", status=TenantStatus.SUSPENDED,
+        )
+        # Set a mock chat_service so the get_chat_service dependency doesn't raise
+        platform_client._transport.app.state.chat_service = AsyncMock()  # type: ignore[union-attr]
+
+        with (
+            patch("app.api.v1.chat_router.SQLTenantRepository") as mock_repo_cls,
+            patch("app.core.dependencies.SQLUserRepository") as mock_user_cls,
+        ):
+            mock_repo = mock_repo_cls.return_value
+            mock_repo.get_by_id = AsyncMock(return_value=suspended_tenant)
+
+            mock_user_repo = mock_user_cls.return_value
+            mock_user_repo.get_by_id = AsyncMock(return_value=admin_user)
+
+            response = await platform_client.post(
+                "/api/v1/chat",
+                json={"message": "Hello"},
+                headers={"Authorization": f"Bearer {admin_token}"},
+            )
+
+        assert response.status_code == 403
+        assert response.json()["error"]["code"] == "TENANT_SUSPENDED"
+
+    @pytest.mark.asyncio
+    async def test_archived_tenant_chat_rejected(
+        self,
+        platform_client: AsyncClient,
+        admin_token: str,
+        admin_user: User,
+    ) -> None:
+        """Archived tenant should get 403 when trying to chat."""
+        archived_tenant = Tenant(
+            id="t-1", name="Test", slug="test", status=TenantStatus.ARCHIVED,
+        )
+        platform_client._transport.app.state.chat_service = AsyncMock()  # type: ignore[union-attr]
+
+        with (
+            patch("app.api.v1.chat_router.SQLTenantRepository") as mock_repo_cls,
+            patch("app.core.dependencies.SQLUserRepository") as mock_user_cls,
+        ):
+            mock_repo = mock_repo_cls.return_value
+            mock_repo.get_by_id = AsyncMock(return_value=archived_tenant)
+
+            mock_user_repo = mock_user_cls.return_value
+            mock_user_repo.get_by_id = AsyncMock(return_value=admin_user)
+
+            response = await platform_client.post(
+                "/api/v1/chat",
+                json={"message": "Hello"},
+                headers={"Authorization": f"Bearer {admin_token}"},
+            )
+
+        assert response.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_active_tenant_chat_allowed(
+        self,
+        platform_client: AsyncClient,
+        admin_token: str,
+        admin_user: User,
+    ) -> None:
+        """Active tenant should pass through the gate (mock chat service)."""
+        active_tenant = Tenant(
+            id="t-1", name="Test", slug="test", status=TenantStatus.ACTIVE,
+        )
+        mock_chat = AsyncMock()
+        mock_chat.process_message = AsyncMock(return_value={
+            "answer": "Hello!",
+            "conversation_id": "conv-1",
+            "sources": [],
+            "escalated": False,
+            "escalation_reason": "",
+            "escalation_trigger": "none",
+            "model_used": "test-model",
+        })
+        platform_client._transport.app.state.chat_service = mock_chat  # type: ignore[union-attr]
+
+        with (
+            patch("app.api.v1.chat_router.SQLTenantRepository") as mock_repo_cls,
+            patch("app.core.dependencies.SQLUserRepository") as mock_user_cls,
+        ):
+            mock_repo = mock_repo_cls.return_value
+            mock_repo.get_by_id = AsyncMock(return_value=active_tenant)
+
+            mock_user_repo = mock_user_cls.return_value
+            mock_user_repo.get_by_id = AsyncMock(return_value=admin_user)
+
+            response = await platform_client.post(
+                "/api/v1/chat",
+                json={"message": "Hello"},
+                headers={"Authorization": f"Bearer {admin_token}"},
+            )
+
+        assert response.status_code == 200
+        assert response.json()["answer"] == "Hello!"
+
+
