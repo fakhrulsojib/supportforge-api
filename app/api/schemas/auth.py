@@ -16,7 +16,7 @@ class RegisterRequest(BaseModel):
         description="Password (8-128 chars, mixed case, digit, special char)",
     )
     tenant_id: str = Field(..., min_length=1, description="Tenant the user is registering under")
-    role: str = Field("viewer", description="User role: admin, agent, or viewer")
+    role: str = Field("viewer", description="User role: admin, agent, or viewer (superadmin cannot self-register)")
 
 
 class LoginRequest(BaseModel):
