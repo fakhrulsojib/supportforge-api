@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 import structlog
 
 from app.domain.models.enums import ValidationStatus
+from app.domain.services.content_moderator import ContentModerator
 from app.domain.services.output_validator import OutputValidator
 from app.rag.pipeline import (
     RAGState,
@@ -83,6 +84,7 @@ class ChatService:
         self._vector_store = vector_store
         self._embedding_service = embedding_service
         self._output_validator = OutputValidator()
+        self._content_moderator = ContentModerator()
 
     async def process_message(
         self,
@@ -121,9 +123,7 @@ class ChatService:
         )
 
         # Group sources by document (de-duplicate chunks from same file)
-        grouped_sources = _group_sources_by_document(
-            result.get("relevant_docs", [])
-        )
+        grouped_sources = _group_sources_by_document(result.get("relevant_docs", []))
 
         return {
             "answer": result.get("answer", ""),
@@ -141,12 +141,15 @@ class ChatService:
         user_id: str = "",
         conversation_id: str | None = None,
         temperature: float = 0.7,
+        tenant_blocklist: list[str] | None = None,
     ) -> AsyncGenerator[dict[str, Any], None]:
         """Stream a chat response token-by-token via the RAG pipeline.
 
         Args:
             temperature: LLM sampling temperature (0.0–1.0). Values outside
                 this range are clamped to the default.
+            tenant_blocklist: Tenant-specific list of banned terms for
+                content moderation. Loaded from tenant ``config_json``.
 
         Runs retrieval and grading synchronously, then streams the
         LLM generation step as individual token frames. Persists the
@@ -170,6 +173,9 @@ class ChatService:
         if not isinstance(temperature, (int, float)) or temperature < 0.0 or temperature > 1.0:
             temperature = 0.7
 
+        # Default blocklist to empty list
+        blocklist = tenant_blocklist or []
+
         is_new_conversation = not conversation_id
         if not conversation_id:
             conversation_id = str(uuid.uuid4())
@@ -180,6 +186,47 @@ class ChatService:
             conversation_id=conversation_id,
             message_length=len(message),
         )
+
+        # ── Input content moderation (before RAG) ────────────────
+        input_check = self._content_moderator.check_input(message, blocklist)
+        if input_check.blocked:
+            logger.warning(
+                "content_moderation_input_blocked",
+                conversation_id=conversation_id,
+                reason=input_check.reason,
+                matched_term=input_check.matched_term,
+            )
+            yield {
+                "type": "token",
+                "data": input_check.canned_response,
+            }
+            yield {
+                "type": "done",
+                "data": {
+                    "conversation_id": conversation_id,
+                    "model_used": "",
+                    "sources": [],
+                    "escalated": False,
+                    "escalation_reason": "",
+                    "moderation_blocked": True,
+                    "moderation_reason": input_check.reason,
+                },
+            }
+
+            # Persist the blocked exchange
+            await self._persist_exchange(
+                conversation_id=conversation_id,
+                tenant_id=tenant_id,
+                user_id=user_id,
+                user_message=message,
+                assistant_message=input_check.canned_response,
+                assistant_thinking="",
+                sources=[],
+                model_used="",
+                is_new=is_new_conversation,
+                validation_status=ValidationStatus.FLAGGED.value,
+            )
+            return
 
         # Step 1: Retrieve + Grade (non-streaming)
         state: RAGState = {
@@ -249,7 +296,6 @@ class ChatService:
         system_prompt = (
             "You are the AI customer support assistant representing this company. "
             "You ARE the support — customers are already talking to the right place.\n\n"
-
             "## Identity & Voice\n"
             "- Always speak in FIRST PERSON: use 'I', 'we', 'our', 'us' when referring to "
             "the company. NEVER say 'they', 'them', or 'the company' — you represent the company.\n"
@@ -259,7 +305,6 @@ class ChatService:
             "- Tone: warm, professional, empathetic, and solution-oriented. "
             "Speak as if you are a knowledgeable, friendly human support agent.\n"
             "- Always respond in English.\n\n"
-
             "## Answering Rules\n"
             "1. Answer using the provided context AND the conversation history. "
             "Do NOT use outside knowledge, do NOT guess, do NOT fabricate details "
@@ -280,7 +325,6 @@ class ChatService:
             "7. NEVER use LaTeX syntax like \\boxed{}, \\text{}, or any math notation in your response.\n"
             "8. Always speak DIRECTLY to the customer using 'you' and 'your'. "
             "NEVER refer to the customer in third person ('the customer', 'the user', 'they').\n\n"
-
             "## Response Format\n"
             "- Keep answers concise and scannable. Use bullet points or numbered lists "
             "for multiple items.\n"
@@ -290,7 +334,6 @@ class ChatService:
             "- End with a brief offer to help further (e.g., 'Is there anything else "
             "I can help you with?').\n"
             "- Do NOT over-use emojis. One or two is fine; more feels unprofessional.\n\n"
-
             "## Guardrails\n"
             "- You are EXCLUSIVELY a customer support assistant. Do NOT discuss politics, "
             "religion, competitors, or topics unrelated to the company's products and services.\n"
@@ -302,9 +345,7 @@ class ChatService:
         )
 
         # Step 4: Load conversation history (sliding window)
-        history_messages = await self._load_conversation_history(
-            conversation_id, is_new_conversation
-        )
+        history_messages = await self._load_conversation_history(conversation_id, is_new_conversation)
 
         messages: list[dict[str, str]] = [
             {"role": "system", "content": system_prompt},
@@ -378,6 +419,18 @@ class ChatService:
                     snippet=violation.snippet,
                 )
 
+        # ── Post-generation content moderation (output) ──────────
+        output_check = self._content_moderator.check_output(full_answer, blocklist)
+        if output_check.flagged:
+            # Override validation_status to flagged if not already
+            validation_status = ValidationStatus.FLAGGED
+            logger.warning(
+                "content_moderation_output_flagged",
+                conversation_id=conversation_id,
+                reason=output_check.reason,
+                matched_term=output_check.matched_term,
+            )
+
         # Done frame
         yield {
             "type": "done",
@@ -446,9 +499,7 @@ class ChatService:
 
             async with AsyncSessionLocal() as session:
                 msg_repo = SQLMessageRepository(session)
-                all_messages = await msg_repo.list_by_conversation(
-                    conversation_id, limit=self._HISTORY_MAX_MESSAGES
-                )
+                all_messages = await msg_repo.list_by_conversation(conversation_id, limit=self._HISTORY_MAX_MESSAGES)
 
             if not all_messages:
                 return []
@@ -456,8 +507,7 @@ class ChatService:
             # Build history oldest-first, then trim from the front if
             # total character count exceeds the budget.
             history: list[dict[str, str]] = [
-                {"role": m.role.value if hasattr(m.role, 'value') else m.role,
-                 "content": m.content}
+                {"role": m.role.value if hasattr(m.role, "value") else m.role, "content": m.content}
                 for m in all_messages
                 if m.content  # skip empty
             ]
@@ -514,7 +564,8 @@ class ChatService:
         """
         try:
             from app.domain.models.conversation import Message
-            from app.domain.models.enums import MessageRole, ValidationStatus as VS
+            from app.domain.models.enums import MessageRole
+            from app.domain.models.enums import ValidationStatus as VStatus
             from app.infrastructure.database.connection import AsyncSessionLocal
             from app.infrastructure.database.repositories.conversation_repo import (
                 SQLConversationRepository,
@@ -523,9 +574,9 @@ class ChatService:
 
             # Resolve validation status enum
             try:
-                vs_enum = VS(validation_status)
+                vs_enum = VStatus(validation_status)
             except ValueError:
-                vs_enum = VS.NONE
+                vs_enum = VStatus.NONE
 
             async with AsyncSessionLocal() as session:
                 conv_repo = SQLConversationRepository(session)
