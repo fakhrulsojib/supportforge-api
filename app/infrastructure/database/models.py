@@ -34,6 +34,16 @@ from app.domain.models.enums import (
 )
 
 
+def _enum_values(enum_cls: type) -> list[str]:
+    """Extract enum `.value` strings for SQLAlchemy Enum column.
+
+    By default SQLAlchemy uses enum member **names** (ACTIVE, PENDING) for
+    PostgreSQL enum types.  Our Python enums use lowercase `.value` strings
+    (active, pending) which must match ``server_default`` literals.
+    """
+    return [m.value for m in enum_cls]
+
+
 def _generate_uuid() -> str:
     """Generate a new UUID4 string."""
     return str(uuid.uuid4())
@@ -58,8 +68,8 @@ class TenantModel(Base):
     slug: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
     config_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)  # type: ignore[assignment]
     status: Mapped[TenantStatus] = mapped_column(
-        Enum(TenantStatus), nullable=False, default=TenantStatus.ACTIVE,
-        server_default="active",
+        Enum(TenantStatus, values_callable=_enum_values), nullable=False,
+        default=TenantStatus.ACTIVE, server_default="active",
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
 
@@ -87,7 +97,7 @@ class UserModel(Base):
     tenant_id: Mapped[str] = mapped_column(String(36), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
     email: Mapped[str] = mapped_column(String(320), nullable=False)
     password_hash: Mapped[str] = mapped_column(String(128), nullable=False, default="")
-    role: Mapped[UserRole] = mapped_column(Enum(UserRole), nullable=False, default=UserRole.VIEWER)
+    role: Mapped[UserRole] = mapped_column(Enum(UserRole, values_callable=_enum_values), nullable=False, default=UserRole.VIEWER)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
 
     # Relationships
@@ -111,11 +121,11 @@ class ConversationModel(Base):
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     status: Mapped[ConversationStatus] = mapped_column(
-        Enum(ConversationStatus), nullable=False, default=ConversationStatus.ACTIVE
+        Enum(ConversationStatus, values_callable=_enum_values), nullable=False, default=ConversationStatus.ACTIVE
     )
     escalation_trigger: Mapped[EscalationTrigger] = mapped_column(
-        Enum(EscalationTrigger), nullable=False, default=EscalationTrigger.NONE,
-        server_default="none",
+        Enum(EscalationTrigger, values_callable=_enum_values), nullable=False,
+        default=EscalationTrigger.NONE, server_default="none",
     )
 
     # Relationships
@@ -139,16 +149,16 @@ class MessageModel(Base):
     conversation_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False
     )
-    role: Mapped[MessageRole] = mapped_column(Enum(MessageRole), nullable=False)
+    role: Mapped[MessageRole] = mapped_column(Enum(MessageRole, values_callable=_enum_values), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     thinking: Mapped[str] = mapped_column(Text, nullable=False, default="")
     sources_json: Mapped[list] = mapped_column(JSON, nullable=False, default=list)  # type: ignore[assignment]
     model_used: Mapped[str] = mapped_column(String(100), nullable=False, default="")
     tokens_in: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     tokens_out: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    feedback: Mapped[FeedbackType] = mapped_column(Enum(FeedbackType), nullable=False, default=FeedbackType.NONE)
+    feedback: Mapped[FeedbackType] = mapped_column(Enum(FeedbackType, values_callable=_enum_values), nullable=False, default=FeedbackType.NONE)
     validation_status: Mapped[ValidationStatus] = mapped_column(
-        Enum(ValidationStatus), nullable=False, default=ValidationStatus.NONE
+        Enum(ValidationStatus, values_callable=_enum_values), nullable=False, default=ValidationStatus.NONE
     )
     moderation_reason: Mapped[str] = mapped_column(String(100), nullable=False, default="")
     moderation_matched_term: Mapped[str] = mapped_column(String(200), nullable=False, default="")
@@ -177,7 +187,7 @@ class DocumentModel(Base):
     filename: Mapped[str] = mapped_column(String(500), nullable=False)
     file_type: Mapped[str] = mapped_column(String(50), nullable=False)
     chunk_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    status: Mapped[DocumentStatus] = mapped_column(Enum(DocumentStatus), nullable=False, default=DocumentStatus.PENDING)
+    status: Mapped[DocumentStatus] = mapped_column(Enum(DocumentStatus, values_callable=_enum_values), nullable=False, default=DocumentStatus.PENDING)
     uploaded_by: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
 
