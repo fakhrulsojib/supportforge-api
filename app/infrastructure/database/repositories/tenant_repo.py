@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.domain.interfaces.repository import TenantRepository
+from app.domain.models.enums import TenantStatus
 from app.domain.models.tenant import Tenant, TenantCreate
 from app.infrastructure.database.models import TenantModel
 
@@ -61,6 +62,29 @@ class SQLTenantRepository(TenantRepository):
         result = await self._session.execute(stmt)
         return [self._to_domain(m) for m in result.scalars().all()]
 
+    async def list_all_with_status(
+        self,
+        *,
+        status: TenantStatus | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[Tenant]:
+        """List tenants with optional status filter and pagination."""
+        stmt = select(TenantModel).order_by(TenantModel.created_at)
+        if status is not None:
+            stmt = stmt.where(TenantModel.status == status)
+        stmt = stmt.limit(limit).offset(offset)
+        result = await self._session.execute(stmt)
+        return [self._to_domain(m) for m in result.scalars().all()]
+
+    async def count_all(self, *, status: TenantStatus | None = None) -> int:
+        """Count tenants with optional status filter."""
+        stmt = select(func.count(TenantModel.id))
+        if status is not None:
+            stmt = stmt.where(TenantModel.status == status)
+        result = await self._session.execute(stmt)
+        return result.scalar_one()
+
     async def update(self, tenant_id: str, **kwargs: Any) -> Tenant | None:
         """Update a tenant's fields."""
         model = await self._session.get(TenantModel, tenant_id)
@@ -69,6 +93,15 @@ class SQLTenantRepository(TenantRepository):
         for key, value in kwargs.items():
             if hasattr(model, key):
                 setattr(model, key, value)
+        await self._session.flush()
+        return self._to_domain(model)
+
+    async def update_status(self, tenant_id: str, status: TenantStatus) -> Tenant | None:
+        """Update a tenant's status."""
+        model = await self._session.get(TenantModel, tenant_id)
+        if not model:
+            return None
+        model.status = status
         await self._session.flush()
         return self._to_domain(model)
 
