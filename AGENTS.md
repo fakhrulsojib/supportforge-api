@@ -331,6 +331,12 @@ For **any** module not listed below, derive the test path using this rule:
 | `app/workers/ingestion_worker.py` | `tests/unit/workers/test_ingestion_worker.py` |
 | `app/domain/services/output_validator.py` | `tests/unit/domain/test_output_validator.py` |
 | `app/domain/services/content_moderator.py` | `tests/unit/domain/test_content_moderator.py` |
+| `app/domain/services/escalation_detector.py` | `tests/unit/domain/test_escalation_detector.py` |
+| `app/api/v1/review.py` | `tests/integration/api/test_review.py` |
+| `app/domain/models/enums.py` (SUPERADMIN) | `tests/unit/test_superadmin.py` |
+| `app/domain/models/user.py` (is_superadmin) | `tests/unit/test_superadmin.py` |
+| `app/core/security.py` (is_superadmin JWT) | `tests/unit/test_superadmin.py` |
+| `app/core/dependencies.py` (require_superadmin) | `tests/unit/test_superadmin.py` |
 
 ### Testing Standards
 

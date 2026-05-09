@@ -148,9 +148,10 @@
 - **No refresh token revocation (M-2):** Token rotation issues a new refresh token
   on every `/refresh` call, but old tokens remain valid until natural expiry.
   A Redis-backed token blacklist or token-family detection will be added in Phase 4.2.
-- **Global admin model (M-5):** Tenant CRUD uses a platform-wide admin role — an admin
-  authenticated under tenant A can manage any tenant. Per-tenant admin scoping
-  (cross-tenant isolation for admins) will be evaluated in Phase 4.
+- **Global admin model (M-5):** ~~Tenant CRUD uses a platform-wide admin role.~~
+  **PARTIALLY RESOLVED** in Phase 9 — `SUPERADMIN` role separates platform owner from
+  tenant admin. Superadmin passes through `require_role(ADMIN)` guards. Full per-tenant
+  admin scoping (admin A cannot manage tenant B) is deferred to Phase 10+ (Tenant Provisioning).
 - ~~**`verify_token()` accepts empty `tenant_id`:**~~ **RESOLVED** — `verify_token()` now validates
   non-empty `tenant_id` matching the `user_id` validation pattern.
 - ~~**`ChatResponse.created_at` uses deprecated `datetime.utcnow()`:**~~ **RESOLVED** — replaced
@@ -169,16 +170,16 @@
 
 ---
 
-## Upcoming Phases (8–22) 🔲
+## Upcoming Phases (10–22) 🔲
 
 > See `supportforge_plan.md` for detailed task lists and gotchas.
 
 | Phase | Name | Priority | Status |
 |---|---|---|---|
-| 8 | Feedback Review Queue | High | 🔲 |
-| 9 | Failed Query Logging & Analytics | High | 🔲 |
-| 10 | Platform Superadmin Role | High | 🔲 |
-| 11 | Tenant Provisioning API | High | 🔲 |
+| 8 | Feedback Review Queue | High | ✅ |
+| 9 | Platform Superadmin Role | High | ✅ |
+| 10 | Tenant Provisioning API | High | 🔲 |
+| 11 | Failed Query Logging & Analytics | High | 🔲 |
 | 12 | Tenant Provisioning UI | High | 🔲 |
 | 13 | Rate Limiting Middleware | Medium | 🔲 |
 | 14 | PII Detection & Masking | Medium | 🔲 |
@@ -201,8 +202,6 @@
 - [ ] Replace `mypy ignore_errors = true` → Phase 22
 - [ ] Fix `.env.example` interpolation → Phase 22
 - [ ] Per-tenant admin scoping tests → Phase 22
-
----
 
 
 ---
@@ -321,4 +320,45 @@
 - [x] All endpoints protected by `require_role(UserRole.ADMIN)`
 - [x] Filters: reviewed/unreviewed, date range, escalation trigger type
 - [x] 30 new tests (14 schema + 16 integration) — all passing
+
+---
+
+## Phase 9 — Platform Superadmin Role ✅
+
+> **Branch:** `phase-9/platform-superadmin`
+
+### 9.1 — UserRole Enum Expansion ✅
+- [x] `SUPERADMIN = "superadmin"` added to `UserRole` enum (platform-wide, not tenant-scoped)
+- [x] Enum docstring updated to document superadmin semantics
+
+### 9.2 — User Domain Model ✅
+- [x] `is_superadmin` computed property on `User` model (derived from `role == UserRole.SUPERADMIN`)
+- [x] No DB migration needed — property is computed, not stored
+
+### 9.3 — JWT Security Layer ✅
+- [x] `is_superadmin: bool = False` field on `TokenPayload` (backward-compatible default)
+- [x] `create_access_token()` accepts `is_superadmin` parameter, includes in JWT only when `True`
+- [x] `verify_token()` reads `is_superadmin` from payload, defaults to `False`
+- [x] Existing tokens without `is_superadmin` claim continue to parse correctly
+
+### 9.4 — RBAC Dependencies ✅
+- [x] `require_superadmin()` dependency — rejects non-superadmin with 403
+- [x] `require_role()` updated: implicitly accepts `SUPERADMIN` when `ADMIN` is in allowed roles
+- [x] Existing `require_role(UserRole.ADMIN)` guards unchanged — superadmin passes through
+
+### 9.5 — Auth Router Updates ✅
+- [x] Superadmin self-registration blocked at `POST /api/v1/auth/register` (422)
+- [x] Login and refresh endpoints include `is_superadmin` claim in JWT
+
+### 9.6 — Bootstrap Script ✅
+- [x] `scripts/create_superadmin.py` — CLI script with `--email`, `--password`, `--tenant-id`
+- [x] Password strength validation using existing rules
+- [x] Idempotent: warns if user already exists
+- [x] Validates tenant existence before creation
+
+### 9.7 — Tests ✅
+- [x] 24 unit tests: enum, domain property, JWT claims, dependencies, registration blocking
+- [x] Backward compatibility: pre-Phase-9 tokens parse without `is_superadmin`
+- [x] Existing integration test updated (`test_register_invalid_role` uses truly invalid role)
+- [x] 661 total tests passing, zero regressions
 
