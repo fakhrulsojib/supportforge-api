@@ -92,6 +92,10 @@ async def get_current_user(
 def require_role(*allowed_roles: UserRole) -> Any:
     """Create a dependency that restricts access to specific roles.
 
+    Superadmin users are implicitly accepted when ``UserRole.ADMIN``
+    is in the allowed roles list, since a platform owner should not
+    be locked out of tenant-level admin functions.
+
     Usage::
 
         @router.post("/admin-only")
@@ -106,16 +110,49 @@ def require_role(*allowed_roles: UserRole) -> Any:
     Returns:
         A FastAPI dependency function.
     """
+    # Expand allowed set: if ADMIN is allowed, SUPERADMIN is too
+    effective_roles = set(allowed_roles)
+    if UserRole.ADMIN in effective_roles:
+        effective_roles.add(UserRole.SUPERADMIN)
 
     async def _check_role(
         user: User = Depends(get_current_user),
     ) -> User:
-        if user.role not in allowed_roles:
+        if user.role not in effective_roles:
             allowed = ", ".join(r.value for r in allowed_roles)
             raise AuthError(f"Insufficient permissions. Required role: {allowed}")
         return user
 
     return _check_role
+
+
+def require_superadmin() -> Any:
+    """Create a dependency that restricts access to superadmin users only.
+
+    Rejects any non-superadmin user with a 403 AuthError. This is used
+    for platform-wide administrative actions (tenant provisioning,
+    cross-tenant moderation, etc.).
+
+    Usage::
+
+        @router.post("/platform/tenants")
+        async def platform_endpoint(
+            user: User = Depends(require_superadmin()),
+        ) -> dict:
+            ...
+
+    Returns:
+        A FastAPI dependency function.
+    """
+
+    async def _check_superadmin(
+        user: User = Depends(get_current_user),
+    ) -> User:
+        if user.role != UserRole.SUPERADMIN:
+            raise AuthError("Superadmin access required")
+        return user
+
+    return _check_superadmin
 
 
 def get_cache(request: Request) -> Any:

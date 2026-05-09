@@ -216,7 +216,7 @@ class TestRegister:
                     "email": "test@example.com",
                     "password": "StrongP@ss1",
                     "tenant_id": "tenant-1",
-                    "role": "superadmin",
+                    "role": "dictator",
                 },
             )
 

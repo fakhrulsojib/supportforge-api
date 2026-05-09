@@ -76,6 +76,14 @@ async def register(
             error_code="INVALID_ROLE",
         ) from exc
 
+    # Block superadmin self-registration — must use scripts/create_superadmin.py
+    if role == UserRole.SUPERADMIN:
+        raise SupportForgeError(
+            message="Superadmin cannot be self-registered. Use scripts/create_superadmin.py",
+            status_code=422,
+            error_code="SUPERADMIN_REGISTRATION_BLOCKED",
+        )
+
     # Validate password strength
     password_errors = validate_password_strength(request.password)
     if password_errors:
@@ -126,6 +134,7 @@ async def register(
         algorithm=settings.jwt_algorithm,
         expires_minutes=settings.jwt_access_token_expire_minutes,
         tenant_name=tenant.name,
+        is_superadmin=(role == UserRole.SUPERADMIN),
     )
     refresh_token = create_refresh_token(
         user_id=user.id,
@@ -185,6 +194,7 @@ async def login(
         algorithm=settings.jwt_algorithm,
         expires_minutes=settings.jwt_access_token_expire_minutes,
         tenant_name=tenant_name,
+        is_superadmin=(user.role == UserRole.SUPERADMIN),
     )
     refresh_token = create_refresh_token(
         user_id=user.id,
@@ -249,6 +259,7 @@ async def refresh(
         algorithm=settings.jwt_algorithm,
         expires_minutes=settings.jwt_access_token_expire_minutes,
         tenant_name=tenant_name,
+        is_superadmin=(user.role == UserRole.SUPERADMIN),
     )
 
     # C2: Rotate the refresh token — issue a fresh one

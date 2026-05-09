@@ -22,6 +22,11 @@ class User(BaseModel):
     role: UserRole = UserRole.VIEWER
     created_at: datetime | None = None
 
+    @property
+    def is_superadmin(self) -> bool:
+        """Whether this user has the platform-wide superadmin role."""
+        return self.role == UserRole.SUPERADMIN
+
 
 class UserCreate(BaseModel):
     """DTO for creating a new user.

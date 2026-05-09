@@ -9,11 +9,16 @@ import enum
 
 
 class UserRole(str, enum.Enum):
-    """Roles that a user can have within a tenant."""
+    """Roles that a user can have within a tenant.
+
+    SUPERADMIN is a platform-wide role — not scoped to any single tenant.
+    It grants cross-tenant access and platform management capabilities.
+    """
 
     ADMIN = "admin"
     AGENT = "agent"
     VIEWER = "viewer"
+    SUPERADMIN = "superadmin"
 
 
 class ConversationStatus(str, enum.Enum):

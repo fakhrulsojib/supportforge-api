@@ -109,6 +109,10 @@ class TokenPayload(BaseModel):
     role: str | None = Field(description="User role. None for refresh tokens.")
     token_type: str = Field(description="'access' or 'refresh'")
     exp: datetime = Field(description="Token expiration timestamp")
+    is_superadmin: bool = Field(
+        default=False,
+        description="Whether the user has platform-wide superadmin role",
+    )
 
 
 # ── Token creation ───────────────────────────────────────────────
@@ -122,16 +126,19 @@ def create_access_token(
     algorithm: str = "HS256",
     expires_minutes: int = 15,
     tenant_name: str = "",
+    is_superadmin: bool = False,
 ) -> str:
     """Create a signed JWT access token.
 
     Args:
         user_id: The user's unique identifier.
         tenant_id: The tenant the user belongs to.
-        role: User role (admin, agent, viewer).
+        role: User role (admin, agent, viewer, superadmin).
         secret_key: Signing key.
         algorithm: JWT algorithm (default HS256).
         expires_minutes: Token TTL in minutes.
+        tenant_name: Optional tenant display name.
+        is_superadmin: Whether user has platform superadmin role.
 
     Returns:
         Encoded JWT string.
@@ -147,6 +154,8 @@ def create_access_token(
     }
     if tenant_name:
         payload["tenant_name"] = tenant_name
+    if is_superadmin:
+        payload["is_superadmin"] = True
     return jwt.encode(payload, secret_key, algorithm=algorithm)
 
 
@@ -227,4 +236,5 @@ def verify_token(
         role=payload.get("role"),
         token_type=token_type,
         exp=datetime.fromtimestamp(payload["exp"], tz=timezone.utc),
+        is_superadmin=payload.get("is_superadmin", False),
     )
