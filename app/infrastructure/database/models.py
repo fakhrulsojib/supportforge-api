@@ -137,6 +137,8 @@ class MessageModel(Base):
     validation_status: Mapped[ValidationStatus] = mapped_column(
         Enum(ValidationStatus), nullable=False, default=ValidationStatus.NONE
     )
+    moderation_reason: Mapped[str] = mapped_column(String(100), nullable=False, default="")
+    moderation_matched_term: Mapped[str] = mapped_column(String(200), nullable=False, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
 
     # Relationships
@@ -145,6 +147,7 @@ class MessageModel(Base):
     __table_args__ = (
         Index("ix_messages_conversation_id", "conversation_id"),
         Index("ix_messages_created_at", "created_at"),
+        Index("ix_messages_validation_status", "validation_status"),
     )
 
 

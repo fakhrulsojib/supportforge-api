@@ -69,6 +69,7 @@ async def websocket_chat(
     from app.infrastructure.database.connection import AsyncSessionLocal
 
     tenant_temperature = 0.7  # default
+    tenant_blocklist: list[str] = []  # default — no blocked terms
     async with AsyncSessionLocal() as session:
         user_repo = SQLUserRepository(session)
         user = await user_repo.get_by_id(payload.user_id)
@@ -76,13 +77,16 @@ async def websocket_chat(
             await websocket.close(code=4001, reason="User not found")
             return
 
-        # Read per-tenant LLM temperature from config_json
+        # Read per-tenant LLM temperature and moderation blocklist from config_json
         tenant_repo = SQLTenantRepository(session)
         tenant = await tenant_repo.get_by_id(user.tenant_id)
         if tenant and tenant.config_json:
             raw = tenant.config_json.get("temperature")
             if isinstance(raw, (int, float)) and 0.0 <= float(raw) <= 1.0:
                 tenant_temperature = float(raw)
+            raw_blocklist = tenant.config_json.get("moderation_blocklist")
+            if isinstance(raw_blocklist, list):
+                tenant_blocklist = [str(t) for t in raw_blocklist if t]
 
     tenant_id = user.tenant_id
     user_id = user.id
@@ -122,6 +126,7 @@ async def websocket_chat(
                     user_id=user_id,
                     conversation_id=conversation_id,
                     temperature=tenant_temperature,
+                    tenant_blocklist=tenant_blocklist,
                 ):
                     await ws_manager.send_json(websocket, frame)
             except (LLMError, SupportForgeError) as e:

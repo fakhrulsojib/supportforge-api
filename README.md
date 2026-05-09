@@ -24,6 +24,7 @@ SupportForge is a multi-tenant AI customer support agent powered by a self-hoste
 - **Conversation Memory** — Full audit trail in PostgreSQL with feedback tracking
 - **Analytics** — Daily stats, intent classification, satisfaction metrics
 - **Output Validation** — Anti-hallucination guard detects fabricated contact info, prices, and forbidden patterns with context cross-referencing
+- **Content Moderation** — Input filtering (jailbreak detection, tenant blocklist) and output flagging with full DB audit trail
 
 ## Architecture
 
@@ -50,7 +51,7 @@ Hexagonal Architecture (Ports & Adapters)
 | Framework | FastAPI (async) |
 | LLM | Ollama (self-hosted, OpenAI-compatible) |
 | RAG | LangGraph + ChromaDB |
-| Database | PostgreSQL (SQLAlchemy async + Alembic) |
+| Database | PostgreSQL (SQLAlchemy async) |
 | Cache | Redis |
 | Auth | JWT (access + refresh tokens) |
 | Streaming | WebSocket |
@@ -74,13 +75,11 @@ cp .env.example .env
 # 3. Start all services
 docker compose up -d
 
-# 4. Run migrations
-docker compose exec api alembic upgrade head
-
-# 5. Seed demo data
+# 4. Create tenant and seed demo data
+docker compose exec api python scripts/create_tenant.py
 docker compose exec api python scripts/seed_demo.py
 
-# 6. Verify
+# 5. Verify
 curl http://localhost:8000/health
 ```
 
@@ -119,7 +118,6 @@ supportforge-api/
 │   ├── rag/                       # LangGraph RAG pipeline
 │   ├── api/                       # HTTP + WebSocket endpoints
 │   └── workers/                   # Background tasks
-├── migrations/                    # Alembic migrations
 ├── tests/                         # Unit, integration, E2E tests
 ├── data/                          # Bitext dataset
 ├── scripts/                       # Seed & utility scripts
@@ -137,7 +135,7 @@ supportforge-api/
 | `POST` | `/api/v1/auth/register` | — | Register user |
 | `POST` | `/api/v1/auth/login` | — | Login |
 | `POST` | `/api/v1/auth/refresh` | — | Refresh token |
-| `POST` | `/api/v1/chat` | — | Send chat message |
+| `POST` | `/api/v1/chat` | JWT | Send chat message |
 | `GET` | `/api/v1/conversations` | JWT | List conversations |
 | `GET` | `/api/v1/conversations/{id}` | JWT | Get conversation detail |
 | `PATCH` | `/api/v1/conversations/messages/{id}/feedback` | JWT | Update message feedback |

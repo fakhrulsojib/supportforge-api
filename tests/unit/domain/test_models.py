@@ -147,6 +147,26 @@ class TestMessageModel:
         msg = Message(role=MessageRole.ASSISTANT, content="Answer", sources_json=sources)
         assert len(msg.sources_json) == 1
 
+    def test_moderation_fields_default_empty(self) -> None:
+        """Moderation fields should default to empty strings."""
+        msg = Message(role=MessageRole.USER, content="Hello")
+        assert msg.moderation_reason == ""
+        assert msg.moderation_matched_term == ""
+
+    def test_moderation_fields_set(self) -> None:
+        """Moderation fields should accept values."""
+        msg = Message(
+            role=MessageRole.ASSISTANT,
+            content="Blocked response",
+            validation_status=ValidationStatus.FLAGGED,
+            moderation_reason="jailbreak_detected",
+            moderation_matched_term="ignore previous instructions",
+        )
+        assert msg.moderation_reason == "jailbreak_detected"
+        assert msg.moderation_matched_term == "ignore previous instructions"
+        assert msg.validation_status == ValidationStatus.FLAGGED
+
+
 
 class TestDocumentModel:
     """Test suite for Document domain model."""

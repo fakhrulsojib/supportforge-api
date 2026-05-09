@@ -28,6 +28,9 @@ SupportForge is a production-grade, multi-tenant AI customer support agent. This
 | Phase 11 | `phase-11/ab-testing-config` | Tenant config (model, temperature, prompt variant), admin settings UI |
 | Phase 12 | `phase-12/webhook-integration` | Webhook service for escalation/feedback/new conversation events |
 | Phase 13 | `phase-13/deployment-e2e` | Docker prod, deployment guides, E2E test suite, tech debt cleanup |
+| Phase 14 | `phase-14/platform-superadmin` | Platform superadmin role, tenant provisioning (superadmin-only) |
+| Phase 15 | `phase-15/user-approval` | User registration approval workflow, role management |
+| Phase 16 | `phase-16/moderation-dashboard` | Central moderation dashboard for superadmin + tenant admin |
 
 ### Branch Rules
 
@@ -302,7 +305,7 @@ For **any** module not listed below, derive the test path using this rule:
 
 | Source | Test |
 |---|---|
-| `app/domain/services/chat_service.py` | `tests/unit/domain/test_chat_service.py` |
+| `app/domain/services/chat_service.py` | `tests/unit/test_chat.py` |
 | `app/domain/services/tenant_service.py` | `tests/unit/domain/test_tenant_service.py` |
 | `app/domain/services/ingestion_service.py` | `tests/unit/domain/test_ingestion_service.py` |
 | `app/infrastructure/llm/ollama_adapter.py` | `tests/integration/infrastructure/test_ollama_adapter.py` |
@@ -321,6 +324,7 @@ For **any** module not listed below, derive the test path using this rule:
 | `app/rag/text_extractor.py` | `tests/unit/workers/test_text_extractor.py` |
 | `app/workers/ingestion_worker.py` | `tests/unit/workers/test_ingestion_worker.py` |
 | `app/domain/services/output_validator.py` | `tests/unit/domain/test_output_validator.py` |
+| `app/domain/services/content_moderator.py` | `tests/unit/domain/test_content_moderator.py` |
 
 ### Testing Standards
 
