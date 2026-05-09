@@ -82,6 +82,7 @@ def _register_routes(app: FastAPI) -> None:
     from app.api.v1.chat_ws import router as chat_ws_router
     from app.api.v1.conversations import router as conversations_router
     from app.api.v1.ingest import router as ingest_router
+    from app.api.v1.review import router as review_router
     from app.api.v1.tenants import router as tenants_router
 
     app.include_router(auth_router)
@@ -89,6 +90,7 @@ def _register_routes(app: FastAPI) -> None:
     app.include_router(chat_ws_router)
     app.include_router(conversations_router)
     app.include_router(ingest_router)
+    app.include_router(review_router)
     app.include_router(tenants_router)
 
 

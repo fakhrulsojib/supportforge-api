@@ -4,11 +4,16 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.domain.interfaces.repository import ConversationRepository, MessageRepository
 from app.domain.models.conversation import Conversation, Message
-from app.domain.models.enums import ConversationStatus, EscalationTrigger, FeedbackType
+from app.domain.models.enums import (
+    ConversationStatus,
+    EscalationTrigger,
+    FeedbackType,
+    ValidationStatus,
+)
 from app.infrastructure.database.models import ConversationModel, MessageModel
 
 if TYPE_CHECKING:
@@ -104,6 +109,61 @@ class SQLConversationRepository(ConversationRepository):
         await self._session.flush()
         return self._to_domain(model)
 
+    async def list_escalated(
+        self,
+        tenant_id: str,
+        *,
+        trigger: EscalationTrigger | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[list[Conversation], int]:
+        """List escalated conversations for a tenant.
+
+        Args:
+            tenant_id: Tenant context for isolation.
+            trigger: Optional filter by escalation trigger type.
+            start_date: Optional ISO date lower bound.
+            end_date: Optional ISO date upper bound.
+            limit: Page size.
+            offset: Page offset.
+
+        Returns:
+            Tuple of (conversations, total_count).
+        """
+        base = select(ConversationModel).where(
+            ConversationModel.tenant_id == tenant_id,
+            ConversationModel.escalation_trigger != EscalationTrigger.NONE,
+        )
+
+        if trigger:
+            base = base.where(ConversationModel.escalation_trigger == trigger)
+        if start_date:
+            base = base.where(ConversationModel.started_at >= start_date)
+        if end_date:
+            base = base.where(ConversationModel.started_at <= end_date)
+
+        # Count
+        count_stmt = select(func.count()).select_from(base.subquery())
+        count_result = await self._session.execute(count_stmt)
+        total = count_result.scalar() or 0
+
+        # Paginated results
+        stmt = base.order_by(ConversationModel.started_at.desc()).limit(limit).offset(offset)
+        result = await self._session.execute(stmt)
+        return [self._to_domain(m) for m in result.scalars().all()], total
+
+    async def count_open_escalations(self, tenant_id: str) -> int:
+        """Count unresolved escalated conversations for a tenant."""
+        stmt = select(func.count()).where(
+            ConversationModel.tenant_id == tenant_id,
+            ConversationModel.escalation_trigger != EscalationTrigger.NONE,
+            ConversationModel.status == ConversationStatus.ESCALATED,
+        )
+        result = await self._session.execute(stmt)
+        return result.scalar() or 0
+
 
 class SQLMessageRepository(MessageRepository):
     """Concrete message repository backed by PostgreSQL."""
@@ -127,6 +187,8 @@ class SQLMessageRepository(MessageRepository):
             validation_status=model.validation_status,
             moderation_reason=model.moderation_reason,
             moderation_matched_term=model.moderation_matched_term,
+            reviewed_at=model.reviewed_at,
+            reviewed_by=model.reviewed_by,
             created_at=model.created_at,
         )
 
@@ -174,3 +236,193 @@ class SQLMessageRepository(MessageRepository):
         model.feedback = feedback
         await self._session.flush()
         return self._to_domain(model)
+
+    async def update_review_status(
+        self, message_id: str, reviewed_by: str,
+    ) -> Message | None:
+        """Mark a message as reviewed by an admin.
+
+        Args:
+            message_id: Message UUID.
+            reviewed_by: Reviewer user ID.
+
+        Returns:
+            Updated message, or None if not found.
+        """
+        from datetime import datetime, timezone
+
+        model = await self._session.get(MessageModel, message_id)
+        if not model:
+            return None
+        model.reviewed_at = datetime.now(timezone.utc)
+        model.reviewed_by = reviewed_by
+        await self._session.flush()
+        return self._to_domain(model)
+
+    async def get_preceding_user_message(
+        self, conversation_id: str, assistant_message_id: str,
+    ) -> Message | None:
+        """Find the user message that precedes a given assistant message.
+
+        Looks for the most recent USER message created before the given
+        assistant message within the same conversation.
+
+        Args:
+            conversation_id: Parent conversation UUID.
+            assistant_message_id: Assistant message to look before.
+
+        Returns:
+            The preceding user message, or None.
+        """
+        # Get the assistant message's creation time
+        assistant = await self._session.get(MessageModel, assistant_message_id)
+        if not assistant:
+            return None
+
+        from app.domain.models.enums import MessageRole
+
+        stmt = (
+            select(MessageModel)
+            .where(
+                MessageModel.conversation_id == conversation_id,
+                MessageModel.role == MessageRole.USER,
+                MessageModel.created_at < assistant.created_at,
+            )
+            .order_by(MessageModel.created_at.desc())
+            .limit(1)
+        )
+        result = await self._session.execute(stmt)
+        model = result.scalars().first()
+        return self._to_domain(model) if model else None
+
+    async def list_negative_feedback(
+        self,
+        tenant_id: str,
+        *,
+        reviewed: bool | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[list[Message], int]:
+        """List messages with negative feedback for a tenant.
+
+        Joins through conversations for tenant isolation.
+
+        Args:
+            tenant_id: Tenant context.
+            reviewed: If True, only reviewed; if False, only unreviewed; None = all.
+            start_date: Optional ISO date lower bound.
+            end_date: Optional ISO date upper bound.
+            limit: Page size.
+            offset: Page offset.
+
+        Returns:
+            Tuple of (messages, total_count).
+        """
+        base = (
+            select(MessageModel)
+            .join(ConversationModel, MessageModel.conversation_id == ConversationModel.id)
+            .where(
+                ConversationModel.tenant_id == tenant_id,
+                MessageModel.feedback == FeedbackType.NEGATIVE,
+            )
+        )
+
+        if reviewed is True:
+            base = base.where(MessageModel.reviewed_at.isnot(None))
+        elif reviewed is False:
+            base = base.where(MessageModel.reviewed_at.is_(None))
+
+        if start_date:
+            base = base.where(MessageModel.created_at >= start_date)
+        if end_date:
+            base = base.where(MessageModel.created_at <= end_date)
+
+        count_stmt = select(func.count()).select_from(base.subquery())
+        count_result = await self._session.execute(count_stmt)
+        total = count_result.scalar() or 0
+
+        stmt = base.order_by(MessageModel.created_at.desc()).limit(limit).offset(offset)
+        result = await self._session.execute(stmt)
+        return [self._to_domain(m) for m in result.scalars().all()], total
+
+    async def list_flagged_messages(
+        self,
+        tenant_id: str,
+        *,
+        reviewed: bool | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[list[Message], int]:
+        """List messages with flagged validation status for a tenant.
+
+        Args:
+            tenant_id: Tenant context.
+            reviewed: If True, only reviewed; if False, only unreviewed; None = all.
+            start_date: Optional ISO date lower bound.
+            end_date: Optional ISO date upper bound.
+            limit: Page size.
+            offset: Page offset.
+
+        Returns:
+            Tuple of (messages, total_count).
+        """
+        base = (
+            select(MessageModel)
+            .join(ConversationModel, MessageModel.conversation_id == ConversationModel.id)
+            .where(
+                ConversationModel.tenant_id == tenant_id,
+                MessageModel.validation_status == ValidationStatus.FLAGGED,
+            )
+        )
+
+        if reviewed is True:
+            base = base.where(MessageModel.reviewed_at.isnot(None))
+        elif reviewed is False:
+            base = base.where(MessageModel.reviewed_at.is_(None))
+
+        if start_date:
+            base = base.where(MessageModel.created_at >= start_date)
+        if end_date:
+            base = base.where(MessageModel.created_at <= end_date)
+
+        count_stmt = select(func.count()).select_from(base.subquery())
+        count_result = await self._session.execute(count_stmt)
+        total = count_result.scalar() or 0
+
+        stmt = base.order_by(MessageModel.created_at.desc()).limit(limit).offset(offset)
+        result = await self._session.execute(stmt)
+        return [self._to_domain(m) for m in result.scalars().all()], total
+
+    async def count_unreviewed_negative(self, tenant_id: str) -> int:
+        """Count messages with negative feedback that haven't been reviewed."""
+        stmt = (
+            select(func.count())
+            .select_from(MessageModel)
+            .join(ConversationModel, MessageModel.conversation_id == ConversationModel.id)
+            .where(
+                ConversationModel.tenant_id == tenant_id,
+                MessageModel.feedback == FeedbackType.NEGATIVE,
+                MessageModel.reviewed_at.is_(None),
+            )
+        )
+        result = await self._session.execute(stmt)
+        return result.scalar() or 0
+
+    async def count_unreviewed_flagged(self, tenant_id: str) -> int:
+        """Count flagged messages that haven't been reviewed."""
+        stmt = (
+            select(func.count())
+            .select_from(MessageModel)
+            .join(ConversationModel, MessageModel.conversation_id == ConversationModel.id)
+            .where(
+                ConversationModel.tenant_id == tenant_id,
+                MessageModel.validation_status == ValidationStatus.FLAGGED,
+                MessageModel.reviewed_at.is_(None),
+            )
+        )
+        result = await self._session.execute(stmt)
+        return result.scalar() or 0

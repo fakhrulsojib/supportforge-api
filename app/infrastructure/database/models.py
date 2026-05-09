@@ -144,6 +144,8 @@ class MessageModel(Base):
     )
     moderation_reason: Mapped[str] = mapped_column(String(100), nullable=False, default="")
     moderation_matched_term: Mapped[str] = mapped_column(String(200), nullable=False, default="")
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    reviewed_by: Mapped[str] = mapped_column(String(36), nullable=False, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
 
     # Relationships
@@ -153,6 +155,7 @@ class MessageModel(Base):
         Index("ix_messages_conversation_id", "conversation_id"),
         Index("ix_messages_created_at", "created_at"),
         Index("ix_messages_validation_status", "validation_status"),
+        Index("ix_messages_feedback", "feedback"),
     )
 
 

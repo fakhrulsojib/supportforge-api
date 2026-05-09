@@ -40,4 +40,6 @@ class Message(BaseModel):
     validation_status: ValidationStatus = ValidationStatus.NONE
     moderation_reason: str = ""
     moderation_matched_term: str = ""
+    reviewed_at: datetime | None = None
+    reviewed_by: str = ""
     created_at: datetime | None = None
