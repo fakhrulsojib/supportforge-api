@@ -148,9 +148,10 @@
 - **No refresh token revocation (M-2):** Token rotation issues a new refresh token
   on every `/refresh` call, but old tokens remain valid until natural expiry.
   A Redis-backed token blacklist or token-family detection will be added in Phase 4.2.
-- **Global admin model (M-5):** Tenant CRUD uses a platform-wide admin role — an admin
-  authenticated under tenant A can manage any tenant. Per-tenant admin scoping
-  (cross-tenant isolation for admins) will be evaluated in Phase 4.
+- **Global admin model (M-5):** ~~Tenant CRUD uses a platform-wide admin role.~~
+  **PARTIALLY RESOLVED** in Phase 9 — `SUPERADMIN` role separates platform owner from
+  tenant admin. Superadmin passes through `require_role(ADMIN)` guards. Full per-tenant
+  admin scoping (admin A cannot manage tenant B) is deferred to Phase 10+ (Tenant Provisioning).
 - ~~**`verify_token()` accepts empty `tenant_id`:**~~ **RESOLVED** — `verify_token()` now validates
   non-empty `tenant_id` matching the `user_id` validation pattern.
 - ~~**`ChatResponse.created_at` uses deprecated `datetime.utcnow()`:**~~ **RESOLVED** — replaced
@@ -169,7 +170,7 @@
 
 ---
 
-## Upcoming Phases (8–22) 🔲
+## Upcoming Phases (10–22) 🔲
 
 > See `supportforge_plan.md` for detailed task lists and gotchas.
 
@@ -178,8 +179,8 @@
 | 8 | Feedback Review Queue | High | ✅ |
 | 9 | Platform Superadmin Role | High | ✅ |
 | 10 | Tenant Provisioning API | High | 🔲 |
-| 11 | Tenant Provisioning UI | High | 🔲 |
-| 12 | Failed Query Logging & Analytics | High | 🔲 |
+| 11 | Failed Query Logging & Analytics | High | 🔲 |
+| 12 | Tenant Provisioning UI | High | 🔲 |
 | 13 | Rate Limiting Middleware | Medium | 🔲 |
 | 14 | PII Detection & Masking | Medium | 🔲 |
 | 15 | User Approval Workflow | Medium | 🔲 |
@@ -201,8 +202,6 @@
 - [ ] Replace `mypy ignore_errors = true` → Phase 22
 - [ ] Fix `.env.example` interpolation → Phase 22
 - [ ] Per-tenant admin scoping tests → Phase 22
-
----
 
 
 ---

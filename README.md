@@ -17,7 +17,7 @@ SupportForge is a multi-tenant AI customer support agent powered by a self-hoste
 ### Key Features
 
 - **RAG Pipeline** — LangGraph state machine with semantic retrieval, relevance grading, and source-cited answers
-- **Multi-Tenant** — Full data isolation per tenant with RBAC (admin, agent, viewer)
+- **Multi-Tenant** — Full data isolation per tenant with RBAC (admin, agent, viewer, superadmin)
 - **Real-Time Streaming** — Token-by-token WebSocket responses for instant chat UX
 - **Self-Hosted LLM** — Zero-cost inference via Ollama behind Cloudflare Access
 - **Document Ingestion** — Upload PDF, Markdown, CSV, and plain text to build your knowledge base
@@ -26,6 +26,8 @@ SupportForge is a multi-tenant AI customer support agent powered by a self-hoste
 - **Output Validation** — Anti-hallucination guard detects fabricated contact info, prices, and forbidden patterns with context cross-referencing
 - **Content Moderation** — Input filtering (jailbreak detection, tenant blocklist) and output flagging with full DB audit trail
 - **Smart Escalation** — Context-aware human handoff triggered by frustrated sentiment, repeated questions, or explicit user requests
+- **Feedback Review Queue** — Admin dashboard endpoints for reviewing negative feedback, escalations, and flagged messages
+- **Platform Superadmin** — Cross-tenant platform management role with dedicated RBAC, JWT claims, and CLI bootstrap script
 
 ## Architecture
 
@@ -133,7 +135,7 @@ supportforge-api/
 | Method | Endpoint | Auth | Description |
 |---|---|---|---|
 | `GET` | `/health` | — | Health check |
-| `POST` | `/api/v1/auth/register` | — | Register user |
+| `POST` | `/api/v1/auth/register` | — | Register user (superadmin blocked) |
 | `POST` | `/api/v1/auth/login` | — | Login |
 | `POST` | `/api/v1/auth/refresh` | — | Refresh token |
 | `POST` | `/api/v1/chat` | JWT | Send chat message |
@@ -144,6 +146,25 @@ supportforge-api/
 | `GET` | `/api/v1/tenants/{slug}` | JWT | Get tenant by slug |
 | `PATCH` | `/api/v1/tenants/{id}` | Admin | Update tenant |
 | `DELETE` | `/api/v1/tenants/{id}` | Admin | Delete tenant |
+| `POST` | `/api/v1/ingest/upload` | Admin | Upload document |
+| `GET` | `/api/v1/ingest/documents` | Admin | List documents |
+| `DELETE` | `/api/v1/ingest/documents/{id}` | Admin | Delete document |
+| `GET` | `/api/v1/admin/feedback/negative` | Admin | List negative feedback |
+| `GET` | `/api/v1/admin/escalations` | Admin | List escalated conversations |
+| `GET` | `/api/v1/admin/flagged` | Admin | List flagged messages |
+| `PATCH` | `/api/v1/admin/feedback/{id}/review` | Admin | Mark feedback as reviewed |
+| `GET` | `/api/v1/admin/feedback/stats` | Admin | Feedback aggregate stats |
+
+### Roles
+
+| Role | Scope | Description |
+|---|---|---|
+| `viewer` | Tenant | Read-only access to conversations |
+| `agent` | Tenant | Chat + document access |
+| `admin` | Tenant | Full tenant management |
+| `superadmin` | Platform | Cross-tenant platform management |
+
+> **Note:** Superadmin users cannot self-register. Use `scripts/create_superadmin.py` to bootstrap the first superadmin.
 
 ## Roadmap
 
