@@ -76,6 +76,7 @@ Some phases (10, 11, 13) span both `supportforge-api` and `supportforge-ui`. Whe
    - Edge cases (empty inputs, boundary values, None/null, empty strings)
    - Error cases (invalid input → correct exception raised)
    - If fixing a bug: add a regression test tagged `@pytest.mark.regression`
+   - **If the feature involves streaming (WebSocket/SSE):** write at least one test verifying that the data the client receives (streamed frames) is consistent with the data persisted to the database. Any post-stream mutation (appended text, modified status) must either be streamed to the client OR documented as a known divergence.
 3. **Security negative tests (mandatory for any auth or data endpoint):**
    - Missing auth token → 401
    - Wrong tenant's data → 403 or empty result
@@ -97,6 +98,8 @@ Some phases (10, 11, 13) span both `supportforge-api` and `supportforge-ui`. Whe
    - All function signatures — **MUST** have complete type hints
    - All `datetime` usage — **MUST** use `datetime.now(timezone.utc)` — **NEVER** `datetime.utcnow()` or naive datetimes
    - All Pydantic response models — **MUST NOT** include sensitive fields (password hashes, tokens, connection strings)
+   - If any ORM model (`app/infrastructure/database/models.py`) is modified — **MUST** generate an Alembic migration: `alembic revision --autogenerate -m "<description>"` and verify with `alembic upgrade head`
+   - If a new column has a `default=` value, verify existing rows will be migrated correctly (nullable vs server_default)
 3. Run the new tests again to confirm they **pass**: `pytest tests/path/to/test_module.py -v`
 
 > **Gate:** All new tests pass.
@@ -226,12 +229,14 @@ For each markdown file, check if this task requires an update:
 ### Patterns
 - [ ] All routers use the same error response format
 - [ ] All services follow the same dependency injection pattern
+- [ ] Stateless domain services are injected via constructor (`__init__`) or used as module-level singletons — never instantiated per-request inside a method
 - [ ] All repository methods follow the same naming convention (`get_by_*`, `create`, `update`, `delete`)
 - [ ] All Pydantic schemas follow the same field naming convention (snake_case, consistent `Field(...)` usage)
 
 ### Imports & Structure
 - [ ] No deprecated import shims left after refactoring — all callers use the canonical path
 - [ ] No re-export files that exist only for backward compatibility — migrate all consumers
+- [ ] Domain-to-domain imports are at module top-level (never inline). Inline imports are ONLY justified when crossing hexagonal boundaries (domain→infrastructure) to avoid circular dependencies.
 - [ ] All `__init__.py` files have module docstrings
 
 ### Type Safety
@@ -257,6 +262,8 @@ For each markdown file, check if this task requires an update:
 - [ ] Coverage is ≥ 95% with `--cov-branch`
 - [ ] `mypy --strict` passes with zero errors
 - [ ] `ruff check` + `ruff format --check` pass with zero issues
+- [ ] If any ORM model changed: Alembic migration exists and `alembic upgrade head` succeeds on a clean DB
+- [ ] No pending `alembic revision --autogenerate` changes (run and verify "No changes detected" or new migration is committed)
 
 ---
 
@@ -324,6 +331,7 @@ For **any** module not listed below, derive the test path using this rule:
 - **Multi-tenant isolation** — Tenant A must never see Tenant B's data
 - **Test environment isolation** — tests must not leak environment variables (`APP_ENV`, secrets) between test functions; use `monkeypatch` or `unittest.mock.patch.dict(os.environ)`
 - **Edge case coverage** — test empty strings, `None`, zero-length lists, boundary values for every validated field
+- **Pattern/regex coverage** — when implementing regex-based detection, test with: trailing punctuation (`.`, `,`, `)`), embedded in sentences, case variations, overlapping/substring matches, and boundary characters
 
 ---
 
