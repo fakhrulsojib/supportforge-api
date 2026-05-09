@@ -247,3 +247,34 @@
 - [x] Structured log warnings (`output_validation_failed`) with conversation_id, rule, snippet
 - [x] `validation_status` included in done frame and persisted to database
 - [x] 6 integration tests (clean passes, fabricated flagged, log verification, context pass-through, LaTeX flagged, escalation bypass)
+
+---
+
+## Phase 6 — Input/Output Content Moderation ✅
+
+> **Branch:** `phase-6/content-moderation`
+
+### 6.1 — ContentModerator Domain Service ✅
+- [x] `app/domain/services/content_moderator.py` — pure domain service (zero framework imports)
+- [x] `ModerationResult` dataclass with `blocked`, `flagged`, `reason`, `matched_term`, `canned_response`
+- [x] 13 compiled regex patterns for jailbreak detection (ignore instructions, pretend, DAN, system prompt, etc.)
+- [x] Word-boundary matching to prevent false positives (e.g., "reacting" ≠ "act as")
+- [x] Tenant-configurable blocklist matching (case-insensitive substring)
+- [x] Input moderation (`check_input`): jailbreak + blocklist → blocks with canned response
+- [x] Output moderation (`check_output`): blocklist check on LLM-generated text → flags
+- [x] 44 unit tests covering clean input, jailbreak patterns, blocklist matching, output moderation, edge cases
+
+### 6.2 — ChatService Integration ✅
+- [x] Input moderation runs BEFORE RAG pipeline (zero LLM cost for blocked inputs)
+- [x] Blocked input yields canned response token + done frame with `moderation_blocked=true`
+- [x] Output moderation runs AFTER streaming, alongside output validation
+- [x] Output flag overrides `validation_status` to `flagged`
+- [x] Structured log events: `content_moderation_input_blocked`, `content_moderation_output_flagged`
+- [x] `tenant_blocklist` parameter added to `stream_message()` (default: empty)
+- [x] 6 integration tests (jailbreak blocked, blocklist blocked, clean passes, output flagged, log verification, default empty blocklist)
+
+### 6.3 — Tenant Configuration ✅
+- [x] Blocklist loaded from tenant `config_json["moderation_blocklist"]` in WebSocket handler
+- [x] Follows same extraction pattern as per-tenant temperature
+- [x] Default: empty list (no tenant-specific blocked terms)
+

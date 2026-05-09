@@ -321,6 +321,7 @@ For **any** module not listed below, derive the test path using this rule:
 | `app/rag/text_extractor.py` | `tests/unit/workers/test_text_extractor.py` |
 | `app/workers/ingestion_worker.py` | `tests/unit/workers/test_ingestion_worker.py` |
 | `app/domain/services/output_validator.py` | `tests/unit/domain/test_output_validator.py` |
+| `app/domain/services/content_moderator.py` | `tests/unit/domain/test_content_moderator.py` |
 
 ### Testing Standards
 
