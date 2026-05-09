@@ -28,14 +28,13 @@
 - [x] Health endpoint at `/health`
 - [x] Tests: health endpoint, config validation
 
-### 1.2 — PostgreSQL + Alembic Migrations ✅
+### 1.2 — PostgreSQL + ORM Schema ✅
 - [x] Async SQLAlchemy engine + session
 - [x] ORM models: Tenant, User, Conversation, Message, Document, DocumentChunk, DailyStat
 - [x] All ENUMs defined
-- [x] Alembic initialized + initial migration
-- [x] Database indexes on tenant_id, created_at, slug
+- [x] Database indexes on tenant_id, created_at, slug, validation_status
 - [x] Repository implementations for all domain interfaces
-- [ ] Tests: repo CRUD with testcontainers, migration up/down _(deferred — infra repos omitted from coverage, tested via integration tests)_
+- [ ] Tests: repo CRUD with testcontainers _(deferred — infra repos omitted from coverage, tested via integration tests)_
 
 ### 1.3 — Ollama Adapter ✅
 - [x] `LLMProvider` ABC with `generate()`, `stream()`, `health_check()`
@@ -258,11 +257,12 @@
 - [x] `app/domain/services/content_moderator.py` — pure domain service (zero framework imports)
 - [x] `ModerationResult` dataclass with `blocked`, `flagged`, `reason`, `matched_term`, `canned_response`
 - [x] 13 compiled regex patterns for jailbreak detection (ignore instructions, pretend, DAN, system prompt, etc.)
+- [x] Patterns tightened for precision: `you are now`, `disregard your`, `override your` require jailbreak-specific trailing context to prevent false positives on legitimate customer messages
 - [x] Word-boundary matching to prevent false positives (e.g., "reacting" ≠ "act as")
 - [x] Tenant-configurable blocklist matching (case-insensitive substring)
 - [x] Input moderation (`check_input`): jailbreak + blocklist → blocks with canned response
 - [x] Output moderation (`check_output`): blocklist check on LLM-generated text → flags
-- [x] 44 unit tests covering clean input, jailbreak patterns, blocklist matching, output moderation, edge cases
+- [x] 50 unit tests covering clean input, jailbreak patterns, blocklist matching, output moderation, edge cases, and false-positive negative tests
 
 ### 6.2 — ChatService Integration ✅
 - [x] Input moderation runs BEFORE RAG pipeline (zero LLM cost for blocked inputs)
@@ -270,11 +270,22 @@
 - [x] Output moderation runs AFTER streaming, alongside output validation
 - [x] Output flag overrides `validation_status` to `flagged`
 - [x] Structured log events: `content_moderation_input_blocked`, `content_moderation_output_flagged`
-- [x] `tenant_blocklist` parameter added to `stream_message()` (default: empty)
-- [x] 6 integration tests (jailbreak blocked, blocklist blocked, clean passes, output flagged, log verification, default empty blocklist)
+- [x] `tenant_blocklist` parameter added to both `stream_message()` and `process_message()`
+- [x] Both REST (`process_message`) and WebSocket (`stream_message`) paths moderated — no bypass vector
+- [x] `matched_term` truncated to 100 chars in all log calls (structured log injection defense)
+- [x] 11 integration tests (jailbreak blocked, blocklist blocked, clean passes, output flagged, log verification, default empty blocklist, REST moderation, persist field verification)
 
 ### 6.3 — Tenant Configuration ✅
 - [x] Blocklist loaded from tenant `config_json["moderation_blocklist"]` in WebSocket handler
 - [x] Follows same extraction pattern as per-tenant temperature
 - [x] Default: empty list (no tenant-specific blocked terms)
+
+### 6.4 — Moderation Audit Trail ✅
+- [x] `moderation_reason` column (VARCHAR 100) on `messages` table — stores `jailbreak_detected` or `blocklist_match`
+- [x] `moderation_matched_term` column (VARCHAR 200) on `messages` table — stores the trigger term/pattern
+- [x] `ix_messages_validation_status` index for efficient admin queries
+- [x] Domain model, ORM model, and repository all map the new fields
+- [x] `_persist_exchange()` accepts and stores moderation fields from all call sites
+- [x] Blocked exchanges persisted in both REST and WebSocket paths for audit trail
+- [x] 5 tests (domain model defaults/set, persist field verification on input block, output flag, REST block)
 

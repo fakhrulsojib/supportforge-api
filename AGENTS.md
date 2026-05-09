@@ -302,7 +302,7 @@ For **any** module not listed below, derive the test path using this rule:
 
 | Source | Test |
 |---|---|
-| `app/domain/services/chat_service.py` | `tests/unit/domain/test_chat_service.py` |
+| `app/domain/services/chat_service.py` | `tests/unit/test_chat.py` |
 | `app/domain/services/tenant_service.py` | `tests/unit/domain/test_tenant_service.py` |
 | `app/domain/services/ingestion_service.py` | `tests/unit/domain/test_ingestion_service.py` |
 | `app/infrastructure/llm/ollama_adapter.py` | `tests/integration/infrastructure/test_ollama_adapter.py` |
