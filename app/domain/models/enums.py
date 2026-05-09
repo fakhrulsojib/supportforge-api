@@ -84,7 +84,7 @@ class TenantStatus(str, enum.Enum):
     """Lifecycle status of a tenant.
 
     Controls whether a tenant's users can access services like chat.
-    Suspended and archived tenants are blocked from chat (both REST and WS).
+    Only active tenants can access chat (both REST and WS).
     """
 
     PENDING = "pending"

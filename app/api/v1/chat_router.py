@@ -40,7 +40,7 @@ async def chat_endpoint(
     Requires JWT authentication. Tenant is derived from the
     authenticated user's token — no manual header needed.
 
-    Suspended and archived tenants are rejected with a 403 error.
+    Non-active tenants are rejected with a 403 error.
 
     Args:
         request: Chat request with message and optional conversation_id.
