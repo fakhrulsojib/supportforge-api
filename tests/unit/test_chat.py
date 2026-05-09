@@ -721,6 +721,9 @@ class TestChatServiceOutputValidation:
 
         done_frame = [f for f in frames if f["type"] == "done"][0]
         assert done_frame["data"]["validation_status"] == "passed"
+        # No disclaimer frame should be emitted for clean responses
+        disclaimer_frames = [f for f in frames if f["type"] == "disclaimer"]
+        assert len(disclaimer_frames) == 0
 
     @pytest.mark.asyncio
     async def test_stream_message_fabricated_phone_flags_validation(self) -> None:
