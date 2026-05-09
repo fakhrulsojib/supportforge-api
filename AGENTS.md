@@ -23,9 +23,9 @@ SupportForge is a production-grade, multi-tenant AI customer support agent. This
 | Phase 6 | `phase-6/content-moderation` | Input/output moderation, jailbreak detection, blocklist |
 | Phase 7 | `phase-7/smart-escalation` | Sentiment + repetition + explicit request escalation |
 | Phase 8 | `phase-8/feedback-review-queue` | Admin review endpoints + UI for negative feedback, escalations, flagged messages |
-| Phase 9 | `phase-9/failed-query-logging` | Failed query model, persistence, admin API, analytics integration |
-| Phase 10 | `phase-10/platform-superadmin` | Platform superadmin role, JWT claims, cross-tenant access |
-| Phase 11 | `phase-11/tenant-provisioning-api` | Tenant CRUD, status lifecycle, chat gate for suspended tenants |
+| Phase 9 | `phase-9/platform-superadmin` | Platform superadmin role, JWT claims, cross-tenant access |
+| Phase 10 | `phase-10/tenant-provisioning-api` | Tenant CRUD, status lifecycle, chat gate for suspended tenants |
+| Phase 11 | `phase-11/failed-query-logging` | Failed query model, persistence, admin API, analytics integration |
 | Phase 12 | `phase-12/tenant-provisioning-ui` | Superadmin frontend for tenant management |
 | Phase 13 | `phase-13/rate-limiting` | Redis sliding window middleware, fail-closed, token blacklist |
 | Phase 14 | `phase-14/pii-masking` | PII detection (CC, SSN, phone, email), masking before LLM + storage |
