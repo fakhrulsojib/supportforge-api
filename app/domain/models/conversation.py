@@ -9,7 +9,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-from app.domain.models.enums import ConversationStatus, FeedbackType, MessageRole
+from app.domain.models.enums import ConversationStatus, FeedbackType, MessageRole, ValidationStatus
 
 
 class Conversation(BaseModel):
@@ -36,4 +36,5 @@ class Message(BaseModel):
     tokens_in: int = 0
     tokens_out: int = 0
     feedback: FeedbackType = FeedbackType.NONE
+    validation_status: ValidationStatus = ValidationStatus.NONE
     created_at: datetime | None = None

@@ -28,6 +28,7 @@ from app.domain.models.enums import (
     FeedbackType,
     MessageRole,
     UserRole,
+    ValidationStatus,
 )
 
 
@@ -133,6 +134,9 @@ class MessageModel(Base):
     tokens_in: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     tokens_out: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     feedback: Mapped[FeedbackType] = mapped_column(Enum(FeedbackType), nullable=False, default=FeedbackType.NONE)
+    validation_status: Mapped[ValidationStatus] = mapped_column(
+        Enum(ValidationStatus), nullable=False, default=ValidationStatus.NONE
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
 
     # Relationships

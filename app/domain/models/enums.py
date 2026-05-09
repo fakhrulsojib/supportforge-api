@@ -47,3 +47,15 @@ class DocumentStatus(str, enum.Enum):
     PROCESSING = "processing"
     READY = "ready"
     FAILED = "failed"
+
+
+class ValidationStatus(str, enum.Enum):
+    """Output validation status of an assistant message.
+
+    Tracks whether a message passed post-generation validation
+    checks (anti-hallucination guard).
+    """
+
+    PASSED = "passed"
+    FLAGGED = "flagged"
+    NONE = "none"

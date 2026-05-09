@@ -13,6 +13,7 @@ from app.domain.models.enums import (
     FeedbackType,
     MessageRole,
     UserRole,
+    ValidationStatus,
 )
 from app.domain.models.tenant import Tenant, TenantCreate
 from app.domain.models.user import User, UserCreate
@@ -47,6 +48,11 @@ class TestEnums:
         assert DocumentStatus.READY.value == "ready"
         assert DocumentStatus.FAILED.value == "failed"
 
+    def test_validation_status_values(self) -> None:
+        assert ValidationStatus.PASSED.value == "passed"
+        assert ValidationStatus.FLAGGED.value == "flagged"
+        assert ValidationStatus.NONE.value == "none"
+
     def test_enums_are_string_enums(self) -> None:
         """All enums should be str enums for JSON serialization."""
         assert isinstance(UserRole.ADMIN, str)
@@ -54,6 +60,7 @@ class TestEnums:
         assert isinstance(MessageRole.USER, str)
         assert isinstance(FeedbackType.POSITIVE, str)
         assert isinstance(DocumentStatus.PENDING, str)
+        assert isinstance(ValidationStatus.NONE, str)
 
 
 class TestTenantModel:
@@ -129,6 +136,7 @@ class TestMessageModel:
         assert msg.role == MessageRole.USER
         assert msg.content == "Hello"
         assert msg.feedback == FeedbackType.NONE
+        assert msg.validation_status == ValidationStatus.NONE
 
     def test_message_content_required(self) -> None:
         with pytest.raises(ValidationError):
