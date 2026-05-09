@@ -11,6 +11,8 @@ from typing import TYPE_CHECKING, Any
 
 import structlog
 
+from app.domain.models.enums import ValidationStatus
+from app.domain.services.output_validator import OutputValidator
 from app.rag.pipeline import (
     RAGState,
     escalation_node,
@@ -80,6 +82,7 @@ class ChatService:
         self._llm_provider = llm_provider
         self._vector_store = vector_store
         self._embedding_service = embedding_service
+        self._output_validator = OutputValidator()
 
     async def process_message(
         self,
@@ -342,8 +345,6 @@ class ChatService:
         # ── Stream LLM tokens ────────────────────────────────────
         full_answer_parts: list[str] = []
         full_thinking_parts: list[str] = []
-        escalated = False
-        escalation_reason = ""
 
         async for token_frame in self._llm_provider.stream(messages=messages, temperature=temperature):  # type: ignore[attr-defined]
             frame_kind = token_frame.get("type", "content") if isinstance(token_frame, dict) else "content"
@@ -360,16 +361,15 @@ class ChatService:
         full_thinking = "".join(full_thinking_parts)
 
         # ── Post-generation output validation ────────────────────
-        from app.domain.models.enums import ValidationStatus
-        from app.domain.services.output_validator import OutputValidator
-
         context_texts = [doc.get("content", "") for doc in relevant_docs]
-        validator = OutputValidator()
-        validation_result = validator.validate(full_answer, context_texts)
+        validation_result = self._output_validator.validate(full_answer, context_texts)
         validation_status = validation_result.status
 
         if validation_status == ValidationStatus.FLAGGED:
+            # Append disclaimer to persisted message
             full_answer += "\n\n" + validation_result.disclaimer
+            # Emit disclaimer frame so the client can display it
+            yield {"type": "disclaimer", "data": validation_result.disclaimer}
             for violation in validation_result.violations:
                 logger.warning(
                     "output_validation_failed",
@@ -385,8 +385,8 @@ class ChatService:
                 "conversation_id": conversation_id,
                 "model_used": model_used,
                 "sources": grouped_sources,
-                "escalated": escalated,
-                "escalation_reason": escalation_reason,
+                "escalated": False,
+                "escalation_reason": "",
                 "thinking_text": full_thinking,
                 "validation_status": validation_status.value,
             },

@@ -62,8 +62,8 @@ _RE_PHONE = re.compile(r"\b\d{3}[-.]?\d{3}[-.]?\d{4}\b")
 # Email addresses
 _RE_EMAIL = re.compile(r"[\w.-]+@[\w.-]+\.\w+")
 
-# URLs (http or https)
-_RE_URL = re.compile(r"https?://[\w.-]+(?:/[\w./?&=#%-]*)*")
+# URLs (http or https) — negative lookbehind strips trailing sentence punctuation
+_RE_URL = re.compile(r"https?://[\w.-]+(?:/[\w/?&=#%-]*)*(?<![.,;:!?)])")
 
 # Prices: dollar sign + digits, optional cents
 _RE_PRICE = re.compile(r"\$\d+(?:\.\d{2})?")

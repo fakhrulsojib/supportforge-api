@@ -526,3 +526,35 @@ class TestEdgeCases:
         """Whitespace-only answer should pass."""
         result = validator.validate("   \n\t  ", empty_context)
         assert result.status == ValidationStatus.PASSED
+
+    def test_url_trailing_period_not_captured(
+        self, validator: OutputValidator,
+    ) -> None:
+        """URL at end of sentence should not capture trailing period.
+
+        Context contains the clean URL; the answer ends it with a period.
+        Without trailing-punctuation stripping, this would false-positive.
+        """
+        context = ["Visit https://acme.com/help for details."]
+        result = validator.validate(
+            "Go to https://acme.com/help.",
+            context,
+        )
+        url_violations = [
+            v for v in result.violations if v.rule == "fabricated_url"
+        ]
+        assert len(url_violations) == 0
+
+    def test_url_in_parentheses_not_captured(
+        self, validator: OutputValidator,
+    ) -> None:
+        """URL wrapped in parentheses should not capture closing paren."""
+        context = ["See https://acme.com/faq for answers."]
+        result = validator.validate(
+            "Check our FAQ (https://acme.com/faq) for details.",
+            context,
+        )
+        url_violations = [
+            v for v in result.violations if v.rule == "fabricated_url"
+        ]
+        assert len(url_violations) == 0

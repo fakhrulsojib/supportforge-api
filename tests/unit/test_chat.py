@@ -752,6 +752,10 @@ class TestChatServiceOutputValidation:
 
         done_frame = [f for f in frames if f["type"] == "done"][0]
         assert done_frame["data"]["validation_status"] == "flagged"
+        # Verify disclaimer frame is emitted to client (M-1 fix)
+        disclaimer_frames = [f for f in frames if f["type"] == "disclaimer"]
+        assert len(disclaimer_frames) == 1
+        assert "could not be verified" in disclaimer_frames[0]["data"]
 
     @pytest.mark.asyncio
     async def test_stream_message_validation_logs_on_failure(self) -> None:
