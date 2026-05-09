@@ -299,3 +299,26 @@
 - [x] Fallback to NO_CONTEXT if RAG retrieval returns no docs
 - [x] Persist `escalation_trigger` to database
 - [x] Integration tests for sentiment, repetition, explicit, and NO_CONTEXT paths
+
+---
+
+## Phase 8 — Feedback Review Queue ✅
+
+> **Branch:** `phase-8/feedback-review-queue`
+
+### 8.1 — Domain Model Updates ✅
+- [x] `reviewed_at` (nullable DateTime) and `reviewed_by` (String) fields on `Message` domain model
+- [x] Corresponding ORM columns on `MessageModel`
+- [x] `ix_messages_feedback` index for efficient review queries
+- [x] `_to_domain` mapping updated for new fields
+
+### 8.2 — Review Queue API Endpoints ✅
+- [x] `GET /api/v1/admin/feedback/negative` — paginated negative feedback with user question context
+- [x] `GET /api/v1/admin/escalations` — paginated escalated conversations with trigger filter
+- [x] `GET /api/v1/admin/flagged` — paginated flagged messages (validation failures)
+- [x] `PATCH /api/v1/admin/feedback/{message_id}/review` — mark as reviewed with tenant isolation
+- [x] `GET /api/v1/admin/feedback/stats` — aggregate counts for badge display
+- [x] All endpoints protected by `require_role(UserRole.ADMIN)`
+- [x] Filters: reviewed/unreviewed, date range, escalation trigger type
+- [x] 30 new tests (14 schema + 16 integration) — all passing
+
