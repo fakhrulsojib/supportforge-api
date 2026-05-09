@@ -23,6 +23,7 @@ SupportForge is a multi-tenant AI customer support agent powered by a self-hoste
 - **Document Ingestion** — Upload PDF, Markdown, CSV, and plain text to build your knowledge base
 - **Conversation Memory** — Full audit trail in PostgreSQL with feedback tracking
 - **Analytics** — Daily stats, intent classification, satisfaction metrics
+- **Output Validation** — Anti-hallucination guard detects fabricated contact info, prices, and forbidden patterns with context cross-referencing
 
 ## Architecture
 

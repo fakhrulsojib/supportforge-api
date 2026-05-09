@@ -114,6 +114,7 @@ class SQLMessageRepository(MessageRepository):
             tokens_in=model.tokens_in,
             tokens_out=model.tokens_out,
             feedback=model.feedback,
+            validation_status=model.validation_status,
             created_at=model.created_at,
         )
 
@@ -129,6 +130,7 @@ class SQLMessageRepository(MessageRepository):
             tokens_in=message.tokens_in,
             tokens_out=message.tokens_out,
             feedback=message.feedback,
+            validation_status=message.validation_status,
         )
         self._session.add(model)
         await self._session.flush()
