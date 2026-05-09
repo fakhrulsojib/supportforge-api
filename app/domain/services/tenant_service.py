@@ -12,12 +12,23 @@ from typing import TYPE_CHECKING, Any
 import structlog
 
 from app.core.exceptions import SupportForgeError, TenantNotFoundError
+from app.domain.models.enums import TenantStatus
 
 if TYPE_CHECKING:
     from app.domain.interfaces.repository import TenantRepository
     from app.domain.models.tenant import Tenant, TenantCreate
 
 logger = structlog.get_logger(__name__)
+
+# ── Tenant status transition rules ──────────────────────────────
+# Defines which status values can transition to which other values.
+# `archived` is terminal — no transitions out.
+VALID_TRANSITIONS: dict[TenantStatus, set[TenantStatus]] = {
+    TenantStatus.PENDING: {TenantStatus.ACTIVE},
+    TenantStatus.ACTIVE: {TenantStatus.SUSPENDED, TenantStatus.ARCHIVED},
+    TenantStatus.SUSPENDED: {TenantStatus.ACTIVE, TenantStatus.ARCHIVED},
+    TenantStatus.ARCHIVED: set(),  # terminal
+}
 
 
 class TenantService:
@@ -96,6 +107,29 @@ class TenantService:
         """
         return await self._tenant_repo.list_all()
 
+    async def list_tenants_with_status(
+        self,
+        *,
+        status: TenantStatus | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[list[Tenant], int]:
+        """List tenants with optional status filter and pagination.
+
+        Args:
+            status: Optional status filter.
+            limit: Maximum number of results.
+            offset: Result offset.
+
+        Returns:
+            Tuple of (tenants list, total count).
+        """
+        tenants = await self._tenant_repo.list_all_with_status(
+            status=status, limit=limit, offset=offset,
+        )
+        total = await self._tenant_repo.count_all(status=status)
+        return tenants, total
+
     async def update_tenant(self, tenant_id: str, **kwargs: Any) -> Tenant:
         """Update a tenant's mutable fields.
 
@@ -114,6 +148,52 @@ class TenantService:
             raise TenantNotFoundError(tenant_id=tenant_id)
         logger.info("tenant_updated", tenant_id=tenant_id, fields=list(kwargs.keys()))
         return tenant
+
+    async def update_tenant_status(
+        self, tenant_id: str, new_status: TenantStatus,
+    ) -> Tenant:
+        """Validate and execute a tenant status transition.
+
+        Args:
+            tenant_id: Tenant UUID string.
+            new_status: Target status to transition to.
+
+        Returns:
+            Updated Tenant domain model.
+
+        Raises:
+            TenantNotFoundError: If no tenant exists with the given ID.
+            SupportForgeError(400): If the transition is invalid.
+        """
+        tenant = await self._tenant_repo.get_by_id(tenant_id)
+        if not tenant:
+            raise TenantNotFoundError(tenant_id=tenant_id)
+
+        current = tenant.status
+        allowed = VALID_TRANSITIONS.get(current, set())
+
+        if new_status not in allowed:
+            raise SupportForgeError(
+                message=(
+                    f"Invalid status transition: '{current.value}' → '{new_status.value}'. "
+                    f"Allowed transitions from '{current.value}': "
+                    f"{', '.join(s.value for s in sorted(allowed, key=lambda x: x.value)) or 'none (terminal state)'}"
+                ),
+                status_code=400,
+                error_code="INVALID_STATUS_TRANSITION",
+            )
+
+        updated = await self._tenant_repo.update_status(tenant_id, new_status)
+        if not updated:
+            raise TenantNotFoundError(tenant_id=tenant_id)
+
+        logger.info(
+            "tenant_status_updated",
+            tenant_id=tenant_id,
+            from_status=current.value,
+            to_status=new_status.value,
+        )
+        return updated
 
     async def delete_tenant(self, tenant_id: str) -> bool:
         """Delete a tenant.
