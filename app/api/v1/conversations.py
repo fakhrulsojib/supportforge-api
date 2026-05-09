@@ -119,8 +119,11 @@ async def get_conversation(
     if not conversation:
         raise ConversationNotFoundError(conversation_id=conversation_id)
 
-    # Verify tenant + user isolation — each user sees only their own
-    if conversation.tenant_id != user.tenant_id or conversation.user_id != user.id:
+    # Verify tenant isolation — admin/agent can view any tenant conversation
+    if conversation.tenant_id != user.tenant_id:
+        raise ConversationNotFoundError(conversation_id=conversation_id)
+    # Non-admin users can only see their own conversations
+    if user.role.upper() not in ("ADMIN", "AGENT") and conversation.user_id != user.id:
         raise ConversationNotFoundError(conversation_id=conversation_id)
 
     messages = await msg_repo.list_by_conversation(conversation_id)
