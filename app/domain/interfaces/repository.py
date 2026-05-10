@@ -12,15 +12,19 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from typing import Any
+
     from app.domain.models.conversation import Conversation, Message
     from app.domain.models.document import Document, DocumentChunk
     from app.domain.models.enums import (
         ConversationStatus,
         DocumentStatus,
         EscalationTrigger,
+        FailureReason,
         FeedbackType,
         TenantStatus,
     )
+    from app.domain.models.failed_query import FailedQuery
     from app.domain.models.tenant import Tenant, TenantCreate
     from app.domain.models.user import User, UserCreate
 
@@ -201,3 +205,37 @@ class DocumentRepository(ABC):
 
     @abstractmethod
     async def delete_chunks_by_document(self, document_id: str) -> int: ...
+
+
+class FailedQueryRepository(ABC):
+    """Port for failed query data persistence."""
+
+    @abstractmethod
+    async def create(self, failed_query: FailedQuery) -> FailedQuery: ...
+
+    @abstractmethod
+    async def get_by_id(self, query_id: str) -> FailedQuery | None: ...
+
+    @abstractmethod
+    async def list_by_tenant(
+        self,
+        tenant_id: str,
+        *,
+        failure_reason: FailureReason | None = None,
+        resolved: bool | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[list[FailedQuery], int]: ...
+
+    @abstractmethod
+    async def mark_resolved(
+        self, query_id: str, resolved_by: str,
+    ) -> FailedQuery | None: ...
+
+    @abstractmethod
+    async def count_unresolved(self, tenant_id: str) -> int: ...
+
+    @abstractmethod
+    async def get_stats(self, tenant_id: str) -> dict[str, Any]: ...

@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from sqlalchemy import (
     DateTime,
     Enum,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -26,6 +27,7 @@ from app.domain.models.enums import (
     ConversationStatus,
     DocumentStatus,
     EscalationTrigger,
+    FailureReason,
     FeedbackType,
     MessageRole,
     TenantStatus,
@@ -234,4 +236,40 @@ class DailyStatModel(Base):
     __table_args__ = (
         Index("ix_daily_stats_tenant_id", "tenant_id"),
         UniqueConstraint("tenant_id", "date", name="uq_daily_stats_tenant_date"),
+    )
+
+
+class FailedQueryModel(Base):
+    """Failed query table — tracks queries the RAG pipeline could not answer."""
+
+    __tablename__ = "failed_queries"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_generate_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(36), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+    conversation_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False,
+    )
+    message_id: Mapped[str] = mapped_column(String(36), nullable=False, default="")
+    query_text: Mapped[str] = mapped_column(Text, nullable=False)
+    failure_reason: Mapped[FailureReason] = mapped_column(
+        Enum(FailureReason, values_callable=_enum_values), nullable=False,
+    )
+    retrieved_doc_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    max_relevance_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    escalation_trigger: Mapped[EscalationTrigger] = mapped_column(
+        Enum(EscalationTrigger, values_callable=_enum_values), nullable=False,
+        default=EscalationTrigger.NONE, server_default="none",
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    resolved_by: Mapped[str] = mapped_column(String(36), nullable=False, default="")
+
+    # Relationships
+    tenant: Mapped[TenantModel] = relationship("TenantModel")
+    conversation: Mapped[ConversationModel] = relationship("ConversationModel")
+
+    __table_args__ = (
+        Index("ix_failed_queries_tenant_id", "tenant_id"),
+        Index("ix_failed_queries_failure_reason", "failure_reason"),
+        Index("ix_failed_queries_created_at", "created_at"),
     )
