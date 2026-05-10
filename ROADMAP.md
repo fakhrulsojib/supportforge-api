@@ -179,8 +179,8 @@
 | 8 | Feedback Review Queue | High | ✅ |
 | 9 | Platform Superadmin Role | High | ✅ |
 | 10 | Tenant Provisioning API | High | ✅ |
-| 11 | Failed Query Logging & Analytics | High | 🔲 |
-| 12 | Tenant Provisioning UI | High | 🔲 |
+| 11 | Failed Query Logging & Analytics | High | ✅ |
+| 12 | Tenant Provisioning UI + Failed Queries UI | High | 🔲 |
 | 13 | Rate Limiting Middleware | Medium | 🔲 |
 | 14 | PII Detection & Masking | Medium | 🔲 |
 | 15 | User Approval Workflow | Medium | 🔲 |
