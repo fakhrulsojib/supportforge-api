@@ -178,7 +178,7 @@
 |---|---|---|---|
 | 8 | Feedback Review Queue | High | ✅ |
 | 9 | Platform Superadmin Role | High | ✅ |
-| 10 | Tenant Provisioning API | High | 🔲 |
+| 10 | Tenant Provisioning API | High | ✅ |
 | 11 | Failed Query Logging & Analytics | High | 🔲 |
 | 12 | Tenant Provisioning UI | High | 🔲 |
 | 13 | Rate Limiting Middleware | Medium | 🔲 |
@@ -406,4 +406,4 @@
 ### 10.7 — Tests ✅
 - [x] 25 unit tests: TenantStatus enum, domain model, service transition validation
 - [x] 17 integration tests: platform CRUD, auth enforcement, chat gate, status transitions
-- [x] 703 total tests passing, zero regressions
+- [x] 705 total tests passing, zero regressions

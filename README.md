@@ -28,6 +28,7 @@ SupportForge is a multi-tenant AI customer support agent powered by a self-hoste
 - **Smart Escalation** — Context-aware human handoff triggered by frustrated sentiment, repeated questions, or explicit user requests
 - **Feedback Review Queue** — Admin dashboard endpoints for reviewing negative feedback, escalations, and flagged messages
 - **Platform Superadmin** — Cross-tenant platform management role with dedicated RBAC, JWT claims, and CLI bootstrap script
+- **Tenant Provisioning** — Full lifecycle management (create, activate, suspend, archive) with chat gate enforcement for suspended tenants
 
 ## Architecture
 
@@ -149,6 +150,7 @@ supportforge-api/
 | `POST` | `/api/v1/platform/tenants` | Superadmin | Create tenant (provisioning) |
 | `GET` | `/api/v1/platform/tenants` | Superadmin | List tenants (paginated, status filter) |
 | `PATCH` | `/api/v1/platform/tenants/{id}/status` | Superadmin | Update tenant lifecycle status |
+| `WS` | `/api/v1/ws/chat` | JWT | WebSocket chat with token-by-token streaming |
 | `POST` | `/api/v1/ingest/upload` | Admin | Upload document |
 | `GET` | `/api/v1/ingest/documents` | Admin | List documents |
 | `DELETE` | `/api/v1/ingest/documents/{id}` | Admin | Delete document |
