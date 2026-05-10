@@ -28,6 +28,7 @@ SupportForge is a multi-tenant AI customer support agent powered by a self-hoste
 - **Smart Escalation** — Context-aware human handoff triggered by frustrated sentiment, repeated questions, or explicit user requests
 - **Feedback Review Queue** — Admin dashboard endpoints for reviewing negative feedback, escalations, and flagged messages
 - **Platform Superadmin** — Cross-tenant platform management role with dedicated RBAC, JWT claims, and CLI bootstrap script
+- **Tenant Provisioning** — Full lifecycle management (create, activate, suspend, archive) with chat gate enforcement for suspended tenants
 
 ## Architecture
 
@@ -138,14 +139,18 @@ supportforge-api/
 | `POST` | `/api/v1/auth/register` | — | Register user (superadmin blocked) |
 | `POST` | `/api/v1/auth/login` | — | Login |
 | `POST` | `/api/v1/auth/refresh` | — | Refresh token |
-| `POST` | `/api/v1/chat` | JWT | Send chat message |
+| `POST` | `/api/v1/chat` | JWT | Send chat message (active tenants only) |
 | `GET` | `/api/v1/conversations` | JWT | List conversations |
 | `GET` | `/api/v1/conversations/{id}` | JWT | Get conversation detail |
 | `PATCH` | `/api/v1/conversations/messages/{id}/feedback` | JWT | Update message feedback |
-| `POST` | `/api/v1/tenants` | Admin | Create tenant |
+| `POST` | `/api/v1/tenants` | Admin | Create tenant _(deprecated — use platform endpoint)_ |
 | `GET` | `/api/v1/tenants/{slug}` | JWT | Get tenant by slug |
 | `PATCH` | `/api/v1/tenants/{id}` | Admin | Update tenant |
 | `DELETE` | `/api/v1/tenants/{id}` | Admin | Delete tenant |
+| `POST` | `/api/v1/platform/tenants` | Superadmin | Create tenant (provisioning) |
+| `GET` | `/api/v1/platform/tenants` | Superadmin | List tenants (paginated, status filter) |
+| `PATCH` | `/api/v1/platform/tenants/{id}/status` | Superadmin | Update tenant lifecycle status |
+| `WS` | `/api/v1/ws/chat` | JWT | WebSocket chat with token-by-token streaming |
 | `POST` | `/api/v1/ingest/upload` | Admin | Upload document |
 | `GET` | `/api/v1/ingest/documents` | Admin | List documents |
 | `DELETE` | `/api/v1/ingest/documents/{id}` | Admin | Delete document |

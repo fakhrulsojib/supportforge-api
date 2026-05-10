@@ -178,7 +178,7 @@
 |---|---|---|---|
 | 8 | Feedback Review Queue | High | ✅ |
 | 9 | Platform Superadmin Role | High | ✅ |
-| 10 | Tenant Provisioning API | High | 🔲 |
+| 10 | Tenant Provisioning API | High | ✅ |
 | 11 | Failed Query Logging & Analytics | High | 🔲 |
 | 12 | Tenant Provisioning UI | High | 🔲 |
 | 13 | Rate Limiting Middleware | Medium | 🔲 |
@@ -362,3 +362,48 @@
 - [x] Existing integration test updated (`test_register_invalid_role` uses truly invalid role)
 - [x] 661 total tests passing, zero regressions
 
+---
+
+## Phase 10 — Tenant Provisioning API ✅
+
+> **Branch:** `phase-10/tenant-provisioning-api`
+> **Depends on:** Phase 9 (Platform Superadmin)
+
+### 10.1 — TenantStatus Enum + Domain Model ✅
+- [x] `TenantStatus` enum: `pending`, `active`, `suspended`, `archived`
+- [x] `status` field on `Tenant` domain model (default: `active`)
+- [x] `status` field on `TenantCreate` DTO
+- [x] ORM `TenantModel.status` column with `server_default="active"`
+- [x] Index `ix_tenants_status` on tenants table
+
+### 10.2 — Repository Extensions ✅
+- [x] `TenantRepository` ABC: `list_all_with_status()`, `count_all()`, `update_status()`
+- [x] `SQLTenantRepository` concrete implementations with status filter + pagination
+- [x] `_to_domain()` and `create()` map `status` field
+
+### 10.3 — TenantService Status Transitions ✅
+- [x] `VALID_TRANSITIONS` map: pending→active, active→suspended/archived, suspended→active/archived, archived→terminal
+- [x] `update_tenant_status()` with transition validation (400 on invalid)
+- [x] `list_tenants_with_status()` returning `(list, total)` tuple
+
+### 10.4 — Platform Tenant Endpoints (Superadmin-Only) ✅
+- [x] `POST /api/v1/platform/tenants` — create tenant (superadmin only)
+- [x] `GET /api/v1/platform/tenants` — paginated list with `?status=` filter
+- [x] `PATCH /api/v1/platform/tenants/{id}/status` — status transitions
+- [x] All endpoints use `require_superadmin()` dependency
+- [x] `PlatformTenantCreateRequest`, `PlatformTenantResponse`, `TenantStatusUpdateRequest` schemas
+
+### 10.5 — Chat Gate Enforcement ✅
+- [x] REST chat (`POST /api/v1/chat`): suspended/archived → 403 `TENANT_SUSPENDED`
+- [x] WebSocket chat (`/api/v1/ws/chat`): suspended/archived → close code 4003
+- [x] `TenantSuspendedError` exception class
+
+### 10.6 — Deprecation + Backward Compatibility ✅
+- [x] `POST /api/v1/tenants/` marked `deprecated=True` in OpenAPI
+- [x] `TenantResponse` schema includes optional `status` field
+- [x] Existing tenant CRUD endpoints pass `status` in responses
+
+### 10.7 — Tests ✅
+- [x] 25 unit tests: TenantStatus enum, domain model, service transition validation
+- [x] 17 integration tests: platform CRUD, auth enforcement, chat gate, status transitions
+- [x] 705 total tests passing, zero regressions

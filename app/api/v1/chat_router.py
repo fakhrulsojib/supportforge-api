@@ -13,8 +13,14 @@ from fastapi import APIRouter, Depends
 
 from app.api.schemas.chat import ChatRequest, ChatResponse, SourceCitation
 from app.core.dependencies import get_chat_service, get_current_user
+from app.core.exceptions import TenantSuspendedError
+from app.domain.models.enums import TenantStatus
+from app.infrastructure.database.connection import get_async_session
+from app.infrastructure.database.repositories.tenant_repo import SQLTenantRepository
 
 if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
     from app.domain.models.user import User
 
 logger = structlog.get_logger(__name__)
@@ -27,20 +33,32 @@ async def chat_endpoint(
     request: ChatRequest,
     user: User = Depends(get_current_user),
     chat_service: Any = Depends(get_chat_service),
+    session: AsyncSession = Depends(get_async_session),
 ) -> ChatResponse:
     """Process a chat message through the RAG pipeline.
 
     Requires JWT authentication. Tenant is derived from the
     authenticated user's token — no manual header needed.
 
+    Non-active tenants are rejected with a 403 error.
+
     Args:
         request: Chat request with message and optional conversation_id.
         user: Authenticated user (injected via JWT).
         chat_service: ChatService singleton (injected via app.state).
+        session: Database session for tenant status check.
 
     Returns:
         ChatResponse with AI-generated answer and source citations.
     """
+    # ── Tenant status gate ───────────────────────────────────────
+    # Only ACTIVE tenants can access chat. Pending, suspended, and
+    # archived tenants are all blocked.
+    tenant_repo = SQLTenantRepository(session)
+    tenant = await tenant_repo.get_by_id(user.tenant_id)
+    if not tenant or tenant.status != TenantStatus.ACTIVE:
+        raise TenantSuspendedError(tenant_id=user.tenant_id)
+
     result = await chat_service.process_message(
         message=request.message,
         tenant_id=user.tenant_id,

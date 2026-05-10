@@ -40,13 +40,17 @@ def _get_tenant_service(session: AsyncSession) -> TenantService:
     return TenantService(tenant_repo=SQLTenantRepository(session))
 
 
-@router.post("/", response_model=TenantResponse, status_code=201)
+@router.post("", response_model=TenantResponse, status_code=201, deprecated=True)
 async def create_tenant(
     request: TenantCreateRequest,
     session: AsyncSession = Depends(get_async_session),
     user: User = Depends(require_role(UserRole.ADMIN)),
 ) -> TenantResponse:
     """Create a new tenant (admin only).
+
+    .. deprecated::
+        Use ``POST /api/v1/platform/tenants`` (superadmin-only) instead.
+        This endpoint will be removed in a future release.
 
     Args:
         request: Tenant creation data.
@@ -68,12 +72,13 @@ async def create_tenant(
         id=tenant.id,
         name=tenant.name,
         slug=tenant.slug,
+        status=tenant.status,
         config_json=tenant.config_json,
         created_at=tenant.created_at,
     )
 
 
-@router.get("/", response_model=TenantListResponse)
+@router.get("", response_model=TenantListResponse)
 async def list_tenants(
     session: AsyncSession = Depends(get_async_session),
     user: User = Depends(require_role(UserRole.ADMIN)),
@@ -95,6 +100,7 @@ async def list_tenants(
                 id=t.id,
                 name=t.name,
                 slug=t.slug,
+                status=t.status,
                 config_json=t.config_json,
                 created_at=t.created_at,
             )
@@ -135,6 +141,7 @@ async def get_tenant(
         id=tenant.id,
         name=tenant.name,
         slug=tenant.slug,
+        status=tenant.status,
         config_json=tenant.config_json,
         created_at=tenant.created_at,
     )
@@ -165,6 +172,7 @@ async def update_tenant(
         id=tenant.id,
         name=tenant.name,
         slug=tenant.slug,
+        status=tenant.status,
         config_json=tenant.config_json,
         created_at=tenant.created_at,
     )

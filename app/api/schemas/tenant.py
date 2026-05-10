@@ -7,6 +7,8 @@ from datetime import datetime  # noqa: TCH003 — Pydantic needs runtime access
 from pydantic import BaseModel, Field, model_validator
 from typing_extensions import Self
 
+from app.domain.models.enums import TenantStatus  # noqa: TCH001 — Pydantic runtime
+
 
 class TenantCreateRequest(BaseModel):
     """Request body for POST /api/v1/tenants."""
@@ -43,6 +45,7 @@ class TenantResponse(BaseModel):
     id: str = Field(..., description="Tenant UUID")
     name: str = Field(..., description="Tenant display name")
     slug: str = Field(..., description="URL-safe tenant slug")
+    status: TenantStatus | None = Field(None, description="Tenant lifecycle status")
     config_json: dict[str, object] | None = Field(None, description="Tenant configuration")
     created_at: datetime | None = Field(None, description="Creation timestamp")
 

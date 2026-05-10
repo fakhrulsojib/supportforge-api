@@ -19,6 +19,7 @@ if TYPE_CHECKING:
         DocumentStatus,
         EscalationTrigger,
         FeedbackType,
+        TenantStatus,
     )
     from app.domain.models.tenant import Tenant, TenantCreate
     from app.domain.models.user import User, UserCreate
@@ -40,7 +41,22 @@ class TenantRepository(ABC):
     async def list_all(self) -> list[Tenant]: ...
 
     @abstractmethod
+    async def list_all_with_status(
+        self,
+        *,
+        status: TenantStatus | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[Tenant]: ...
+
+    @abstractmethod
+    async def count_all(self, *, status: TenantStatus | None = None) -> int: ...
+
+    @abstractmethod
     async def update(self, tenant_id: str, **kwargs: object) -> Tenant | None: ...
+
+    @abstractmethod
+    async def update_status(self, tenant_id: str, status: TenantStatus) -> Tenant | None: ...
 
     @abstractmethod
     async def delete(self, tenant_id: str) -> bool: ...

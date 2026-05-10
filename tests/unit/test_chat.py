@@ -15,6 +15,7 @@ from starlette.testclient import TestClient
 from app.api.schemas.chat import ChatRequest, ChatResponse, SourceCitation
 from app.core.security import create_access_token
 from app.domain.models.enums import UserRole
+from app.domain.models.tenant import Tenant
 from app.domain.models.user import User
 from app.domain.services.chat_service import ChatService
 from app.main import create_app
@@ -570,11 +571,18 @@ class TestChatEndpoint:
         )
         client = TestClient(app_with_mocks)
 
-        with patch(
-            "app.core.dependencies.SQLUserRepository"
-        ) as mock_repo_cls:
+        active_tenant = Tenant(
+            id="tenant-chat-1", name="Test", slug="test-co",
+        )
+        with (
+            patch("app.core.dependencies.SQLUserRepository") as mock_repo_cls,
+            patch("app.api.v1.chat_router.SQLTenantRepository") as mock_tenant_repo_cls,
+        ):
             mock_repo = mock_repo_cls.return_value
             mock_repo.get_by_id = AsyncMock(return_value=test_user)
+
+            mock_tenant_repo = mock_tenant_repo_cls.return_value
+            mock_tenant_repo.get_by_id = AsyncMock(return_value=active_tenant)
 
             response = client.post(
                 "/api/v1/chat",
@@ -608,11 +616,18 @@ class TestChatEndpoint:
         )
         client = TestClient(app_with_mocks)
 
-        with patch(
-            "app.core.dependencies.SQLUserRepository"
-        ) as mock_repo_cls:
+        active_tenant = Tenant(
+            id="tenant-chat-1", name="Test", slug="test-co",
+        )
+        with (
+            patch("app.core.dependencies.SQLUserRepository") as mock_repo_cls,
+            patch("app.api.v1.chat_router.SQLTenantRepository") as mock_tenant_repo_cls,
+        ):
             mock_repo = mock_repo_cls.return_value
             mock_repo.get_by_id = AsyncMock(return_value=test_user)
+
+            mock_tenant_repo = mock_tenant_repo_cls.return_value
+            mock_tenant_repo.get_by_id = AsyncMock(return_value=active_tenant)
 
             response = client.post(
                 "/api/v1/chat",
@@ -643,11 +658,18 @@ class TestChatEndpoint:
         )
         client = TestClient(app_with_mocks)
 
-        with patch(
-            "app.core.dependencies.SQLUserRepository"
-        ) as mock_repo_cls:
+        active_tenant = Tenant(
+            id="tenant-chat-1", name="Test", slug="test-co",
+        )
+        with (
+            patch("app.core.dependencies.SQLUserRepository") as mock_repo_cls,
+            patch("app.api.v1.chat_router.SQLTenantRepository") as mock_tenant_repo_cls,
+        ):
             mock_repo = mock_repo_cls.return_value
             mock_repo.get_by_id = AsyncMock(return_value=test_user)
+
+            mock_tenant_repo = mock_tenant_repo_cls.return_value
+            mock_tenant_repo.get_by_id = AsyncMock(return_value=active_tenant)
 
             response = client.post(
                 "/api/v1/chat",
@@ -660,6 +682,7 @@ class TestChatEndpoint:
         call_kwargs = app_with_mocks.state.chat_service.process_message.call_args
         assert call_kwargs.kwargs.get("tenant_id") == "tenant-chat-1" or \
             call_kwargs[1].get("tenant_id") == "tenant-chat-1"
+
 
 
 class TestChatServiceOutputValidation:

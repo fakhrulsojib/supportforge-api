@@ -22,6 +22,7 @@ from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 from app.config import get_settings
 from app.core.exceptions import AuthError, LLMError, SupportForgeError
 from app.core.security import verify_token
+from app.domain.models.enums import TenantStatus
 from app.infrastructure.database.repositories.tenant_repo import SQLTenantRepository
 from app.infrastructure.database.repositories.user_repo import SQLUserRepository
 
@@ -80,6 +81,16 @@ async def websocket_chat(
         # Read per-tenant LLM temperature and moderation blocklist from config_json
         tenant_repo = SQLTenantRepository(session)
         tenant = await tenant_repo.get_by_id(user.tenant_id)
+
+        # ── Tenant status gate ───────────────────────────────────
+        # Only ACTIVE tenants can access chat via WebSocket.
+        if not tenant or tenant.status != TenantStatus.ACTIVE:
+            await websocket.close(
+                code=4003,
+                reason="Tenant not active — chat access is disabled",
+            )
+            return
+
         if tenant and tenant.config_json:
             raw = tenant.config_json.get("temperature")
             if isinstance(raw, (int, float)) and 0.0 <= float(raw) <= 1.0:
