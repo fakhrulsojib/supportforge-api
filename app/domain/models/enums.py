@@ -91,3 +91,16 @@ class TenantStatus(str, enum.Enum):
     ACTIVE = "active"
     SUSPENDED = "suspended"
     ARCHIVED = "archived"
+
+
+class FailureReason(str, enum.Enum):
+    """Why a user query failed to produce a satisfactory answer.
+
+    Used by the FailedQuery model to categorize knowledge gaps
+    and system failures for admin review and analytics.
+    """
+
+    NO_DOCS = "no_docs"
+    LOW_RELEVANCE = "low_relevance"
+    LLM_ERROR = "llm_error"
+    TIMEOUT = "timeout"

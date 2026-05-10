@@ -711,6 +711,7 @@ class TestReviewStats:
         with (
             patch("app.api.v1.review.SQLMessageRepository") as mock_msg_cls,
             patch("app.api.v1.review.SQLConversationRepository") as mock_conv_cls,
+            patch("app.infrastructure.database.repositories.failed_query_repo.SQLFailedQueryRepository") as mock_fq_cls,
             patch("app.core.dependencies.SQLUserRepository") as mock_user_cls,
         ):
             mock_msg = mock_msg_cls.return_value
@@ -719,6 +720,9 @@ class TestReviewStats:
 
             mock_conv = mock_conv_cls.return_value
             mock_conv.count_open_escalations = AsyncMock(return_value=3)
+
+            mock_fq = mock_fq_cls.return_value
+            mock_fq.count_unresolved = AsyncMock(return_value=7)
 
             mock_user_repo = mock_user_cls.return_value
             mock_user_repo.get_by_id = AsyncMock(return_value=admin_user)
@@ -733,3 +737,5 @@ class TestReviewStats:
         assert data["unreviewed_negative"] == 5
         assert data["unreviewed_flagged"] == 2
         assert data["open_escalations"] == 3
+        assert data["unresolved_failed_queries"] == 7
+

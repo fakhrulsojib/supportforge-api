@@ -26,7 +26,7 @@ SupportForge is a production-grade, multi-tenant AI customer support agent. This
 | Phase 9 | `phase-9/platform-superadmin` | Platform superadmin role, JWT claims, cross-tenant access |
 | Phase 10 | `phase-10/tenant-provisioning-api` | Tenant CRUD, status lifecycle, chat gate for suspended tenants |
 | Phase 11 | `phase-11/failed-query-logging` | Failed query model, persistence, admin API, analytics integration |
-| Phase 12 | `phase-12/tenant-provisioning-ui` | Superadmin frontend for tenant management |
+| Phase 12 | `phase-12/tenant-provisioning-ui` | Superadmin tenant management + Failed Queries tab in Review Queue |
 | Phase 13 | `phase-13/rate-limiting` | Redis sliding window middleware, fail-closed, token blacklist |
 | Phase 14 | `phase-14/pii-masking` | PII detection (CC, SSN, phone, email), masking before LLM + storage |
 | Phase 15 | `phase-15/user-approval` | User registration approval workflow (backend) |
@@ -337,6 +337,10 @@ For **any** module not listed below, derive the test path using this rule:
 | `app/domain/models/user.py` (is_superadmin) | `tests/unit/test_superadmin.py` |
 | `app/core/security.py` (is_superadmin JWT) | `tests/unit/test_superadmin.py` |
 | `app/core/dependencies.py` (require_superadmin) | `tests/unit/test_superadmin.py` |
+| `app/domain/models/failed_query.py` | `tests/unit/domain/test_failed_query.py` |
+| `app/domain/models/enums.py` (FailureReason) | `tests/unit/domain/test_failed_query.py` |
+| `app/api/schemas/failed_query.py` | `tests/unit/schemas/test_failed_query_schemas.py` |
+| `app/api/v1/failed_queries.py` | `tests/integration/api/test_failed_queries.py` |
 
 ### Testing Standards
 

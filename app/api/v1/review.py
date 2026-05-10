@@ -357,7 +357,8 @@ async def get_review_stats(
     """Get aggregate review queue counts for badge display.
 
     Returns unreviewed negative feedback count, unreviewed flagged count,
-    and open escalation count — all scoped to the admin's tenant.
+    open escalation count, and unresolved failed queries count — all
+    scoped to the admin's tenant.
 
     Args:
         session: Database session.
@@ -366,15 +367,22 @@ async def get_review_stats(
     Returns:
         Aggregate review queue statistics.
     """
+    from app.infrastructure.database.repositories.failed_query_repo import (
+        SQLFailedQueryRepository,
+    )
+
     msg_repo = SQLMessageRepository(session)
     conv_repo = SQLConversationRepository(session)
+    fq_repo = SQLFailedQueryRepository(session)
 
     unreviewed_negative = await msg_repo.count_unreviewed_negative(user.tenant_id)
     unreviewed_flagged = await msg_repo.count_unreviewed_flagged(user.tenant_id)
     open_escalations = await conv_repo.count_open_escalations(user.tenant_id)
+    unresolved_fqs = await fq_repo.count_unresolved(user.tenant_id)
 
     return ReviewStatsResponse(
         unreviewed_negative=unreviewed_negative,
         unreviewed_flagged=unreviewed_flagged,
         open_escalations=open_escalations,
+        unresolved_failed_queries=unresolved_fqs,
     )
