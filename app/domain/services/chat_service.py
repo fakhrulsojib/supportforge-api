@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any
 
 import structlog
 
-from app.domain.models.enums import EscalationTrigger, ValidationStatus
+from app.domain.models.enums import EscalationTrigger, FailureReason, ValidationStatus
 from app.domain.services.content_moderator import ContentModerator
 from app.domain.services.escalation_detector import EscalationDetector
 from app.domain.services.output_validator import OutputValidator
@@ -254,6 +254,21 @@ class ChatService:
         should_escalate = result.get("should_escalate", False)
         trigger_val = EscalationTrigger.NO_CONTEXT.value if should_escalate else "none"
 
+        # ── Failed query logging ─────────────────────────────────
+        if should_escalate:
+            retrieved_docs = result.get("retrieved_docs", [])
+            await self._persist_failed_query(
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                query_text=message,
+                failure_reason=FailureReason.NO_DOCS,
+                retrieved_doc_count=len(retrieved_docs),
+                max_relevance_score=max(
+                    (d.get("score", 0) for d in retrieved_docs), default=0.0,
+                ),
+                escalation_trigger=EscalationTrigger.NO_CONTEXT,
+            )
+
         return {
             "answer": answer,
             "conversation_id": conversation_id,
@@ -466,6 +481,20 @@ class ChatService:
                 model_used="",
                 is_new=is_new_conversation,
                 escalation_trigger=EscalationTrigger.NO_CONTEXT.value,
+            )
+
+            # ── Failed query logging ─────────────────────────────
+            retrieved_docs = state.get("retrieved_docs", [])
+            await self._persist_failed_query(
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                query_text=message,
+                failure_reason=FailureReason.NO_DOCS,
+                retrieved_doc_count=len(retrieved_docs),
+                max_relevance_score=max(
+                    (d.get("score", 0) for d in retrieved_docs), default=0.0,
+                ),
+                escalation_trigger=EscalationTrigger.NO_CONTEXT,
             )
             return
 
@@ -854,6 +883,68 @@ class ChatService:
             # Log but don't fail the chat — persistence is best-effort
             logger.error(
                 "chat_persist_failed",
+                conversation_id=conversation_id,
+                exc_info=True,
+            )
+
+    async def _persist_failed_query(
+        self,
+        *,
+        tenant_id: str,
+        conversation_id: str,
+        query_text: str,
+        failure_reason: FailureReason,
+        retrieved_doc_count: int = 0,
+        max_relevance_score: float = 0.0,
+        escalation_trigger: EscalationTrigger = EscalationTrigger.NONE,
+        message_id: str = "",
+    ) -> None:
+        """Log a failed query for admin analytics.
+
+        Best-effort — failures are logged but do not interrupt chat flow.
+
+        Args:
+            tenant_id: Tenant context.
+            conversation_id: UUID of the conversation.
+            query_text: The user's original question.
+            failure_reason: Why the query failed.
+            retrieved_doc_count: Number of docs retrieved from vector store.
+            max_relevance_score: Highest relevance score among retrieved docs.
+            escalation_trigger: What triggered the escalation.
+            message_id: Optional associated message UUID.
+        """
+        try:
+            from app.domain.models.failed_query import FailedQuery
+            from app.infrastructure.database.connection import AsyncSessionLocal
+            from app.infrastructure.database.repositories.failed_query_repo import (
+                SQLFailedQueryRepository,
+            )
+
+            async with AsyncSessionLocal() as session:
+                repo = SQLFailedQueryRepository(session)
+                await repo.create(
+                    FailedQuery(
+                        tenant_id=tenant_id,
+                        conversation_id=conversation_id,
+                        message_id=message_id,
+                        query_text=query_text,
+                        failure_reason=failure_reason,
+                        retrieved_doc_count=retrieved_doc_count,
+                        max_relevance_score=max_relevance_score,
+                        escalation_trigger=escalation_trigger,
+                    )
+                )
+                await session.commit()
+
+            logger.info(
+                "failed_query_logged",
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                failure_reason=failure_reason.value,
+            )
+        except Exception:
+            logger.error(
+                "failed_query_persist_failed",
                 conversation_id=conversation_id,
                 exc_info=True,
             )
