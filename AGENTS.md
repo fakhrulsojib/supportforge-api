@@ -337,6 +337,10 @@ For **any** module not listed below, derive the test path using this rule:
 | `app/domain/models/user.py` (is_superadmin) | `tests/unit/test_superadmin.py` |
 | `app/core/security.py` (is_superadmin JWT) | `tests/unit/test_superadmin.py` |
 | `app/core/dependencies.py` (require_superadmin) | `tests/unit/test_superadmin.py` |
+| `app/domain/models/failed_query.py` | `tests/unit/domain/test_failed_query.py` |
+| `app/domain/models/enums.py` (FailureReason) | `tests/unit/domain/test_failed_query.py` |
+| `app/api/schemas/failed_query.py` | `tests/unit/schemas/test_failed_query_schemas.py` |
+| `app/api/v1/failed_queries.py` | `tests/integration/api/test_failed_queries.py` |
 
 ### Testing Standards
 

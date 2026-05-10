@@ -407,3 +407,43 @@
 - [x] 25 unit tests: TenantStatus enum, domain model, service transition validation
 - [x] 17 integration tests: platform CRUD, auth enforcement, chat gate, status transitions
 - [x] 705 total tests passing, zero regressions
+
+---
+
+## Phase 11 — Failed Query Logging & Analytics ✅
+
+> **Branch:** `phase-11/failed-query-logging`
+
+### 11.1 — Domain Model & Enum ✅
+- [x] `FailureReason` enum: `no_docs`, `low_relevance`, `llm_error`, `timeout`
+- [x] `FailedQuery` domain model (pure Pydantic, zero framework imports)
+- [x] `FailedQueryRepository` ABC with `create`, `get_by_id`, `list_by_tenant`, `mark_resolved`, `count_unresolved`, `get_stats`
+
+### 11.2 — ORM Model & SQL Repository ✅
+- [x] `FailedQueryModel` ORM class: `failed_queries` table with proper indexes
+- [x] `SQLFailedQueryRepository` concrete implementation
+- [x] SQL aggregation for stats: reason breakdown, top 10 repeated queries, daily trend
+
+### 11.3 — ChatService Integration ✅
+- [x] `_persist_failed_query()` best-effort method (mirrors `_persist_exchange()` pattern)
+- [x] Wired into `process_message()` RAG escalation path (`should_escalate=True`)
+- [x] Wired into `stream_message()` RAG escalation path (`should_escalate=True`)
+- [x] Extracts `retrieved_doc_count` and `max_relevance_score` from RAG state
+
+### 11.4 — Admin API Endpoints ✅
+- [x] `GET /api/v1/admin/failed-queries` — paginated list with filters (failure_reason, resolved, date range)
+- [x] `PATCH /api/v1/admin/failed-queries/{id}/resolve` — mark as resolved with tenant ownership check
+- [x] `GET /api/v1/admin/failed-queries/stats` — aggregated stats (reason breakdown, top queries, daily trend)
+- [x] All endpoints enforce `require_role(UserRole.ADMIN)`
+- [x] `ReviewStatsResponse` extended with `unresolved_failed_queries` count
+
+### 11.5 — API Schemas ✅
+- [x] `FailedQueryResponse`, `FailedQueryListResponse`, `FailedQueryResolveResponse`, `FailedQueryStatsResponse`
+- [x] Router registered in `main.py`
+
+### 11.6 — Tests ✅
+- [x] 11 unit tests: FailureReason enum, FailedQuery domain model
+- [x] 7 unit tests: Failed query API schemas
+- [x] 14 integration tests: RBAC, list/filter, resolve, cross-tenant isolation, stats
+- [x] Updated existing review stats test for new `unresolved_failed_queries` field
+- [x] 737 total tests passing, zero regressions

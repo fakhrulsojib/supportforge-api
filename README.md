@@ -27,6 +27,7 @@ SupportForge is a multi-tenant AI customer support agent powered by a self-hoste
 - **Content Moderation** — Input filtering (jailbreak detection, tenant blocklist) and output flagging with full DB audit trail
 - **Smart Escalation** — Context-aware human handoff triggered by frustrated sentiment, repeated questions, or explicit user requests
 - **Feedback Review Queue** — Admin dashboard endpoints for reviewing negative feedback, escalations, and flagged messages
+- **Failed Query Logging** — Automatic tracking of RAG pipeline failures with admin analytics for identifying knowledge gaps
 - **Platform Superadmin** — Cross-tenant platform management role with dedicated RBAC, JWT claims, and CLI bootstrap script
 - **Tenant Provisioning** — Full lifecycle management (create, activate, suspend, archive) with chat gate enforcement for suspended tenants
 
@@ -159,6 +160,9 @@ supportforge-api/
 | `GET` | `/api/v1/admin/flagged` | Admin | List flagged messages |
 | `PATCH` | `/api/v1/admin/feedback/{id}/review` | Admin | Mark feedback as reviewed |
 | `GET` | `/api/v1/admin/feedback/stats` | Admin | Feedback aggregate stats |
+| `GET` | `/api/v1/admin/failed-queries` | Admin | List failed queries (filters: reason, resolved, date range) |
+| `PATCH` | `/api/v1/admin/failed-queries/{id}/resolve` | Admin | Mark failed query as resolved |
+| `GET` | `/api/v1/admin/failed-queries/stats` | Admin | Failed query analytics (reason breakdown, top queries, trend) |
 
 ### Roles
 
