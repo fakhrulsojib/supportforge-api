@@ -80,6 +80,7 @@ class ReviewStatsResponse(BaseModel):
     unreviewed_negative: int = Field(..., description="Unreviewed negative feedback count")
     unreviewed_flagged: int = Field(..., description="Unreviewed flagged messages count")
     open_escalations: int = Field(..., description="Unresolved escalated conversations count")
+    unresolved_failed_queries: int = Field(0, description="Unresolved failed queries count")
 
 
 class ReviewActionResponse(BaseModel):
