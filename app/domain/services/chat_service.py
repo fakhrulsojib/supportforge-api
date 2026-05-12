@@ -649,28 +649,14 @@ class ChatService:
                 matched_term=output_check.matched_term[:100],
             )
 
-        # Done frame
-        yield {
-            "type": "done",
-            "data": {
-                "conversation_id": conversation_id,
-                "model_used": model_used,
-                "sources": grouped_sources,
-                "escalated": False,
-                "escalation_reason": "",
-                "thinking_text": full_thinking,
-                "validation_status": validation_status.value,
-            },
-        }
-
-        # Persist to database
+        # Persist to database BEFORE done frame so we can include message_id
         moderation_reason = ""
         moderation_matched = ""
         if output_check.flagged:
             moderation_reason = output_check.reason
             moderation_matched = output_check.matched_term
 
-        await self._persist_exchange(
+        assistant_message_id = await self._persist_exchange(
             conversation_id=conversation_id,
             tenant_id=tenant_id,
             user_id=user_id,
@@ -684,6 +670,21 @@ class ChatService:
             moderation_reason=moderation_reason,
             moderation_matched_term=moderation_matched,
         )
+
+        # Done frame (includes message_id for frontend feedback)
+        yield {
+            "type": "done",
+            "data": {
+                "conversation_id": conversation_id,
+                "message_id": assistant_message_id,
+                "model_used": model_used,
+                "sources": grouped_sources,
+                "escalated": False,
+                "escalation_reason": "",
+                "thinking_text": full_thinking,
+                "validation_status": validation_status.value,
+            },
+        }
 
     # ── Conversation History (sliding window) ───────────────────
 
@@ -770,7 +771,7 @@ class ChatService:
         moderation_reason: str = "",
         moderation_matched_term: str = "",
         escalation_trigger: str = "none",
-    ) -> None:
+    ) -> str:
         """Save the conversation and its messages to the database.
 
         Creates a new conversation record if ``is_new`` is True, then
@@ -799,6 +800,10 @@ class ChatService:
             escalation_trigger: Escalation trigger type (``none``, ``sentiment``,
                 ``repetition``, ``explicit_request``, ``no_context``). Stored
                 on the conversation record for analytics.
+
+        Returns:
+            The database UUID of the saved assistant message, or empty string
+            on failure.
         """
         try:
             from app.domain.models.conversation import Message
@@ -843,7 +848,7 @@ class ChatService:
 
                 # Save assistant response (use fallback if LLM returned nothing)
                 saved_content = assistant_message or "(No response generated)"
-                await msg_repo.create(
+                saved_msg = await msg_repo.create(
                     Message(
                         conversation_id=conversation_id,
                         role=MessageRole.ASSISTANT,
@@ -856,6 +861,7 @@ class ChatService:
                         moderation_matched_term=moderation_matched_term[:200],
                     )
                 )
+                assistant_message_id = saved_msg.id
 
                 await session.commit()
 
@@ -879,6 +885,7 @@ class ChatService:
                 conversation_id=conversation_id,
                 is_new=is_new,
             )
+            return assistant_message_id
         except Exception:
             # Log but don't fail the chat — persistence is best-effort
             logger.error(
@@ -886,6 +893,7 @@ class ChatService:
                 conversation_id=conversation_id,
                 exc_info=True,
             )
+            return ""
 
     async def _persist_failed_query(
         self,
