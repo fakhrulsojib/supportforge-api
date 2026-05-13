@@ -170,7 +170,7 @@
 
 ---
 
-## Upcoming Phases (10–22) 🔲
+## Upcoming Phases (10–23) 🔲
 
 > See `supportforge_plan.md` for detailed task lists and gotchas.
 
@@ -181,27 +181,28 @@
 | 10 | Tenant Provisioning API | High | ✅ |
 | 11 | Failed Query Logging & Analytics | High | ✅ |
 | 12 | Tenant Provisioning UI + Failed Queries UI | High | 🔲 |
-| 13 | Rate Limiting Middleware | Medium | 🔲 |
-| 14 | PII Detection & Masking | Medium | 🔲 |
-| 15 | User Approval Workflow | Medium | 🔲 |
-| 16 | Role Management API | Medium | 🔲 |
-| 17 | User Management UI | Medium | 🔲 |
-| 18 | Moderation Dashboard API | Medium | 🔲 |
-| 19 | Moderation Dashboard UI | Medium | 🔲 |
-| 20 | A/B Testing & Tenant Config | Low | 🔲 |
-| 21 | Webhook Integration | Low | 🔲 |
-| 22 | Deployment, Docs & E2E | Low | 🔲 |
+| 13 | Analytics Backend API | High | 🔲 |
+| 14 | Rate Limiting Middleware | Medium | 🔲 |
+| 15 | PII Detection & Masking | Medium | 🔲 |
+| 16 | User Approval Workflow | Medium | 🔲 |
+| 17 | Role Management API | Medium | 🔲 |
+| 18 | User Management UI | Medium | 🔲 |
+| 19 | Moderation Dashboard API | Medium | 🔲 |
+| 20 | Moderation Dashboard UI | Medium | 🔲 |
+| 21 | A/B Testing & Tenant Config | Low | 🔲 |
+| 22 | Webhook Integration | Low | 🔲 |
+| 23 | Deployment, Docs & E2E | Low | 🔲 |
 
 ### Known Gaps (from Phase 2 review)
-- [ ] Fix `RedisAdapter.incr()` fail-open bug → Phase 13
-- [ ] Add `incr_with_ttl()` to `CachePort` → Phase 13
-- [ ] Add Redis-backed refresh token blacklist → Phase 13
-- [ ] Generate Alembic migrations → Phase 22
-- [ ] Bump `__version__` to `0.2.0` → Phase 22
-- [ ] Remove backward-compatibility shims → Phase 22
-- [ ] Replace `mypy ignore_errors = true` → Phase 22
-- [ ] Fix `.env.example` interpolation → Phase 22
-- [ ] Per-tenant admin scoping tests → Phase 22
+- [ ] Fix `RedisAdapter.incr()` fail-open bug → Phase 14
+- [ ] Add `incr_with_ttl()` to `CachePort` → Phase 14
+- [ ] Add Redis-backed refresh token blacklist → Phase 14
+- [ ] Generate Alembic migrations → Phase 23
+- [ ] Bump `__version__` to `0.2.0` → Phase 23
+- [ ] Remove backward-compatibility shims → Phase 23
+- [ ] Replace `mypy ignore_errors = true` → Phase 23
+- [ ] Fix `.env.example` interpolation → Phase 23
+- [ ] Per-tenant admin scoping tests → Phase 23
 
 
 ---

@@ -27,16 +27,17 @@ SupportForge is a production-grade, multi-tenant AI customer support agent. This
 | Phase 10 | `phase-10/tenant-provisioning-api` | Tenant CRUD, status lifecycle, chat gate for suspended tenants |
 | Phase 11 | `phase-11/failed-query-logging` | Failed query model, persistence, admin API, analytics integration |
 | Phase 12 | `phase-12/tenant-provisioning-ui` | Superadmin tenant management + Failed Queries tab in Review Queue |
-| Phase 13 | `phase-13/rate-limiting` | Redis sliding window middleware, fail-closed, token blacklist |
-| Phase 14 | `phase-14/pii-masking` | PII detection (CC, SSN, phone, email), masking before LLM + storage |
-| Phase 15 | `phase-15/user-approval` | User registration approval workflow (backend) |
-| Phase 16 | `phase-16/role-management` | Role management API (promote, demote, last-admin protection) |
-| Phase 17 | `phase-17/user-management-ui` | User management + approval frontend |
-| Phase 18 | `phase-18/moderation-dashboard-api` | Cross-tenant moderation query API |
-| Phase 19 | `phase-19/moderation-dashboard-ui` | Moderation dashboard frontend |
-| Phase 20 | `phase-20/ab-testing-config` | Tenant config (model, temperature, prompt variant), admin settings UI |
-| Phase 21 | `phase-21/webhook-integration` | Webhook service for escalation/feedback/new conversation events |
-| Phase 22 | `phase-22/deployment-e2e` | Docker prod, deployment guides, E2E test suite, tech debt cleanup |
+| Phase 13 | `phase-13/analytics-backend` | Analytics API endpoints (daily stats, top intents, satisfaction) |
+| Phase 14 | `phase-14/rate-limiting` | Redis sliding window middleware, fail-closed, token blacklist |
+| Phase 15 | `phase-15/pii-masking` | PII detection (CC, SSN, phone, email), masking before LLM + storage |
+| Phase 16 | `phase-16/user-approval` | User registration approval workflow (backend) |
+| Phase 17 | `phase-17/role-management` | Role management API (promote, demote, last-admin protection) |
+| Phase 18 | `phase-18/user-management-ui` | User management + approval frontend |
+| Phase 19 | `phase-19/moderation-dashboard-api` | Cross-tenant moderation query API |
+| Phase 20 | `phase-20/moderation-dashboard-ui` | Moderation dashboard frontend |
+| Phase 21 | `phase-21/ab-testing-config` | Tenant config (model, temperature, prompt variant), admin settings UI |
+| Phase 22 | `phase-22/webhook-integration` | Webhook service for escalation/feedback/new conversation events |
+| Phase 23 | `phase-23/deployment-e2e` | Docker prod, deployment guides, E2E test suite, tech debt cleanup |
 
 ### Branch Rules
 
@@ -52,7 +53,7 @@ SupportForge is a production-grade, multi-tenant AI customer support agent. This
 
 ### Cross-Repo Phases
 
-Some phases (8, 20, 22) span both `supportforge-api` and `supportforge-ui`. When working on a cross-repo phase:
+Some phases (8, 13, 21, 23) span both `supportforge-api` and `supportforge-ui`. When working on a cross-repo phase:
 1. The **backend portion** follows this file's pipeline (Steps 1–9)
 2. The **frontend portion** follows `supportforge-ui/AGENTS.md`'s pipeline (Steps 1–8)
 3. Execute backend tasks first, then frontend tasks (frontend depends on API endpoints)
@@ -341,6 +342,9 @@ For **any** module not listed below, derive the test path using this rule:
 | `app/domain/models/enums.py` (FailureReason) | `tests/unit/domain/test_failed_query.py` |
 | `app/api/schemas/failed_query.py` | `tests/unit/schemas/test_failed_query_schemas.py` |
 | `app/api/v1/failed_queries.py` | `tests/integration/api/test_failed_queries.py` |
+| `app/domain/models/analytics.py` | `tests/unit/domain/test_analytics.py` |
+| `app/api/schemas/analytics.py` | `tests/unit/schemas/test_analytics_schemas.py` |
+| `app/api/v1/analytics.py` | `tests/integration/api/test_analytics.py` |
 
 ### Testing Standards
 
