@@ -78,6 +78,7 @@ class EscalationTrigger(str, enum.Enum):
     SENTIMENT = "sentiment"
     REPETITION = "repetition"
     EXPLICIT_REQUEST = "explicit_request"
+    LLM_DECISION = "llm_decision"
 
 
 class TenantStatus(str, enum.Enum):
