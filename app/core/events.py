@@ -139,6 +139,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     app.state.ws_manager = ConnectionManager()
     logger.info("ws_manager_initialized")
 
+    # ── Superadmin Auto-Bootstrap ────────────────────────────────
+    await _bootstrap_superadmin(settings)
+
     yield
 
     # ── Shutdown (m6: log shutdown first, then clean up resources) ──
@@ -157,3 +160,78 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     if getattr(app.state, "cache", None) is not None:
         await app.state.cache.close()
         logger.info("redis_disconnected")
+
+
+# ── Well-known management tenant ────────────────────────────────
+_MANAGEMENT_TENANT_ID = "00000000-0000-0000-0000-000000000001"
+_MANAGEMENT_TENANT_NAME = "Platform Management"
+_MANAGEMENT_TENANT_SLUG = "management"
+
+
+async def _bootstrap_superadmin(settings: object) -> None:
+    """Auto-create management tenant and superadmin user on startup.
+
+    Idempotent: skips creation if the tenant/user already exists.
+    Only runs when both SUPERADMIN_EMAIL and SUPERADMIN_PASSWORD are
+    set in the environment. This eliminates the need for the manual
+    ``scripts/create_superadmin.py`` step.
+    """
+    email = getattr(settings, "superadmin_email", "")
+    password = getattr(settings, "superadmin_password", "")
+
+    if not email or not password:
+        logger.debug("superadmin_bootstrap_skipped", reason="SUPERADMIN_EMAIL or SUPERADMIN_PASSWORD not set")
+        return
+
+    from app.core.security import hash_password
+    from app.domain.models.enums import TenantStatus, UserRole
+    from app.domain.models.tenant import TenantCreate
+    from app.domain.models.user import UserCreate
+    from app.infrastructure.database.connection import AsyncSessionLocal
+    from app.infrastructure.database.repositories.tenant_repo import SQLTenantRepository
+    from app.infrastructure.database.repositories.user_repo import SQLUserRepository
+
+    try:
+        async with AsyncSessionLocal() as session:
+            tenant_repo = SQLTenantRepository(session)
+            user_repo = SQLUserRepository(session)
+
+            # 1. Ensure management tenant exists
+            existing_tenant = await tenant_repo.get_by_id(_MANAGEMENT_TENANT_ID)
+            if existing_tenant is None:
+                tenant_data = TenantCreate(
+                    name=_MANAGEMENT_TENANT_NAME,
+                    slug=_MANAGEMENT_TENANT_SLUG,
+                    config_json={},
+                    status=TenantStatus.ACTIVE,
+                )
+                # Use the well-known ID by inserting directly
+                from app.infrastructure.database.models import TenantModel
+
+                tenant_model = TenantModel(
+                    id=_MANAGEMENT_TENANT_ID,
+                    name=tenant_data.name,
+                    slug=tenant_data.slug,
+                    config_json=tenant_data.config_json,
+                    status=TenantStatus.ACTIVE,
+                )
+                session.add(tenant_model)
+                await session.flush()
+                logger.info("management_tenant_created", tenant_id=_MANAGEMENT_TENANT_ID)
+            else:
+                logger.debug("management_tenant_exists", tenant_id=_MANAGEMENT_TENANT_ID)
+
+            # 2. Ensure superadmin user exists
+            existing_user = await user_repo.get_by_email(email, _MANAGEMENT_TENANT_ID)
+            if existing_user is None:
+                hashed = hash_password(password)
+                user_create = UserCreate(email=email, role=UserRole.SUPERADMIN)
+                user = await user_repo.create(_MANAGEMENT_TENANT_ID, user_create, password_hash=hashed)
+                logger.info("superadmin_bootstrapped", email=email, user_id=user.id)
+            else:
+                logger.debug("superadmin_exists", email=email)
+
+            await session.commit()
+
+    except Exception:
+        logger.warning("superadmin_bootstrap_failed", exc_info=True)

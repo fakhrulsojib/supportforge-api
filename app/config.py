@@ -75,6 +75,12 @@ class Settings(BaseSettings):
     # ── CORS ─────────────────────────────────────────────────────
     cors_origins: str = "http://localhost:5173,http://localhost:3000"
 
+    # ── Superadmin Bootstrap (optional) ──────────────────────────
+    # If both are set, the app will auto-create a "management" tenant
+    # and superadmin user on startup (idempotent — skips if exists).
+    superadmin_email: str = ""
+    superadmin_password: str = ""  # noqa: S105
+
     @field_validator("app_log_level")
     @classmethod
     def validate_log_level(cls, v: str) -> str:
