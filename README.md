@@ -163,6 +163,9 @@ supportforge-api/
 | `GET` | `/api/v1/admin/failed-queries` | Admin | List failed queries (filters: reason, resolved, date range) |
 | `PATCH` | `/api/v1/admin/failed-queries/{id}/resolve` | Admin | Mark failed query as resolved |
 | `GET` | `/api/v1/admin/failed-queries/stats` | Admin | Failed query analytics (reason breakdown, top queries, trend) |
+| `GET` | `/api/v1/analytics/daily-stats` | Admin | Daily conversation and message counts |
+| `GET` | `/api/v1/analytics/top-intents` | Admin | Top topics by frequency |
+| `GET` | `/api/v1/analytics/satisfaction` | Admin | Customer satisfaction rate |
 
 ### Roles
 

@@ -77,6 +77,7 @@ def _register_routes(app: FastAPI) -> None:
         }
 
     # API v1 routers
+    from app.api.v1.analytics import router as analytics_router
     from app.api.v1.auth import router as auth_router
     from app.api.v1.chat_router import router as chat_router
     from app.api.v1.chat_ws import router as chat_ws_router
@@ -87,6 +88,7 @@ def _register_routes(app: FastAPI) -> None:
     from app.api.v1.review import router as review_router
     from app.api.v1.tenants import router as tenants_router
 
+    app.include_router(analytics_router)
     app.include_router(auth_router)
     app.include_router(chat_router)
     app.include_router(chat_ws_router)

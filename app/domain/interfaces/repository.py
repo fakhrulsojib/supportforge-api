@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from typing import Any
 
+    from app.domain.models.analytics import DailyStatEntry, IntentEntry, SatisfactionSummary
     from app.domain.models.conversation import Conversation, Message
     from app.domain.models.document import Document, DocumentChunk
     from app.domain.models.enums import (
@@ -239,3 +240,26 @@ class FailedQueryRepository(ABC):
 
     @abstractmethod
     async def get_stats(self, tenant_id: str) -> dict[str, Any]: ...
+
+
+class AnalyticsRepository(ABC):
+    """Port for analytics data aggregation.
+
+    Provides real-time aggregation methods for the analytics dashboard.
+    All queries are tenant-scoped for isolation.
+    """
+
+    @abstractmethod
+    async def get_daily_stats(
+        self, tenant_id: str, *, days: int = 30,
+    ) -> list[DailyStatEntry]: ...
+
+    @abstractmethod
+    async def get_top_intents(
+        self, tenant_id: str, *, limit: int = 10,
+    ) -> list[IntentEntry]: ...
+
+    @abstractmethod
+    async def get_satisfaction_summary(
+        self, tenant_id: str,
+    ) -> SatisfactionSummary: ...

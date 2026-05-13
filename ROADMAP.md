@@ -180,8 +180,8 @@
 | 9 | Platform Superadmin Role | High | ✅ |
 | 10 | Tenant Provisioning API | High | ✅ |
 | 11 | Failed Query Logging & Analytics | High | ✅ |
-| 12 | Tenant Provisioning UI + Failed Queries UI | High | 🔲 |
-| 13 | Analytics Backend API | High | 🔲 |
+| 12 | Tenant Provisioning UI + Failed Queries UI | High | ✅ |
+| 13 | Analytics Backend API | High | ✅ |
 | 14 | Rate Limiting Middleware | Medium | 🔲 |
 | 15 | PII Detection & Masking | Medium | 🔲 |
 | 16 | User Approval Workflow | Medium | 🔲 |
@@ -448,3 +448,40 @@
 - [x] 14 integration tests: RBAC, list/filter, resolve, cross-tenant isolation, stats
 - [x] Updated existing review stats test for new `unresolved_failed_queries` field
 - [x] 737 total tests passing, zero regressions
+
+---
+
+## Phase 13 — Analytics Backend API ✅
+
+> Real-time analytics endpoints for the admin dashboard. No Alembic migration — tables already exist.
+
+### 13.1 — Domain Models & Interface ✅
+- [x] `DailyStatEntry`, `IntentEntry`, `SatisfactionSummary` Pydantic models (zero framework imports)
+- [x] `AnalyticsRepository` ABC with `get_daily_stats`, `get_top_intents`, `get_satisfaction_summary`
+
+### 13.2 — SQL Repository ✅
+- [x] `SQLAnalyticsRepository` with real-time SQL aggregation
+- [x] Daily stats: GROUP BY DATE on conversations + messages (tenant-scoped via JOIN)
+- [x] Top intents: `sources_json` filename extraction with Python Counter
+- [x] Satisfaction: positive/negative feedback counts with rate computation
+
+### 13.3 — Domain Service ✅
+- [x] `AnalyticsService` thin orchestrator with parameter clamping (days 1–365, limit 1–100)
+- [x] Pure domain layer (zero framework imports)
+
+### 13.4 — API Schemas & Router ✅
+- [x] `DailyStatsResponse`, `TopIntentsResponse`, `SatisfactionResponse` DTOs
+- [x] `GET /api/v1/analytics/daily-stats?days=30` — admin-only
+- [x] `GET /api/v1/analytics/top-intents?limit=10` — admin-only
+- [x] `GET /api/v1/analytics/satisfaction` — admin-only
+- [x] All scoped to JWT user's `tenant_id`
+- [x] Router registered in `main.py`
+
+### 13.5 — Frontend Comment Cleanup ✅
+- [x] Removed stale Phase 13 references from `analyticsApi.js` and `AnalyticsPage.jsx`
+
+### 13.6 — Tests ✅
+- [x] 15 unit tests: DailyStatEntry, IntentEntry, SatisfactionSummary domain models
+- [x] 9 unit tests: analytics API schemas serialization and edge cases
+- [x] 12 integration tests: RBAC, happy path, empty state, parameter forwarding, boundaries
+- [x] 773 total tests passing (737 + 36 new), zero regressions
