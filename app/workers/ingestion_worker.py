@@ -16,6 +16,7 @@ from app.core.exceptions import IngestionError
 from app.domain.services.ingestion_service import IngestionService
 
 if TYPE_CHECKING:
+    from app.domain.interfaces.llm_provider import LLMProvider
     from app.domain.interfaces.repository import DocumentRepository
     from app.domain.interfaces.vector_store import VectorStore
     from app.rag.embeddings import EmbeddingService
@@ -30,6 +31,7 @@ async def run_ingestion_task(
     document_repo: DocumentRepository,
     embedding_service: EmbeddingService,
     vector_store: VectorStore,
+    llm_provider: LLMProvider | None = None,
 ) -> None:
     """Background task to process a document through the ingestion pipeline.
 
@@ -45,6 +47,7 @@ async def run_ingestion_task(
         document_repo: Repository for document persistence.
         embedding_service: Service for generating embeddings.
         vector_store: Vector database for storing embeddings.
+        llm_provider: Optional LLM provider for chunk contextualisation.
     """
     logger.info(
         "ingestion_task_started",
@@ -78,6 +81,7 @@ async def run_ingestion_task(
             document_repo=document_repo,
             embedding_service=embedding_service,
             vector_store=vector_store,
+            llm_provider=llm_provider,
         )
 
         await service.process_document(

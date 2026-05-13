@@ -22,7 +22,7 @@ from app.api.schemas.ingest import (
     DocumentResponse,
     DocumentUploadResponse,
 )
-from app.core.dependencies import get_embedding_service, get_vector_store, require_role
+from app.core.dependencies import get_embedding_service, get_llm_provider_dep, get_vector_store, require_role
 from app.core.exceptions import IngestionError, SupportForgeError
 from app.domain.models.enums import UserRole
 from app.domain.services.document_service import DocumentService
@@ -33,6 +33,7 @@ from app.workers.ingestion_worker import run_ingestion_task
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
+    from app.domain.interfaces.llm_provider import LLMProvider  # noqa: F401
     from app.domain.interfaces.vector_store import VectorStore
     from app.domain.models.user import User
     from app.rag.embeddings import EmbeddingService
@@ -55,6 +56,7 @@ async def upload_document(
     user: User = Depends(require_role(UserRole.ADMIN, UserRole.AGENT)),
     embedding_service: EmbeddingService = Depends(get_embedding_service),
     vector_store: VectorStore = Depends(get_vector_store),
+    llm_provider: LLMProvider | None = Depends(get_llm_provider_dep),
 ) -> DocumentUploadResponse:
     """Upload a document for RAG ingestion.
 
@@ -144,6 +146,7 @@ async def upload_document(
         document_repo=document_repo,
         embedding_service=embedding_service,
         vector_store=vector_store,
+        llm_provider=llm_provider,
     )
 
     return DocumentUploadResponse(

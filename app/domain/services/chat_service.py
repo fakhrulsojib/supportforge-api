@@ -619,32 +619,72 @@ class ChatService:
         # ── Stream LLM tokens ────────────────────────────────────
         full_answer_parts: list[str] = []
         full_thinking_parts: list[str] = []
+        llm_escalated = False
+
+        # Buffer early content tokens to detect [ESCALATE] sentinel
+        # before any content reaches the client.
+        _sentinel_len = len(_ESCALATE_SENTINEL)
+        _content_buffer: list[str] = []
+        _buffer_flushed = False
 
         async for token_frame in self._llm_provider.stream(messages=messages, temperature=temperature):  # type: ignore[attr-defined]
             frame_kind = token_frame.get("type", "content") if isinstance(token_frame, dict) else "content"
             token_text = token_frame.get("text", "") if isinstance(token_frame, dict) else token_frame
+
             if frame_kind == "thinking":
                 full_thinking_parts.append(token_text)
                 yield {"type": "thinking", "data": token_text}
+                continue
+
+            # Content token — check for sentinel in early tokens
+            if not _buffer_flushed:
+                _content_buffer.append(token_text)
+                buffered = "".join(_content_buffer).lstrip()
+
+                # Enough chars to decide?
+                if len(buffered) >= _sentinel_len:
+                    if buffered.startswith(_ESCALATE_SENTINEL):
+                        # Escalation detected — discard all LLM output
+                        llm_escalated = True
+                        full_answer_parts = [_ESCALATION_MESSAGES[EscalationTrigger.LLM_DECISION]]
+                        yield {"type": "token", "data": full_answer_parts[0]}
+                        logger.info(
+                            "llm_escalation_triggered",
+                            conversation_id=conversation_id,
+                            reason="LLM decided to escalate via sentinel token",
+                        )
+                        # Stop consuming further tokens
+                        break
+                    else:
+                        # No sentinel — flush buffer as normal tokens
+                        _buffer_flushed = True
+                        for buf_token in _content_buffer:
+                            full_answer_parts.append(buf_token)
+                            yield {"type": "token", "data": buf_token}
             else:
                 full_answer_parts.append(token_text)
                 yield {"type": "token", "data": token_text}
 
+        # If buffer was never flushed (very short response), check and flush now
+        if not _buffer_flushed and not llm_escalated:
+            buffered = "".join(_content_buffer).lstrip()
+            if buffered.startswith(_ESCALATE_SENTINEL):
+                llm_escalated = True
+                full_answer_parts = [_ESCALATION_MESSAGES[EscalationTrigger.LLM_DECISION]]
+                yield {"type": "token", "data": full_answer_parts[0]}
+                logger.info(
+                    "llm_escalation_triggered",
+                    conversation_id=conversation_id,
+                    reason="LLM decided to escalate via sentinel token",
+                )
+            else:
+                for buf_token in _content_buffer:
+                    full_answer_parts.append(buf_token)
+                    yield {"type": "token", "data": buf_token}
+
         model_used = getattr(self._llm_provider, "default_model", "")
         full_answer = "".join(full_answer_parts)
         full_thinking = "".join(full_thinking_parts)
-
-        # ── LLM-initiated escalation (sentinel detection) ────────
-        llm_escalated = False
-        if full_answer.lstrip().startswith(_ESCALATE_SENTINEL):
-            llm_escalated = True
-            # Strip the sentinel tag from the visible response
-            full_answer = full_answer.lstrip().removeprefix(_ESCALATE_SENTINEL).lstrip()
-            logger.info(
-                "llm_escalation_triggered",
-                conversation_id=conversation_id,
-                reason="LLM decided to escalate via sentinel token",
-            )
 
         # ── Post-generation output validation ────────────────────
         context_texts = [doc.get("content", "") for doc in relevant_docs]

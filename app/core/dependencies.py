@@ -253,3 +253,23 @@ def get_vector_store(request: Request) -> Any:
         msg = "VectorStore not initialized — check lifespan startup"
         raise RuntimeError(msg)
     return vector_store
+
+
+def get_llm_provider_dep(request: Request) -> Any:
+    """Return the LLMProvider from application state, or None.
+
+    Initialized during lifespan startup. Used by the ingestion pipeline
+    for contextual retrieval (chunk contextualisation).
+
+    Returns ``None`` if the LLM provider was not initialised — callers
+    must handle the ``None`` case for graceful degradation (e.g.,
+    ingestion will skip the contextualisation step).
+
+    Args:
+        request: The current request (used to access app.state).
+
+    Returns:
+        LLMProvider instance, or None if not available.
+    """
+    return getattr(request.app.state, "llm_provider", None)
+

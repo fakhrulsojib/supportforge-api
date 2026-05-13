@@ -16,11 +16,11 @@ SupportForge is a multi-tenant AI customer support agent powered by a self-hoste
 
 ### Key Features
 
-- **RAG Pipeline** — LangGraph state machine with semantic retrieval, relevance grading, and source-cited answers
+- **RAG Pipeline** — LangGraph state machine with semantic retrieval, contextual retrieval, relevance grading, and source-cited answers
 - **Multi-Tenant** — Full data isolation per tenant with RBAC (admin, agent, viewer, superadmin)
 - **Real-Time Streaming** — Token-by-token WebSocket responses for instant chat UX
 - **Self-Hosted LLM** — Zero-cost inference via Ollama behind Cloudflare Access
-- **Document Ingestion** — Upload PDF, Markdown, CSV, and plain text to build your knowledge base
+- **Document Ingestion** — Upload PDF, Markdown, CSV, and plain text; chunks are contextualised via LLM before embedding for improved retrieval accuracy
 - **Conversation Memory** — Full audit trail in PostgreSQL with feedback tracking
 - **Analytics** — Daily stats, intent classification, satisfaction metrics
 - **Output Validation** — Anti-hallucination guard detects fabricated contact info, prices, and forbidden patterns with context cross-referencing

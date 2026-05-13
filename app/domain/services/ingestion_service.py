@@ -1,8 +1,9 @@
 """Domain service for document ingestion pipeline.
 
 Pure business logic — NO framework imports. Orchestrates the full
-ingestion workflow: text extraction → chunking → embedding → vector
-storage → DB persistence, with proper status tracking and rollback.
+ingestion workflow: text extraction → chunking → contextualisation →
+embedding → vector storage → DB persistence, with proper status
+tracking and rollback.
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ from app.rag.chunking import RecursiveChunker
 from app.rag.text_extractor import TextExtractionError, TextExtractor
 
 if TYPE_CHECKING:
+    from app.domain.interfaces.llm_provider import LLMProvider
     from app.domain.interfaces.repository import DocumentRepository
     from app.domain.interfaces.vector_store import VectorStore
     from app.domain.models.document import Document
@@ -34,10 +36,11 @@ class IngestionService:
         1. Update status to PROCESSING
         2. Extract text from file content
         3. Chunk text using RecursiveChunker
-        4. Generate embeddings via EmbeddingService
-        5. Store embeddings in VectorStore (ChromaDB)
-        6. Persist chunk records in DocumentRepository
-        7. Update status to READY with chunk count
+        4. **Contextualise** chunks via LLM (if llm_provider is given)
+        5. Generate embeddings via EmbeddingService
+        6. Store embeddings in VectorStore (ChromaDB)
+        7. Persist chunk records in DocumentRepository
+        8. Update status to READY with chunk count
 
     On failure at any step:
         - Delete any partial chunks from DB
@@ -48,6 +51,7 @@ class IngestionService:
         _document_repo: Port for document persistence.
         _embedding_service: Service for generating embeddings.
         _vector_store: Port for vector database operations.
+        _llm_provider: Optional LLM provider for chunk contextualisation.
         _chunker: Text chunking strategy.
     """
 
@@ -56,12 +60,14 @@ class IngestionService:
         document_repo: DocumentRepository,
         embedding_service: EmbeddingService,
         vector_store: VectorStore,
-        chunk_size: int = 512,
-        chunk_overlap: int = 50,
+        llm_provider: LLMProvider | None = None,
+        chunk_size: int = 2500,
+        chunk_overlap: int = 300,
     ) -> None:
         self._document_repo = document_repo
         self._embedding_service = embedding_service
         self._vector_store = vector_store
+        self._llm_provider = llm_provider
         self._chunker = RecursiveChunker(chunk_size=chunk_size, overlap=chunk_overlap)
 
     async def process_document(
@@ -119,8 +125,16 @@ class IngestionService:
                 chunk_count=len(chunks),
             )
 
-            # Step 4: Generate embeddings
+            # Step 4: Contextualise chunks (Anthropic's Contextual Retrieval)
             chunk_texts = [c.content for c in chunks]
+            if self._llm_provider is not None:
+                chunk_texts = await self._contextualise_chunks(
+                    chunk_texts=chunk_texts,
+                    full_document_text=text,
+                    document_filename=document.filename,
+                )
+
+            # Step 5: Generate embeddings (on contextualised text)
             embeddings = await self._embedding_service.embed_batch(chunk_texts)
 
             logger.info(
@@ -129,7 +143,7 @@ class IngestionService:
                 embedding_count=len(embeddings),
             )
 
-            # Step 5: Generate unique IDs and store in vector DB
+            # Step 6: Generate unique IDs and store in vector DB
             chroma_ids = [f"{doc_id}_chunk_{i}_{uuid.uuid4().hex[:8]}" for i in range(len(chunks))]
 
             metadatas: list[dict[str, object]] = [
@@ -157,17 +171,19 @@ class IngestionService:
                 stored_count=len(chroma_ids),
             )
 
-            # Step 6: Persist chunk records in DB
+            # Step 7: Persist chunk records in DB
+            # Store the contextualised text so DB content matches what's
+            # in the vector store (important for source display)
             for i, chunk in enumerate(chunks):
                 db_chunk = DocumentChunk(
                     document_id=doc_id,
                     chunk_index=i,
-                    content=chunk.content,
+                    content=chunk_texts[i],
                     chroma_id=chroma_ids[i],
                 )
                 await self._document_repo.create_chunk(db_chunk)
 
-            # Step 7: Update status to READY
+            # Step 8: Update status to READY
             await self._document_repo.update_status(
                 document_id=doc_id,
                 status=DocumentStatus.READY,
@@ -190,6 +206,50 @@ class IngestionService:
             await self._rollback(doc_id)
             msg = f"Ingestion failed for document '{doc_id}': {e}"
             raise IngestionError(msg) from e
+
+    async def _contextualise_chunks(
+        self,
+        chunk_texts: list[str],
+        full_document_text: str,
+        document_filename: str,
+    ) -> list[str]:
+        """Add contextual prefixes to each chunk via the LLM.
+
+        Wraps the ``contextualizer`` module. If any individual chunk
+        fails, it is returned unchanged (graceful degradation).
+
+        Args:
+            chunk_texts: Raw chunk texts.
+            full_document_text: Full source document.
+            document_filename: Filename for context generation.
+
+        Returns:
+            Contextualised chunk texts.
+        """
+        from app.rag.contextualizer import contextualize_chunks
+
+        assert self._llm_provider is not None  # noqa: S101
+
+        logger.info(
+            "contextualizing_chunks",
+            filename=document_filename,
+            chunk_count=len(chunk_texts),
+        )
+
+        contextualised = await contextualize_chunks(
+            chunk_texts=chunk_texts,
+            full_document_text=full_document_text,
+            document_filename=document_filename,
+            llm_provider=self._llm_provider,
+        )
+
+        logger.info(
+            "chunk_contextualization_done",
+            filename=document_filename,
+            contextualised_count=len(contextualised),
+        )
+
+        return contextualised
 
     def _extract_text(self, content: bytes, file_type: str) -> str:
         """Extract text from file content, wrapping extraction errors.

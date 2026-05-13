@@ -345,6 +345,7 @@ For **any** module not listed below, derive the test path using this rule:
 | `app/domain/models/analytics.py` | `tests/unit/domain/test_analytics.py` |
 | `app/api/schemas/analytics.py` | `tests/unit/schemas/test_analytics_schemas.py` |
 | `app/api/v1/analytics.py` | `tests/integration/api/test_analytics.py` |
+| `app/rag/contextualizer.py` | `tests/unit/domain/test_ingestion_service.py` (TestContextualRetrieval) |
 
 ### Testing Standards
 

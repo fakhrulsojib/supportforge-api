@@ -48,7 +48,7 @@
 - [x] `VectorStore` ABC with `add_documents()`, `search()`, `delete_collection()`
 - [x] `ChromaAdapter` namespaced by `tenant_{id}`
 - [x] Embedding wrapper for Ollama `/api/embeddings`
-- [x] `RecursiveChunker` (chunk_size=512, overlap=50)
+- [x] `RecursiveChunker` (chunk_size=2500, overlap=300)
 - [x] Tests: chunking, chroma add/search/delete
 
 ### 1.5 — Bitext Dataset Ingestion ✅
@@ -131,15 +131,16 @@
 
 ### 2.3 — Async Ingestion Worker ✅
 - [x] `app/workers/text_extractor.py` — PDF/MD/CSV/TXT extraction with UTF-8 → latin-1 fallback
-- [x] `app/domain/services/ingestion_service.py` — pipeline orchestrator: extract → chunk → embed → vector store → DB persist
+- [x] `app/domain/services/ingestion_service.py` — pipeline orchestrator: extract → chunk → contextualise → embed → vector store → DB persist
+- [x] `app/rag/contextualizer.py` — Anthropic's Contextual Retrieval: LLM-generated context prepended to each chunk before embedding for improved retrieval accuracy
 - [x] `app/workers/ingestion_worker.py` — BackgroundTasks-based async worker with tenant isolation check
 - [x] Upload endpoint triggers background ingestion via `BackgroundTasks`
 - [x] Status tracking: PENDING → PROCESSING → READY (or FAILED with rollback)
 - [x] `document_chunks` table persistence with `chroma_id` reference
 - [x] Failure handling: rollback partial chunks, set status=FAILED
 - [x] `app/core/events.py` — `embedding_service` and `vector_store` exposed on `app.state` + cleanup on shutdown
-- [x] `app/core/dependencies.py` — `get_embedding_service()` and `get_vector_store()` dependency functions
-- [x] Tests: 37 unit tests (20 text extractor + 11 ingestion service + 6 ingestion worker) + 2 new lifespan tests
+- [x] `app/core/dependencies.py` — `get_embedding_service()`, `get_vector_store()`, and `get_llm_provider_dep()` dependency functions
+- [x] Tests: 37 unit tests (20 text extractor + 15 ingestion service + 6 ingestion worker) + 2 new lifespan tests
 
 ### Known Limitations (Phase 2)
 

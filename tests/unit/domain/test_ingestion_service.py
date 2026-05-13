@@ -1,14 +1,15 @@
 """Unit tests for the IngestionService domain service.
 
 Covers:
-    - Successful end-to-end ingestion (extract → chunk → embed → store → persist)
+    - Successful end-to-end ingestion (extract → chunk → contextualise → embed → store → persist)
     - Status transitions (PENDING → PROCESSING → READY)
     - Partial embedding failure → rollback, status FAILED
     - Vector store failure → rollback, status FAILED
     - Empty text extraction → status FAILED
     - Chunk count persisted correctly
     - ChromaDB IDs match document_chunks.chroma_id
-    - Duplicate chunk detection / idempotency
+    - Contextual retrieval integration (LLM provider present)
+    - Graceful fallback when LLM provider is absent
 """
 
 from __future__ import annotations
@@ -50,6 +51,16 @@ def mock_vector_store() -> AsyncMock:
 
 
 @pytest.fixture
+def mock_llm_provider() -> AsyncMock:
+    """Create a mock LLMProvider for contextual retrieval."""
+    provider = AsyncMock()
+    provider.generate = AsyncMock(
+        return_value="This chunk is from the test document about general support topics."
+    )
+    return provider
+
+
+@pytest.fixture
 def sample_document() -> Document:
     """Create a sample document for testing."""
     return Document(
@@ -69,11 +80,27 @@ def ingestion_service(
     mock_embedding_service: AsyncMock,
     mock_vector_store: AsyncMock,
 ) -> IngestionService:
-    """Create an IngestionService with mocked dependencies."""
+    """Create an IngestionService with mocked dependencies (no LLM provider)."""
     return IngestionService(
         document_repo=mock_document_repo,
         embedding_service=mock_embedding_service,
         vector_store=mock_vector_store,
+    )
+
+
+@pytest.fixture
+def ingestion_service_with_llm(
+    mock_document_repo: AsyncMock,
+    mock_embedding_service: AsyncMock,
+    mock_vector_store: AsyncMock,
+    mock_llm_provider: AsyncMock,
+) -> IngestionService:
+    """Create an IngestionService with LLM provider for contextual retrieval."""
+    return IngestionService(
+        document_repo=mock_document_repo,
+        embedding_service=mock_embedding_service,
+        vector_store=mock_vector_store,
+        llm_provider=mock_llm_provider,
     )
 
 
@@ -207,6 +234,122 @@ class TestSuccessfulIngestion:
         chunk_chroma_ids = [call.args[0].chroma_id for call in chunk_calls]
 
         assert set(vector_ids) == set(chunk_chroma_ids)
+
+
+# ── Contextual Retrieval ─────────────────────────────────────────
+
+
+class TestContextualRetrieval:
+    """Tests for Anthropic's contextual retrieval technique."""
+
+    @patch("app.domain.services.ingestion_service.TextExtractor")
+    async def test_chunks_are_contextualised_when_llm_provider_present(
+        self,
+        mock_extractor: MagicMock,
+        ingestion_service_with_llm: IngestionService,
+        mock_document_repo: AsyncMock,
+        mock_embedding_service: AsyncMock,
+        mock_vector_store: AsyncMock,
+        mock_llm_provider: AsyncMock,
+        sample_document: Document,
+    ) -> None:
+        """When LLM provider is present, chunks should be contextualised before embedding."""
+        mock_extractor.extract.return_value = "Document content for contextualisation."
+        mock_document_repo.update_status.return_value = sample_document
+        mock_embedding_service.embed_batch.return_value = [[0.1, 0.2]]
+
+        await ingestion_service_with_llm.process_document(
+            document=sample_document,
+            file_content=b"text",
+        )
+
+        # LLM should have been called for context generation
+        assert mock_llm_provider.generate.call_count > 0
+
+        # The text sent to embed_batch should contain the contextualised prefix
+        embed_call = mock_embedding_service.embed_batch.call_args
+        embedded_texts = embed_call.args[0]
+        for text in embedded_texts:
+            assert "This chunk is from the test document" in text
+
+    @patch("app.domain.services.ingestion_service.TextExtractor")
+    async def test_chunks_stored_with_contextualised_text(
+        self,
+        mock_extractor: MagicMock,
+        ingestion_service_with_llm: IngestionService,
+        mock_document_repo: AsyncMock,
+        mock_embedding_service: AsyncMock,
+        mock_llm_provider: AsyncMock,
+        sample_document: Document,
+    ) -> None:
+        """DB chunk records should contain the contextualised text."""
+        mock_extractor.extract.return_value = "Short content."
+        mock_document_repo.update_status.return_value = sample_document
+        mock_embedding_service.embed_batch.return_value = [[0.1]]
+
+        await ingestion_service_with_llm.process_document(
+            document=sample_document,
+            file_content=b"text",
+        )
+
+        # Check the chunk content stored in DB
+        chunk_calls = mock_document_repo.create_chunk.call_args_list
+        for call in chunk_calls:
+            chunk: DocumentChunk = call.args[0]
+            assert "This chunk is from the test document" in chunk.content
+
+    @patch("app.domain.services.ingestion_service.TextExtractor")
+    async def test_ingestion_works_without_llm_provider(
+        self,
+        mock_extractor: MagicMock,
+        ingestion_service: IngestionService,
+        mock_document_repo: AsyncMock,
+        mock_embedding_service: AsyncMock,
+        sample_document: Document,
+    ) -> None:
+        """Ingestion should work fine without LLM provider (no contextualisation)."""
+        mock_extractor.extract.return_value = "Raw content without context."
+        mock_document_repo.update_status.return_value = sample_document
+        mock_embedding_service.embed_batch.return_value = [[0.1]]
+
+        await ingestion_service.process_document(
+            document=sample_document,
+            file_content=b"text",
+        )
+
+        # Should complete successfully
+        last_update = mock_document_repo.update_status.call_args_list[-1]
+        assert DocumentStatus.READY in (
+            last_update.args[1] if len(last_update.args) > 1 else last_update.kwargs["status"],
+        )
+
+    @patch("app.domain.services.ingestion_service.TextExtractor")
+    async def test_contextualisation_failure_gracefully_degrades(
+        self,
+        mock_extractor: MagicMock,
+        ingestion_service_with_llm: IngestionService,
+        mock_document_repo: AsyncMock,
+        mock_embedding_service: AsyncMock,
+        mock_llm_provider: AsyncMock,
+        sample_document: Document,
+    ) -> None:
+        """If LLM context generation fails, original chunks should be used."""
+        mock_extractor.extract.return_value = "Content for fallback test."
+        mock_document_repo.update_status.return_value = sample_document
+        mock_embedding_service.embed_batch.return_value = [[0.1]]
+        # Simulate LLM failure — contextualizer catches and returns raw chunk
+        mock_llm_provider.generate.side_effect = Exception("LLM unavailable")
+
+        await ingestion_service_with_llm.process_document(
+            document=sample_document,
+            file_content=b"text",
+        )
+
+        # Should still complete successfully with raw chunks
+        last_update = mock_document_repo.update_status.call_args_list[-1]
+        assert DocumentStatus.READY in (
+            last_update.args[1] if len(last_update.args) > 1 else last_update.kwargs["status"],
+        )
 
 
 # ── Failure Handling ─────────────────────────────────────────────
