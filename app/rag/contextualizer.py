@@ -26,13 +26,28 @@ logger = structlog.get_logger(__name__)
 # providing enough surrounding material for the LLM to reason about.
 _MAX_DOC_CONTEXT_CHARS = 8000
 
-# System prompt for context generation — kept short and deterministic
+# System prompt for context generation — highly constrained for determinism
 _CONTEXT_SYSTEM_PROMPT = (
-    "You are a technical writer. Your ONLY job is to write a context "
-    "snippet (1–10 sentences) that situates a document chunk within its "
-    "source document. Include the document name and the topic discussed. "
-    "Provide enough context so the chunk is self-explanatory even when "
-    "read in isolation. Output ONLY the context sentences, nothing else."
+    "You generate context snippets for document chunks.\n"
+    "\n"
+    "RULES:\n"
+    "1. Write 1-5 plain English sentences.\n"
+    "2. Start with: 'This chunk is from \"<filename>\" and covers ...'\n"
+    "3. Mention the document name, the section/topic, and how it "
+    "relates to the rest of the document.\n"
+    "4. Do NOT summarize the chunk content in detail.\n"
+    "5. Do NOT repeat any text from the chunk or the document.\n"
+    "6. Do NOT output headings, bullet points, markdown, or labels.\n"
+    "7. Do NOT include meta-commentary like 'this context is meant to...'.\n"
+    "8. Do NOT fabricate information not present in the document.\n"
+    "9. Output ONLY the context sentences. Nothing before, nothing after.\n"
+    "\n"
+    "EXAMPLE:\n"
+    "Input: filename='shipping-policy.md', chunk covers return shipping rates.\n"
+    "Output: This chunk is from \"shipping-policy.md\" and covers the "
+    "return shipping rate schedule. It appears in the Returns section, "
+    "following the standard delivery tiers and before the international "
+    "shipping restrictions."
 )
 
 
@@ -45,8 +60,8 @@ async def generate_chunk_context(
 ) -> str:
     """Generate a contextual prefix for a single chunk.
 
-    Uses the LLM to produce a 1–2 sentence summary that explains where
-    this chunk sits within the overall document.  The result is prepended
+    Uses the LLM to produce a short context that explains where this
+    chunk sits within the overall document.  The result is prepended
     to the chunk text before embedding and vector storage.
 
     Args:
@@ -61,17 +76,15 @@ async def generate_chunk_context(
     """
     # Truncate the full document to fit within prompt budget
     doc_excerpt = full_document_text[:_MAX_DOC_CONTEXT_CHARS]
-    truncation_note = ""
-    if len(full_document_text) > _MAX_DOC_CONTEXT_CHARS:
-        truncation_note = "\n[... document truncated for brevity ...]"
 
     user_prompt = (
-        f"Document: \"{document_filename}\"\n\n"
-        f"--- Full Document ---\n"
-        f"{doc_excerpt}{truncation_note}\n\n"
-        f"--- Chunk to Contextualise ---\n"
-        f"{chunk_text}\n\n"
-        f"Write 1–10 sentences of context for this chunk:"
+        f"Filename: \"{document_filename}\"\n"
+        f"\n"
+        f"<document>\n{doc_excerpt}\n</document>\n"
+        f"\n"
+        f"<chunk>\n{chunk_text}\n</chunk>\n"
+        f"\n"
+        f"Write the context snippet for this chunk now."
     )
 
     try:
@@ -80,7 +93,7 @@ async def generate_chunk_context(
                 {"role": "system", "content": _CONTEXT_SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt},
             ],
-            temperature=0.1,  # near-deterministic but allows slight variation
+            temperature=0.0,  # fully deterministic
             max_tokens=4096,
         )
 
