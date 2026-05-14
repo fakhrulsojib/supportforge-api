@@ -81,7 +81,7 @@ async def generate_chunk_context(
                 {"role": "user", "content": user_prompt},
             ],
             temperature=0.1,  # near-deterministic but allows slight variation
-            max_tokens=4096,  # thinking + content; thinking alone can use 1000+ tokens
+            max_tokens=4096,
         )
 
         context = context.strip()

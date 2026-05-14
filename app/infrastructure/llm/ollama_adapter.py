@@ -54,8 +54,7 @@ class OllamaAdapter(LLMProvider):
 
         self._http_client = httpx.AsyncClient(
             headers=headers,
-            # qwen3 has a "thinking" phase (30–60s) before first token.
-            # read timeout must be high enough to cover that delay.
+            # Generous read timeout to cover slow models and long generations.
             timeout=httpx.Timeout(300.0, connect=10.0),
         )
 
@@ -85,8 +84,11 @@ class OllamaAdapter(LLMProvider):
                     "num_predict": max_tokens,
                 },
             }
-            if not think:
-                payload["think"] = False
+            # NOTE: We intentionally do NOT send the top-level "think"
+            # parameter.  Thinking models (e.g. qwen3) default to
+            # thinking-on, which is fine.  Non-thinking models (e.g.
+            # phi4-mini) will return a 400 error if they receive it.
+            # Omitting it keeps the adapter model-agnostic.
 
             content_parts: list[str] = []
 
@@ -102,7 +104,8 @@ class OllamaAdapter(LLMProvider):
                     try:
                         chunk = json.loads(line)
                         msg = chunk.get("message", {})
-                        # Only collect content tokens, skip thinking tokens
+                        # Collect content tokens only; thinking tokens
+                        # (if the model produces them) are skipped.
                         content = msg.get("content", "")
                         if content:
                             content_parts.append(content)
@@ -111,7 +114,8 @@ class OllamaAdapter(LLMProvider):
 
             result = "".join(content_parts)
 
-            # Strip residual <think>…</think> tags from content
+            # Safety net: strip residual <think>…</think> tags that some
+            # reasoning models may leak into the content field.
             if "</think>" in result:
                 result = result.split("</think>", 1)[-1]
             return result.strip()
@@ -142,10 +146,11 @@ class OllamaAdapter(LLMProvider):
         """Stream response tokens from Ollama.
 
         Uses the native ``/api/chat`` endpoint with ``stream=true``.
-        Ollama sends newline-delimited JSON objects. For reasoning models
-        (e.g. qwen3), tokens may appear in ``message.thinking`` (internal
-        reasoning) or ``message.content`` (visible answer). Both are
-        yielded with a ``type`` discriminator.
+        Ollama sends newline-delimited JSON objects. For reasoning models,
+        tokens may appear in ``message.thinking`` (internal reasoning)
+        or ``message.content`` (visible answer). Both are yielded with
+        a ``type`` discriminator. Non-thinking models only produce
+        ``content`` frames.
         """
         resolved_model = model or self.default_model
         try:
