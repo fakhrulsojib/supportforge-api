@@ -29,6 +29,8 @@ class LLMProvider(ABC):
         model: str | None = None,
         temperature: float = 0.7,
         max_tokens: int = 8192,
+        *,
+        think: bool = True,
     ) -> str:
         """Generate a complete response from the LLM.
 
@@ -37,6 +39,8 @@ class LLMProvider(ABC):
             model: Model override. None uses the configured default.
             temperature: Sampling temperature.
             max_tokens: Maximum tokens in the response.
+            think: Whether to enable reasoning/thinking mode. Set to
+                False for simple tasks where thinking wastes tokens.
 
         Returns:
             The complete generated text.

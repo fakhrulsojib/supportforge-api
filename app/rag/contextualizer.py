@@ -82,6 +82,7 @@ async def generate_chunk_context(
             ],
             temperature=0.0,  # deterministic output
             max_tokens=256,   # context should be very short
+            think=False,      # skip reasoning — simple summarisation task
         )
 
         context = context.strip()

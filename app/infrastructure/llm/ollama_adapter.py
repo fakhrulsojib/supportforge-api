@@ -65,29 +65,42 @@ class OllamaAdapter(LLMProvider):
         model: str | None = None,
         temperature: float = 0.7,
         max_tokens: int = 8192,
+        *,
+        think: bool = True,
     ) -> str:
         """Generate a complete response from Ollama.
 
         Uses the native ``/api/chat`` endpoint with ``stream=false``.
+        Set ``think=False`` to disable reasoning mode for models like
+        qwen3, saving tokens and latency on simple tasks.
         """
         resolved_model = model or self.default_model
         try:
+            payload: dict = {
+                "model": resolved_model,
+                "messages": messages,
+                "stream": False,
+                "options": {
+                    "temperature": temperature,
+                    "num_predict": max_tokens,
+                },
+            }
+            if not think:
+                payload["think"] = False
+
             response = await self._http_client.post(
                 f"{self.base_url}/api/chat",
-                json={
-                    "model": resolved_model,
-                    "messages": messages,
-                    "stream": False,
-                    "options": {
-                        "temperature": temperature,
-                        "num_predict": max_tokens,
-                    },
-                },
+                json=payload,
             )
             response.raise_for_status()
             data = response.json()
             content = data.get("message", {}).get("content", "")
-            return content
+
+            # Some models emit residual <think>…</think> tags in content
+            # even when thinking is disabled.  Strip them out.
+            if "</think>" in content:
+                content = content.split("</think>", 1)[-1]
+            return content.strip()
         except httpx.ConnectError as e:
             logger.error("ollama_connection_failed", error=str(e))
             msg = f"Cannot connect to Ollama at {self.base_url}: {e}"
