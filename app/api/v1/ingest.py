@@ -126,6 +126,12 @@ async def upload_document(
         uploaded_by=user.id,
     )
 
+    # Commit NOW so the document is immediately visible to list queries.
+    # Without this, the document only exists within this session's
+    # transaction and won't appear in other sessions (e.g., the list
+    # endpoint) until the background task finishes minutes later.
+    await session.commit()
+
     logger.info(
         "document_uploaded",
         document_id=document.id,
@@ -136,14 +142,14 @@ async def upload_document(
         uploaded_by=user.id,
     )
 
-    # Trigger background ingestion task
-    document_repo = SQLDocumentRepository(session)
+    # Trigger background ingestion task.
+    # The task creates its own DB session — it must NOT share the
+    # request session which will be closed after the response.
     background_tasks.add_task(
         run_ingestion_task,
         document_id=document.id,
         file_content=content,
         tenant_id=user.tenant_id,
-        document_repo=document_repo,
         embedding_service=embedding_service,
         vector_store=vector_store,
         llm_provider=llm_provider,
