@@ -293,7 +293,7 @@ class ChatService:
         tenant_id: str,
         user_id: str = "",
         conversation_id: str | None = None,
-        temperature: float = 0.7,
+        temperature: float = 0.2,
         tenant_blocklist: list[str] | None = None,
     ) -> AsyncGenerator[dict[str, Any], None]:
         """Stream a chat response token-by-token via the RAG pipeline.
@@ -322,7 +322,7 @@ class ChatService:
         """
         # Clamp temperature to valid range
         if not isinstance(temperature, (int, float)) or temperature < 0.0 or temperature > 1.0:
-            temperature = 0.7
+            temperature = 0.2
 
         # Default blocklist to empty list
         blocklist = tenant_blocklist or []

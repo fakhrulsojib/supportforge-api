@@ -69,7 +69,7 @@ async def websocket_chat(
     # Look up user and tenant config in a single session
     from app.infrastructure.database.connection import AsyncSessionLocal
 
-    tenant_temperature = 0.7  # default
+    tenant_temperature = 0.2  # default
     tenant_blocklist: list[str] = []  # default — no blocked terms
     async with AsyncSessionLocal() as session:
         user_repo = SQLUserRepository(session)
