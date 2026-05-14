@@ -68,6 +68,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     from app.infrastructure.llm.factory import get_llm_provider
     from app.infrastructure.vectorstore.chroma_adapter import ChromaAdapter
     from app.infrastructure.websocket.connection_manager import ConnectionManager
+    from app.workers.ingestion_queue import IngestionQueue
     from app.rag.embeddings import EmbeddingService
 
     settings = get_settings()
@@ -138,6 +139,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Initialize WebSocket connection manager
     app.state.ws_manager = ConnectionManager()
     logger.info("ws_manager_initialized")
+
+    # Initialize ingestion queue with bounded concurrency
+    app.state.ingestion_queue = IngestionQueue(
+        max_concurrent=settings.ingestion_max_concurrent,
+    )
 
     # ── Superadmin Auto-Bootstrap ────────────────────────────────
     await _bootstrap_superadmin(settings)

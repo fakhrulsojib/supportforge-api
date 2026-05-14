@@ -115,7 +115,22 @@ async def run_ingestion_task(
             )
 
     except IngestionError as e:
-        # IngestionService already handled rollback and status update
+        # IngestionService set FAILED via rollback but the session's
+        # async-with block has exited — open a fresh session to commit.
+        try:
+            async with AsyncSessionLocal() as err_session:
+                err_repo = SQLDocumentRepository(err_session)
+                await err_repo.update_status(
+                    document_id=document_id,
+                    status=DocumentStatus.FAILED,
+                )
+                await err_session.commit()
+        except Exception:
+            logger.error(
+                "ingestion_failed_status_commit_error",
+                document_id=document_id,
+                exc_info=True,
+            )
         logger.error(
             "ingestion_task_failed",
             document_id=document_id,
@@ -123,7 +138,21 @@ async def run_ingestion_task(
         )
 
     except Exception:
-        # Catch-all for unexpected errors — background tasks must not crash
+        # Catch-all for unexpected errors — try to mark as FAILED
+        try:
+            async with AsyncSessionLocal() as err_session:
+                err_repo = SQLDocumentRepository(err_session)
+                await err_repo.update_status(
+                    document_id=document_id,
+                    status=DocumentStatus.FAILED,
+                )
+                await err_session.commit()
+        except Exception:
+            logger.error(
+                "ingestion_failed_status_commit_error",
+                document_id=document_id,
+                exc_info=True,
+            )
         logger.error(
             "ingestion_task_unexpected_error",
             document_id=document_id,

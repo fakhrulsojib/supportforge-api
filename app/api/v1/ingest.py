@@ -15,7 +15,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import structlog
-from fastapi import APIRouter, BackgroundTasks, Depends, UploadFile
+from fastapi import APIRouter, Depends, Request, UploadFile
 
 from app.api.schemas.ingest import (
     DocumentListResponse,
@@ -28,7 +28,7 @@ from app.domain.models.enums import UserRole
 from app.domain.services.document_service import DocumentService
 from app.infrastructure.database.connection import get_async_session
 from app.infrastructure.database.repositories.document_repo import SQLDocumentRepository
-from app.workers.ingestion_worker import run_ingestion_task
+from app.workers.ingestion_queue import IngestionQueue
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -51,7 +51,7 @@ def _get_document_service(session: AsyncSession) -> DocumentService:
 @router.post("/upload", response_model=DocumentUploadResponse, status_code=201)
 async def upload_document(
     file: UploadFile,
-    background_tasks: BackgroundTasks,
+    request: Request,
     session: AsyncSession = Depends(get_async_session),
     user: User = Depends(require_role(UserRole.ADMIN, UserRole.AGENT)),
     embedding_service: EmbeddingService = Depends(get_embedding_service),
@@ -69,7 +69,7 @@ async def upload_document(
 
     Args:
         file: Uploaded file (multipart/form-data).
-        background_tasks: FastAPI background task runner.
+        request: FastAPI request (provides access to app state).
         session: Database session.
         user: Authenticated admin or agent user.
         embedding_service: Embedding generation service.
@@ -142,11 +142,11 @@ async def upload_document(
         uploaded_by=user.id,
     )
 
-    # Trigger background ingestion task.
-    # The task creates its own DB session — it must NOT share the
-    # request session which will be closed after the response.
-    background_tasks.add_task(
-        run_ingestion_task,
+    # Submit to the bounded-concurrency ingestion queue.
+    # The queue uses a semaphore to limit parallel processing,
+    # preventing Ollama overload on bulk uploads.
+    ingestion_queue: IngestionQueue = request.app.state.ingestion_queue
+    await ingestion_queue.submit(
         document_id=document.id,
         file_content=content,
         tenant_id=user.tenant_id,

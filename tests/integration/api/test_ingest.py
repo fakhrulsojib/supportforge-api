@@ -110,6 +110,12 @@ def app_with_mocks(mock_session: AsyncMock) -> object:
     app.dependency_overrides[get_async_session] = _mock_session_gen
     app.dependency_overrides[get_embedding_service] = lambda: mock_embedding
     app.dependency_overrides[get_vector_store] = lambda: mock_vector
+
+    # Provide a mock ingestion queue on app.state (normally set by lifespan)
+    mock_queue = AsyncMock()
+    mock_queue.submit = AsyncMock()
+    app.state.ingestion_queue = mock_queue
+
     return app
 
 

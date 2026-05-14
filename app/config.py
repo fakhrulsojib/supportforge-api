@@ -62,6 +62,9 @@ class Settings(BaseSettings):
     chroma_port: int = 8001
     chroma_collection_prefix: str = "tenant_"
 
+    # ── Ingestion Pipeline ───────────────────────────────────────
+    ingestion_max_concurrent: int = 2
+
     # ── JWT Authentication ───────────────────────────────────────
     jwt_secret_key: str = "change-me-to-another-random-secret"  # noqa: S105
     jwt_algorithm: str = "HS256"
@@ -91,6 +94,15 @@ class Settings(BaseSettings):
             msg = f"Invalid log level '{v}'. Must be one of: {', '.join(sorted(allowed))}"
             raise ValueError(msg)
         return upper
+
+    @field_validator("ingestion_max_concurrent")
+    @classmethod
+    def validate_ingestion_concurrency(cls, v: int) -> int:
+        """Ensure ingestion concurrency is at least 1."""
+        if v < 1:
+            msg = f"INGESTION_MAX_CONCURRENT must be >= 1, got {v}"
+            raise ValueError(msg)
+        return v
 
     @field_validator("app_env")
     @classmethod
