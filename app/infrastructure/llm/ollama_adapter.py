@@ -70,16 +70,16 @@ class OllamaAdapter(LLMProvider):
     ) -> str:
         """Generate a complete response from Ollama.
 
-        Uses the native ``/api/chat`` endpoint with ``stream=false``.
-        Set ``think=False`` to disable reasoning mode for models like
-        qwen3, saving tokens and latency on simple tasks.
+        Uses streaming internally to avoid Cloudflare 524 timeouts on
+        long-running generations (e.g. reasoning models).  Collects all
+        content tokens and returns the full text as a single string.
         """
         resolved_model = model or self.default_model
         try:
             payload: dict = {
                 "model": resolved_model,
                 "messages": messages,
-                "stream": False,
+                "stream": True,
                 "options": {
                     "temperature": temperature,
                     "num_predict": max_tokens,
@@ -88,19 +88,33 @@ class OllamaAdapter(LLMProvider):
             if not think:
                 payload["think"] = False
 
-            response = await self._http_client.post(
+            content_parts: list[str] = []
+
+            async with self._http_client.stream(
+                "POST",
                 f"{self.base_url}/api/chat",
                 json=payload,
-            )
-            response.raise_for_status()
-            data = response.json()
-            content = data.get("message", {}).get("content", "")
+            ) as response:
+                response.raise_for_status()
+                async for line in response.aiter_lines():
+                    if not line.strip():
+                        continue
+                    try:
+                        chunk = json.loads(line)
+                        msg = chunk.get("message", {})
+                        # Only collect content tokens, skip thinking tokens
+                        content = msg.get("content", "")
+                        if content:
+                            content_parts.append(content)
+                    except json.JSONDecodeError:
+                        continue
 
-            # Some models emit residual <think>…</think> tags in content
-            # even when thinking is disabled.  Strip them out.
-            if "</think>" in content:
-                content = content.split("</think>", 1)[-1]
-            return content.strip()
+            result = "".join(content_parts)
+
+            # Strip residual <think>…</think> tags from content
+            if "</think>" in result:
+                result = result.split("</think>", 1)[-1]
+            return result.strip()
         except httpx.ConnectError as e:
             logger.error("ollama_connection_failed", error=str(e))
             msg = f"Cannot connect to Ollama at {self.base_url}: {e}"

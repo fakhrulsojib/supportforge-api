@@ -28,11 +28,11 @@ _MAX_DOC_CONTEXT_CHARS = 8000
 
 # System prompt for context generation — kept short and deterministic
 _CONTEXT_SYSTEM_PROMPT = (
-    "You are a technical writer. Your ONLY job is to write a SHORT context "
-    "snippet (1–2 sentences) that situates a document chunk within its "
+    "You are a technical writer. Your ONLY job is to write a context "
+    "snippet (1–10 sentences) that situates a document chunk within its "
     "source document. Include the document name and the topic discussed. "
-    "Do NOT summarize the chunk itself — just explain WHERE it fits. "
-    "Output ONLY the context sentences, nothing else."
+    "Provide enough context so the chunk is self-explanatory even when "
+    "read in isolation. Output ONLY the context sentences, nothing else."
 )
 
 
@@ -71,7 +71,7 @@ async def generate_chunk_context(
         f"{doc_excerpt}{truncation_note}\n\n"
         f"--- Chunk to Contextualise ---\n"
         f"{chunk_text}\n\n"
-        f"Write 1–2 sentences of context for this chunk:"
+        f"Write 1–10 sentences of context for this chunk:"
     )
 
     try:
@@ -80,9 +80,8 @@ async def generate_chunk_context(
                 {"role": "system", "content": _CONTEXT_SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt},
             ],
-            temperature=0.0,  # deterministic output
-            max_tokens=256,   # context should be very short
-            think=False,      # skip reasoning — simple summarisation task
+            temperature=0.1,  # near-deterministic but allows slight variation
+            max_tokens=4096,  # thinking + content; thinking alone can use 1000+ tokens
         )
 
         context = context.strip()

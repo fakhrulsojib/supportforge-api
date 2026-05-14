@@ -61,86 +61,102 @@ class TestOllamaAdapterInit:
 
 
 class TestGenerate:
-    """Test suite for generate() method (native /api/chat endpoint)."""
+    """Test suite for generate() method (uses streaming internally)."""
+
+    @staticmethod
+    def _mock_stream_response(lines: list[str]):
+        """Build a mock streaming response context manager."""
+        mock_response = AsyncMock()
+        mock_response.status_code = 200
+
+        async def _aiter():
+            for line in lines:
+                yield line
+
+        mock_response.aiter_lines = _aiter
+
+        ctx_manager = AsyncMock()
+        ctx_manager.__aenter__ = AsyncMock(return_value=mock_response)
+        ctx_manager.__aexit__ = AsyncMock(return_value=False)
+        return ctx_manager
 
     @pytest.mark.asyncio
     async def test_generate_success(self, adapter: OllamaAdapter) -> None:
-        """Successful generation should return content string."""
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.raise_for_status = MagicMock()
-        mock_response.json.return_value = {
-            "message": {"content": "Hello, world!"},
-        }
-
-        with patch.object(adapter._http_client, "post", new_callable=AsyncMock) as mock_post:
-            mock_post.return_value = mock_response
+        """Successful generation should return collected content string."""
+        lines = [
+            json.dumps({"message": {"content": "Hello, "}}),
+            json.dumps({"message": {"content": "world!"}}),
+        ]
+        ctx = self._mock_stream_response(lines)
+        with patch.object(adapter._http_client, "stream", return_value=ctx):
             result = await adapter.generate([{"role": "user", "content": "Hi"}])
             assert result == "Hello, world!"
 
     @pytest.mark.asyncio
     async def test_generate_uses_default_model(self, adapter: OllamaAdapter) -> None:
         """Generate should use default_model when no model override is given."""
-        mock_response = MagicMock()
-        mock_response.raise_for_status = MagicMock()
-        mock_response.json.return_value = {"message": {"content": "ok"}}
-
-        with patch.object(adapter._http_client, "post", new_callable=AsyncMock) as mock_post:
-            mock_post.return_value = mock_response
+        lines = [json.dumps({"message": {"content": "ok"}})]
+        ctx = self._mock_stream_response(lines)
+        with patch.object(adapter._http_client, "stream", return_value=ctx) as mock_stream:
             await adapter.generate([{"role": "user", "content": "test"}])
-            call_kwargs = mock_post.call_args
+            call_kwargs = mock_stream.call_args
             body = call_kwargs.kwargs.get("json") or call_kwargs[1].get("json")
             assert body["model"] == "test-model"
 
     @pytest.mark.asyncio
     async def test_generate_uses_override_model(self, adapter: OllamaAdapter) -> None:
         """Generate should use override model when provided."""
-        mock_response = MagicMock()
-        mock_response.raise_for_status = MagicMock()
-        mock_response.json.return_value = {"message": {"content": "ok"}}
-
-        with patch.object(adapter._http_client, "post", new_callable=AsyncMock) as mock_post:
-            mock_post.return_value = mock_response
+        lines = [json.dumps({"message": {"content": "ok"}})]
+        ctx = self._mock_stream_response(lines)
+        with patch.object(adapter._http_client, "stream", return_value=ctx) as mock_stream:
             await adapter.generate(
                 [{"role": "user", "content": "test"}], model="custom-model"
             )
-            call_kwargs = mock_post.call_args
+            call_kwargs = mock_stream.call_args
             body = call_kwargs.kwargs.get("json") or call_kwargs[1].get("json")
             assert body["model"] == "custom-model"
 
     @pytest.mark.asyncio
     async def test_generate_empty_content_returns_empty(self, adapter: OllamaAdapter) -> None:
-        """Missing content field should return empty string."""
-        mock_response = MagicMock()
-        mock_response.raise_for_status = MagicMock()
-        mock_response.json.return_value = {"message": {}}
-
-        with patch.object(adapter._http_client, "post", new_callable=AsyncMock) as mock_post:
-            mock_post.return_value = mock_response
+        """No content tokens should return empty string."""
+        lines = [json.dumps({"message": {}})]
+        ctx = self._mock_stream_response(lines)
+        with patch.object(adapter._http_client, "stream", return_value=ctx):
             result = await adapter.generate([{"role": "user", "content": "test"}])
             assert result == ""
 
     @pytest.mark.asyncio
+    async def test_generate_strips_think_tags(self, adapter: OllamaAdapter) -> None:
+        """Residual </think> tags in content should be stripped."""
+        lines = [
+            json.dumps({"message": {"content": "<think>reasoning</think>\nThe answer."}}),
+        ]
+        ctx = self._mock_stream_response(lines)
+        with patch.object(adapter._http_client, "stream", return_value=ctx):
+            result = await adapter.generate([{"role": "user", "content": "test"}])
+            assert result == "The answer."
+
+    @pytest.mark.asyncio
     async def test_generate_connection_error(self, adapter: OllamaAdapter) -> None:
         """Connection errors should be mapped to LLMError."""
-        with patch.object(adapter._http_client, "post", new_callable=AsyncMock) as mock_post:
-            mock_post.side_effect = httpx.ConnectError("Connection refused")
+        with patch.object(adapter._http_client, "stream") as mock_stream:
+            mock_stream.side_effect = httpx.ConnectError("Connection refused")
             with pytest.raises(LLMError, match="Cannot connect"):
                 await adapter.generate([{"role": "user", "content": "test"}])
 
     @pytest.mark.asyncio
     async def test_generate_timeout_error(self, adapter: OllamaAdapter) -> None:
         """Timeout errors should be mapped to LLMError."""
-        with patch.object(adapter._http_client, "post", new_callable=AsyncMock) as mock_post:
-            mock_post.side_effect = httpx.TimeoutException("Request timed out")
+        with patch.object(adapter._http_client, "stream") as mock_stream:
+            mock_stream.side_effect = httpx.TimeoutException("Request timed out")
             with pytest.raises(LLMError, match="timed out"):
                 await adapter.generate([{"role": "user", "content": "test"}])
 
     @pytest.mark.asyncio
     async def test_generate_generic_error(self, adapter: OllamaAdapter) -> None:
         """Other exceptions should be mapped to LLMError."""
-        with patch.object(adapter._http_client, "post", new_callable=AsyncMock) as mock_post:
-            mock_post.side_effect = ValueError("Model not found")
+        with patch.object(adapter._http_client, "stream") as mock_stream:
+            mock_stream.side_effect = ValueError("Model not found")
             with pytest.raises(LLMError, match="generation failed"):
                 await adapter.generate([{"role": "user", "content": "test"}])
 
