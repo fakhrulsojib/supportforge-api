@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 import structlog
 
 from app.core.exceptions import IngestionError
+from app.domain.models.enums import DocumentStatus
 from app.domain.services.ingestion_service import IngestionService
 from app.infrastructure.database.connection import AsyncSessionLocal
 from app.infrastructure.database.repositories.document_repo import SQLDocumentRepository
@@ -83,6 +84,14 @@ async def run_ingestion_task(
                 )
                 return
 
+            # Set status to PROCESSING and commit immediately so the
+            # frontend sees this status while the pipeline runs.
+            await document_repo.update_status(
+                document_id=document_id,
+                status=DocumentStatus.PROCESSING,
+            )
+            await session.commit()
+
             # Create the ingestion service and process
             service = IngestionService(
                 document_repo=document_repo,
@@ -96,7 +105,7 @@ async def run_ingestion_task(
                 file_content=file_content,
             )
 
-            # Commit all changes (status updates, chunks, etc.)
+            # Commit all changes (chunks, READY status, etc.)
             await session.commit()
 
             logger.info(
