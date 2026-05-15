@@ -37,7 +37,7 @@ class Settings(BaseSettings):
 
     # ── Ollama (Self-Hosted LLM) ─────────────────────────────────
     ollama_base_url: str = "https://localhost:11434"
-    ollama_chat_model: str = "phi4-mini"
+    ollama_chat_model: str = "qwen3:4b"
     ollama_embedding_model: str = "nomic-embed-text"
     cf_ollama_id: str = ""
     cf_ollama_secret: str = ""
