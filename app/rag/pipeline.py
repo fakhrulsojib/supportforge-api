@@ -80,7 +80,7 @@ async def retrieve_node(
         results = await vector_store.search(
             tenant_id=tenant_id,
             query_embedding=query_embedding,
-            k=5,
+            k=3,
         )
         retrieved_docs = [
             {
