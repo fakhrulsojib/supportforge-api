@@ -355,3 +355,112 @@ class TestWebSocketStreaming:
                 frame2 = ws.receive_json()
                 assert frame2["type"] == "error"
                 assert "Connection lost" in frame2["data"]["message"]
+
+
+# ── WebSocket Stop Command Tests ────────────────────────────────
+
+
+class TestWebSocketStopCommand:
+    """Tests for client-initiated stream cancellation."""
+
+    def test_stop_command_during_stream_sends_done_with_stopped(
+        self,
+        ws_client: TestClient,
+        valid_token: str,
+        test_user: User,
+        app_with_mocks: MagicMock,
+    ) -> None:
+        """Sending {type: 'stop'} mid-stream should produce a done frame with stopped=True."""
+        import asyncio
+
+        stream_started = asyncio.Event()
+
+        async def _slow_stream(message: str, tenant_id: str, conversation_id: str | None = None, **kwargs):
+            """Simulate a slow LLM stream that yields tokens with delays."""
+            yield {"type": "token", "data": "First "}
+            stream_started.set()
+            # Simulate slow generation — enough time for client to send stop
+            await asyncio.sleep(5)
+            yield {"type": "token", "data": "should-not-see-this"}
+            yield {
+                "type": "done",
+                "data": {"conversation_id": "conv-stop", "model_used": "test"},
+            }
+
+        app_with_mocks.state.chat_service.stream_message = _slow_stream
+
+        with (
+            patch("app.api.v1.chat_ws.SQLUserRepository") as mock_repo_cls,
+            patch("app.api.v1.chat_ws.SQLTenantRepository") as mock_tenant_cls,
+        ):
+            mock_repo = mock_repo_cls.return_value
+            mock_repo.get_by_id = AsyncMock(return_value=test_user)
+
+            mock_tenant_repo = mock_tenant_cls.return_value
+            mock_tenant_repo.get_by_id = AsyncMock(
+                return_value=Tenant(id="tenant-ws-1", name="Test", slug="test")
+            )
+
+            with ws_client.websocket_connect(
+                f"/api/v1/ws/chat?token={valid_token}"
+            ) as ws:
+                # Send a message to trigger streaming
+                ws.send_json({"message": "Tell me a long story"})
+
+                # Receive the first token
+                frame1 = ws.receive_json()
+                assert frame1["type"] == "token"
+                assert frame1["data"] == "First "
+
+                # Send stop command
+                ws.send_json({"type": "stop"})
+
+                # Should receive a done frame with stopped=True
+                done_frame = ws.receive_json()
+                assert done_frame["type"] == "done"
+                assert done_frame["data"].get("stopped") is True
+
+    def test_stop_command_outside_stream_is_ignored(
+        self,
+        ws_client: TestClient,
+        valid_token: str,
+        test_user: User,
+        app_with_mocks: MagicMock,
+    ) -> None:
+        """Sending {type: 'stop'} when not streaming should be silently ignored."""
+
+        async def _quick_stream(message: str, tenant_id: str, conversation_id: str | None = None, **kwargs):
+            yield {"type": "token", "data": "Answer"}
+            yield {
+                "type": "done",
+                "data": {"conversation_id": "conv-ns"},
+            }
+
+        app_with_mocks.state.chat_service.stream_message = _quick_stream
+
+        with (
+            patch("app.api.v1.chat_ws.SQLUserRepository") as mock_repo_cls,
+            patch("app.api.v1.chat_ws.SQLTenantRepository") as mock_tenant_cls,
+        ):
+            mock_repo = mock_repo_cls.return_value
+            mock_repo.get_by_id = AsyncMock(return_value=test_user)
+
+            mock_tenant_repo = mock_tenant_cls.return_value
+            mock_tenant_repo.get_by_id = AsyncMock(
+                return_value=Tenant(id="tenant-ws-1", name="Test", slug="test")
+            )
+
+            with ws_client.websocket_connect(
+                f"/api/v1/ws/chat?token={valid_token}"
+            ) as ws:
+                # Send stop when nothing is streaming — should be ignored
+                ws.send_json({"type": "stop"})
+
+                # Should still be able to send a normal message after
+                ws.send_json({"message": "Hello?"})
+
+                frame1 = ws.receive_json()
+                assert frame1["type"] == "token"
+
+                done_frame = ws.receive_json()
+                assert done_frame["type"] == "done"

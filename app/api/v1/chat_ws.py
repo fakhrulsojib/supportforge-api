@@ -16,6 +16,8 @@ JSON Frame Protocol:
 
 from __future__ import annotations
 
+import asyncio
+
 import structlog
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 
@@ -119,6 +121,18 @@ async def websocket_chat(
             message = data.get("message", "")
             conversation_id = data.get("conversation_id")
 
+            # ── Stop command: client can abort an active stream ──
+            if data.get("type") == "stop":
+                logger.info(
+                    "ws_client_stop_requested",
+                    tenant_id=tenant_id,
+                    user_id=user_id,
+                )
+                # Nothing to actively cancel here; the stop is
+                # handled inside the streaming loop below via a
+                # concurrent receive check.
+                continue
+
             if not message or not message.strip():
                 await ws_manager.send_json(
                     websocket,
@@ -129,46 +143,119 @@ async def websocket_chat(
                 )
                 continue
 
-            # Stream response
-            try:
-                async for frame in chat_service.stream_message(
+            # Stream response with cancellation support.
+            # We run two concurrent tasks:
+            #   1. The stream consumer (sends frames to the client)
+            #   2. A "wait for stop" listener (watches for stop command or disconnect)
+            # Whichever finishes first cancels the other.
+
+            stop_event = asyncio.Event()
+
+            async def _stream_to_client() -> None:
+                """Consume the LLM stream and forward frames to the client."""
+                stream_gen = chat_service.stream_message(
                     message=message,
                     tenant_id=tenant_id,
                     user_id=user_id,
                     conversation_id=conversation_id,
                     temperature=tenant_temperature,
                     tenant_blocklist=tenant_blocklist,
-                ):
-                    await ws_manager.send_json(websocket, frame)
-            except (LLMError, SupportForgeError) as e:
-                logger.error(
-                    "ws_stream_error",
-                    error=str(e),
-                    tenant_id=tenant_id,
-                    user_id=user_id,
                 )
-                await ws_manager.send_json(
-                    websocket,
-                    {
-                        "type": "error",
-                        "data": {"message": str(e.message)},
-                    },
+                try:
+                    async for frame in stream_gen:
+                        if stop_event.is_set():
+                            break
+                        await ws_manager.send_json(websocket, frame)
+                except (LLMError, SupportForgeError) as e:
+                    logger.error(
+                        "ws_stream_error",
+                        error=str(e),
+                        tenant_id=tenant_id,
+                        user_id=user_id,
+                    )
+                    if not stop_event.is_set():
+                        await ws_manager.send_json(
+                            websocket,
+                            {
+                                "type": "error",
+                                "data": {"message": str(e.message)},
+                            },
+                        )
+                except Exception as e:
+                    logger.error(
+                        "ws_unexpected_error",
+                        error=str(e),
+                        error_type=type(e).__name__,
+                        tenant_id=tenant_id,
+                        user_id=user_id,
+                    )
+                    if not stop_event.is_set():
+                        await ws_manager.send_json(
+                            websocket,
+                            {
+                                "type": "error",
+                                "data": {"message": "An unexpected error occurred"},
+                            },
+                        )
+                finally:
+                    # Explicitly close the generator chain so that
+                    # OllamaAdapter.stream() exits its try/finally,
+                    # closing the httpx response and the TCP connection.
+                    # Ollama detects the disconnect and stops GPU work.
+                    await stream_gen.aclose()
+
+            async def _wait_for_stop() -> None:
+                """Listen for a stop command while the stream is active."""
+                try:
+                    while not stop_event.is_set():
+                        msg = await websocket.receive_json()
+                        if msg.get("type") == "stop":
+                            logger.info(
+                                "ws_stop_during_stream",
+                                tenant_id=tenant_id,
+                                user_id=user_id,
+                            )
+                            stop_event.set()
+                            return
+                except WebSocketDisconnect:
+                    stop_event.set()
+                    raise
+
+            stream_task = asyncio.create_task(_stream_to_client())
+            stop_task = asyncio.create_task(_wait_for_stop())
+
+            try:
+                done, pending = await asyncio.wait(
+                    {stream_task, stop_task},
+                    return_when=asyncio.FIRST_COMPLETED,
                 )
-            except Exception as e:
-                logger.error(
-                    "ws_unexpected_error",
-                    error=str(e),
-                    error_type=type(e).__name__,
-                    tenant_id=tenant_id,
-                    user_id=user_id,
-                )
-                await ws_manager.send_json(
-                    websocket,
-                    {
-                        "type": "error",
-                        "data": {"message": "An unexpected error occurred"},
-                    },
-                )
+                for task in pending:
+                    task.cancel()
+                    try:
+                        await task
+                    except (asyncio.CancelledError, WebSocketDisconnect):
+                        pass
+
+                # Re-raise WebSocketDisconnect if the stop listener caught it
+                for task in done:
+                    exc = task.exception() if not task.cancelled() else None
+                    if isinstance(exc, WebSocketDisconnect):
+                        raise exc
+
+                # If stopped, send a done frame so the UI knows
+                if stop_event.is_set():
+                    await ws_manager.send_json(
+                        websocket,
+                        {
+                            "type": "done",
+                            "data": {
+                                "conversation_id": conversation_id,
+                                "stopped": True,
+                            },
+                        },
+                    )
+            except WebSocketDisconnect:
+                raise
 
     except WebSocketDisconnect:
         logger.info("ws_client_disconnected", tenant_id=tenant_id, user_id=user_id)

@@ -151,37 +151,46 @@ class OllamaAdapter(LLMProvider):
         or ``message.content`` (visible answer). Both are yielded with
         a ``type`` discriminator. Non-thinking models only produce
         ``content`` frames.
+
+        The httpx response is explicitly closed in a ``finally`` block so
+        that task cancellation or early ``break`` by the consumer will
+        immediately close the HTTP connection.  Ollama detects the
+        closed connection and stops GPU generation.
         """
         resolved_model = model or self.default_model
+        response = None
         try:
-            async with self._http_client.stream(
-                "POST",
-                f"{self.base_url}/api/chat",
-                json={
-                    "model": resolved_model,
-                    "messages": messages,
-                    "stream": True,
-                    "options": {
-                        "temperature": temperature,
-                        "num_predict": max_tokens,
+            response = await self._http_client.send(
+                self._http_client.build_request(
+                    "POST",
+                    f"{self.base_url}/api/chat",
+                    json={
+                        "model": resolved_model,
+                        "messages": messages,
+                        "stream": True,
+                        "options": {
+                            "temperature": temperature,
+                            "num_predict": max_tokens,
+                        },
                     },
-                },
-            ) as response:
-                response.raise_for_status()
-                async for line in response.aiter_lines():
-                    if not line.strip():
-                        continue
-                    try:
-                        chunk = json.loads(line)
-                        msg = chunk.get("message", {})
-                        thinking = msg.get("thinking", "")
-                        content = msg.get("content", "")
-                        if thinking:
-                            yield {"type": "thinking", "text": thinking}
-                        if content:
-                            yield {"type": "content", "text": content}
-                    except json.JSONDecodeError:
-                        continue
+                ),
+                stream=True,
+            )
+            response.raise_for_status()
+            async for line in response.aiter_lines():
+                if not line.strip():
+                    continue
+                try:
+                    chunk = json.loads(line)
+                    msg = chunk.get("message", {})
+                    thinking = msg.get("thinking", "")
+                    content = msg.get("content", "")
+                    if thinking:
+                        yield {"type": "thinking", "text": thinking}
+                    if content:
+                        yield {"type": "content", "text": content}
+                except json.JSONDecodeError:
+                    continue
         except httpx.ConnectError as e:
             logger.error("ollama_stream_connection_failed", error=str(e))
             msg = f"Cannot connect to Ollama at {self.base_url}: {e}"
@@ -196,10 +205,17 @@ class OllamaAdapter(LLMProvider):
             raise LLMError(msg) from e
         except LLMError:
             raise
+        except GeneratorExit:
+            # Consumer closed the generator (break / aclose) — not an error.
+            return
         except Exception as e:
             logger.error("ollama_stream_error", error=str(e), error_type=type(e).__name__)
             msg = f"Ollama streaming failed: {e}"
             raise LLMError(msg) from e
+        finally:
+            if response is not None:
+                await response.aclose()
+                logger.debug("ollama_stream_closed")
 
     async def health_check(self) -> bool:
         """Check if Ollama is reachable by hitting the base URL."""

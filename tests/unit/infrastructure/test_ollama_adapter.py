@@ -176,19 +176,18 @@ class TestStream:
         mock_response = AsyncMock()
         mock_response.status_code = 200
         mock_response.aiter_lines = self._aiter_lines(lines)
+        mock_response.aclose = AsyncMock()
 
-        ctx_manager = AsyncMock()
-        ctx_manager.__aenter__ = AsyncMock(return_value=mock_response)
-        ctx_manager.__aexit__ = AsyncMock(return_value=False)
-
-        with patch.object(adapter._http_client, "stream", return_value=ctx_manager):
-            tokens = []
-            async for frame in adapter.stream([{"role": "user", "content": "test"}]):
-                tokens.append(frame)
+        with patch.object(adapter._http_client, "send", new_callable=AsyncMock, return_value=mock_response):
+            with patch.object(adapter._http_client, "build_request"):
+                tokens = []
+                async for frame in adapter.stream([{"role": "user", "content": "test"}]):
+                    tokens.append(frame)
 
         assert len(tokens) == 2
         assert tokens[0] == {"type": "content", "text": "Hello "}
         assert tokens[1] == {"type": "content", "text": "world!"}
+        mock_response.aclose.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_stream_thinking_and_content(self, adapter: OllamaAdapter) -> None:
@@ -201,46 +200,48 @@ class TestStream:
         mock_response = AsyncMock()
         mock_response.status_code = 200
         mock_response.aiter_lines = self._aiter_lines(lines)
+        mock_response.aclose = AsyncMock()
 
-        ctx_manager = AsyncMock()
-        ctx_manager.__aenter__ = AsyncMock(return_value=mock_response)
-        ctx_manager.__aexit__ = AsyncMock(return_value=False)
-
-        with patch.object(adapter._http_client, "stream", return_value=ctx_manager):
-            tokens = []
-            async for frame in adapter.stream([{"role": "user", "content": "test"}]):
-                tokens.append(frame)
+        with patch.object(adapter._http_client, "send", new_callable=AsyncMock, return_value=mock_response):
+            with patch.object(adapter._http_client, "build_request"):
+                tokens = []
+                async for frame in adapter.stream([{"role": "user", "content": "test"}]):
+                    tokens.append(frame)
 
         assert len(tokens) == 2
         assert tokens[0] == {"type": "thinking", "text": "Let me think..."}
         assert tokens[1] == {"type": "content", "text": "The answer."}
+        mock_response.aclose.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_stream_connection_error(self, adapter: OllamaAdapter) -> None:
         """Stream connection errors should raise LLMError."""
-        with patch.object(adapter._http_client, "stream") as mock_stream:
-            mock_stream.side_effect = httpx.ConnectError("Connection refused")
-            with pytest.raises(LLMError, match="Cannot connect"):
-                async for _ in adapter.stream([{"role": "user", "content": "test"}]):
-                    pass
+        with patch.object(adapter._http_client, "send", new_callable=AsyncMock) as mock_send:
+            mock_send.side_effect = httpx.ConnectError("Connection refused")
+            with patch.object(adapter._http_client, "build_request"):
+                with pytest.raises(LLMError, match="Cannot connect"):
+                    async for _ in adapter.stream([{"role": "user", "content": "test"}]):
+                        pass
 
     @pytest.mark.asyncio
     async def test_stream_timeout_error(self, adapter: OllamaAdapter) -> None:
         """Stream timeout should raise LLMError."""
-        with patch.object(adapter._http_client, "stream") as mock_stream:
-            mock_stream.side_effect = httpx.TimeoutException("Timed out")
-            with pytest.raises(LLMError, match="timed out"):
-                async for _ in adapter.stream([{"role": "user", "content": "test"}]):
-                    pass
+        with patch.object(adapter._http_client, "send", new_callable=AsyncMock) as mock_send:
+            mock_send.side_effect = httpx.TimeoutException("Timed out")
+            with patch.object(adapter._http_client, "build_request"):
+                with pytest.raises(LLMError, match="timed out"):
+                    async for _ in adapter.stream([{"role": "user", "content": "test"}]):
+                        pass
 
     @pytest.mark.asyncio
     async def test_stream_generic_error(self, adapter: OllamaAdapter) -> None:
         """Generic exceptions during streaming should raise LLMError."""
-        with patch.object(adapter._http_client, "stream") as mock_stream:
-            mock_stream.side_effect = RuntimeError("Unexpected error")
-            with pytest.raises(LLMError, match="streaming failed"):
-                async for _ in adapter.stream([{"role": "user", "content": "test"}]):
-                    pass
+        with patch.object(adapter._http_client, "send", new_callable=AsyncMock) as mock_send:
+            mock_send.side_effect = RuntimeError("Unexpected error")
+            with patch.object(adapter._http_client, "build_request"):
+                with pytest.raises(LLMError, match="streaming failed"):
+                    async for _ in adapter.stream([{"role": "user", "content": "test"}]):
+                        pass
 
     @pytest.mark.asyncio
     async def test_stream_malformed_json_skipped(self, adapter: OllamaAdapter) -> None:
@@ -253,18 +254,17 @@ class TestStream:
         mock_response = AsyncMock()
         mock_response.status_code = 200
         mock_response.aiter_lines = self._aiter_lines(lines)
+        mock_response.aclose = AsyncMock()
 
-        ctx_manager = AsyncMock()
-        ctx_manager.__aenter__ = AsyncMock(return_value=mock_response)
-        ctx_manager.__aexit__ = AsyncMock(return_value=False)
-
-        with patch.object(adapter._http_client, "stream", return_value=ctx_manager):
-            tokens = []
-            async for frame in adapter.stream([{"role": "user", "content": "test"}]):
-                tokens.append(frame)
+        with patch.object(adapter._http_client, "send", new_callable=AsyncMock, return_value=mock_response):
+            with patch.object(adapter._http_client, "build_request"):
+                tokens = []
+                async for frame in adapter.stream([{"role": "user", "content": "test"}]):
+                    tokens.append(frame)
 
         assert len(tokens) == 1
         assert tokens[0] == {"type": "content", "text": "valid"}
+        mock_response.aclose.assert_awaited_once()
 
     @staticmethod
     def _aiter_lines(lines: list[str]):
