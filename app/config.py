@@ -63,7 +63,7 @@ class Settings(BaseSettings):
     chroma_collection_prefix: str = "tenant_"
 
     # ── Ingestion Pipeline ───────────────────────────────────────
-    ingestion_max_concurrent: int = 2
+    ingestion_max_concurrent: int = 1
 
     # ── JWT Authentication ───────────────────────────────────────
     jwt_secret_key: str = "change-me-to-another-random-secret"  # noqa: S105

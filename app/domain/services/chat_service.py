@@ -72,6 +72,10 @@ def _group_sources_by_document(
     Multiple chunks from the same document are collapsed into one
     source entry with the highest relevance score among them.
 
+    De-duplication keys by **filename** so that the same file ingested
+    multiple times (different ``document_id`` values) still appears
+    only once in the UI source list.
+
     Args:
         relevant_docs: List of retrieved document chunks with metadata.
 
@@ -84,7 +88,9 @@ def _group_sources_by_document(
         meta = doc.get("metadata", {})
         filename = meta.get("filename", "")
         document_id = meta.get("document_id", "")
-        key = document_id or filename or doc.get("id", str(uuid.uuid4()))
+        # Key by filename so duplicate ingestions of the same file
+        # are collapsed into a single source citation.
+        key = filename or document_id or doc.get("id", str(uuid.uuid4()))
 
         score = doc.get("score", 0)
 
