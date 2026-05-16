@@ -65,6 +65,11 @@ class GeminiAdapter(LLMProvider):
             api_key=api_key,
             base_url=_GEMINI_BASE_URL,
         )
+        logger.info(
+            "gemini_adapter_created",
+            default_model=default_model,
+            base_url=_GEMINI_BASE_URL,
+        )
 
     @property
     def provider_name(self) -> str:  # noqa: D102
@@ -85,6 +90,12 @@ class GeminiAdapter(LLMProvider):
         Thinking is enabled by default (Gemini's native default level).
         """
         resolved_model = model or self.default_model
+        logger.info(
+            "gemini_generate_start",
+            model=resolved_model,
+            message_count=len(messages),
+            temperature=temperature,
+        )
         try:
             response = await self._client.chat.completions.create(
                 model=resolved_model,
@@ -124,6 +135,12 @@ class GeminiAdapter(LLMProvider):
         as ``{"type": "thinking", "text": ...}``.
         """
         resolved_model = model or self.default_model
+        logger.info(
+            "gemini_stream_start",
+            model=resolved_model,
+            message_count=len(messages),
+            temperature=temperature,
+        )
         try:
             stream_response = await self._client.chat.completions.create(
                 model=resolved_model,
@@ -179,4 +196,5 @@ class GeminiAdapter(LLMProvider):
 
     async def close(self) -> None:
         """Close the underlying OpenAI async client."""
+        logger.info("gemini_adapter_closing")
         await self._client.close()

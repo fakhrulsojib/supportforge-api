@@ -149,10 +149,23 @@ class ChatService:
         """
         if tenant_chat_provider == "gemini" and tenant_gemini_api_key:
             from app.infrastructure.llm.factory import get_gemini_provider
+            resolved_model = tenant_chat_model or "gemini-2.5-flash"
+            logger.info(
+                "provider_resolved",
+                provider="gemini",
+                model=resolved_model,
+                disposable=True,
+            )
             return get_gemini_provider(
                 api_key=tenant_gemini_api_key,
-                model=tenant_chat_model or "gemini-2.5-flash",
+                model=resolved_model,
             ), True
+        logger.info(
+            "provider_resolved",
+            provider="ollama",
+            model=tenant_chat_model or getattr(self._llm_provider, 'default_model', 'unknown'),
+            disposable=False,
+        )
         return self._llm_provider, False
 
     @staticmethod
@@ -163,7 +176,15 @@ class ChatService:
         if disposable and hasattr(provider, "close"):
             try:
                 await provider.close()
+                logger.info(
+                    "provider_closed",
+                    provider=getattr(provider, 'provider_name', 'unknown'),
+                )
             except Exception:  # pragma: no cover — best-effort cleanup
+                logger.warning(
+                    "provider_close_failed",
+                    provider=getattr(provider, 'provider_name', 'unknown'),
+                )
                 pass
 
     async def process_message(
@@ -693,10 +714,21 @@ class ChatService:
             _buffer_flushed = False
 
             # DEBUG: Dump the full messages payload being sent to LLM
+            provider_name = getattr(effective_provider, 'provider_name', 'unknown')
+            logger.info(
+                "llm_request_start",
+                conversation_id=conversation_id,
+                provider=provider_name,
+                model=tenant_chat_model or getattr(effective_provider, 'default_model', ''),
+                message_count=len(messages),
+                temperature=temperature,
+            )
             for idx, msg in enumerate(messages):
                 content = msg["content"]
                 logger.info(
                     "llm_message_payload",
+                    conversation_id=conversation_id,
+                    provider=provider_name,
                     index=idx,
                     role=msg["role"],
                     content_length=len(content),
@@ -764,20 +796,32 @@ class ChatService:
             full_thinking = "".join(full_thinking_parts)
 
             # DEBUG: Dump reasoning and answer as separate log lines
+            provider_name = getattr(effective_provider, 'provider_name', 'unknown')
             logger.info(
                 "llm_thinking_trace",
+                conversation_id=conversation_id,
+                provider=provider_name,
+                model=model_used,
                 thinking_length=len(full_thinking),
-                thinking=full_thinking,
+                thinking_preview=full_thinking[:500] if full_thinking else "(none)",
             )
             logger.info(
                 "llm_final_answer",
+                conversation_id=conversation_id,
+                provider=provider_name,
+                model=model_used,
                 answer_length=len(full_answer),
-                answer=full_answer,
+                answer_preview=full_answer[:500],
+                escalated=llm_escalated,
             )
             logger.info(
-                "llm_generation_summary",
-                thinking_length=len(full_thinking),
-                answer_length=len(full_answer),
+                "llm_stream_complete",
+                conversation_id=conversation_id,
+                provider=provider_name,
+                model=model_used,
+                thinking_chars=len(full_thinking),
+                answer_chars=len(full_answer),
+                escalated=llm_escalated,
             )
 
             # ── Post-generation output validation ────────────────────

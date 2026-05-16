@@ -115,6 +115,14 @@ def resolve_tenant_models(
                 extra={"reason": "invalid_ciphertext"},
             )
 
+    logger.info(
+        "tenant_models_resolved",
+        chat_model=chat_model,
+        embedding_model=embedding_model,
+        chat_provider=chat_provider,
+        has_gemini_key=gemini_api_key is not None,
+    )
+
     return TenantModelConfig(
         chat_model=chat_model,
         embedding_model=embedding_model,
