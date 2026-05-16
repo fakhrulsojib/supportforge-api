@@ -510,6 +510,7 @@ class ChatService:
                 is_new=is_new_conversation,
                 escalation_trigger=trigger.value,
             )
+            await self._close_if_disposable(effective_provider, _disposable)
             return
 
         # Step 1: Retrieve + Grade (non-streaming)
@@ -582,6 +583,7 @@ class ChatService:
                 ),
                 escalation_trigger=EscalationTrigger.NO_CONTEXT,
             )
+            await self._close_if_disposable(effective_provider, _disposable)
             return
 
         # Step 3: Build context and stream generation

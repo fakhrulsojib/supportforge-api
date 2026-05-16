@@ -41,7 +41,7 @@ from app.core.tenant_config import (
 from app.domain.models.enums import UserRole
 from app.infrastructure.database.connection import get_async_session
 from app.infrastructure.database.repositories.tenant_repo import SQLTenantRepository
-from app.infrastructure.llm.gemini_adapter import GeminiAdapter, _GEMINI_CHAT_MODELS
+from app.infrastructure.llm.gemini_adapter import _GEMINI_CHAT_MODELS
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -234,8 +234,7 @@ async def set_active_model(
                 status_code=400,
                 error_code="UNSUPPORTED_MODEL_TYPE",
             )
-        gemini_adapter = GeminiAdapter(api_key="validate-only")
-        available = await gemini_adapter.list_models()
+        available = _GEMINI_CHAT_MODELS
         config_key = CONFIG_CHAT_MODEL
         model_ids = {str(m["id"]) for m in available}
     else:
