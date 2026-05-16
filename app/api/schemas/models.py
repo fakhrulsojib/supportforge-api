@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -44,7 +46,7 @@ class SetActiveModelRequest(BaseModel):
 
     provider: str = Field(..., description="Provider identifier (e.g. 'ollama')")
     model_id: str = Field(..., description="Model identifier (e.g. 'gemma3:4b')")
-    model_type: str = Field(
+    model_type: Literal["chat", "embedding"] = Field(
         "chat", description="Model type: 'chat' or 'embedding'",
     )
 
@@ -54,5 +56,5 @@ class SetActiveModelResponse(BaseModel):
 
     provider: str = Field(..., description="Provider identifier")
     model_id: str = Field(..., description="Model identifier")
-    model_type: str = Field("chat", description="Model type that was changed")
+    model_type: Literal["chat", "embedding"] = Field("chat", description="Model type that was changed")
     status: str = Field("active", description="Activation status")

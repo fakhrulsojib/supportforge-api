@@ -167,13 +167,6 @@ async def set_active_model(
             error_code="PROVIDER_NOT_FOUND",
         )
 
-    if body.model_type not in ("chat", "embedding"):
-        raise SupportForgeError(
-            message=f"Invalid model_type '{body.model_type}'. Must be 'chat' or 'embedding'",
-            status_code=400,
-            error_code="INVALID_MODEL_TYPE",
-        )
-
     llm_provider = request.app.state.llm_provider
 
     # Validate model exists in the correct list
