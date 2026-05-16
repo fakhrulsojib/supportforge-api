@@ -125,6 +125,34 @@ class ChatService:
         self._content_moderator = ContentModerator()
         self._escalation_detector = EscalationDetector()
 
+    def _resolve_effective_provider(
+        self,
+        tenant_chat_provider: str | None,
+        tenant_gemini_api_key: str | None,
+        tenant_chat_model: str | None,
+    ) -> LLMProvider:
+        """Resolve the LLM provider for a specific request.
+
+        If the tenant has configured Gemini with a valid API key, returns
+        a per-request GeminiAdapter. Otherwise returns the default
+        (Ollama) provider.
+
+        Args:
+            tenant_chat_provider: Provider identifier ("gemini" or "ollama").
+            tenant_gemini_api_key: Decrypted Gemini API key.
+            tenant_chat_model: Model identifier for the provider.
+
+        Returns:
+            The effective LLMProvider to use for this request.
+        """
+        if tenant_chat_provider == "gemini" and tenant_gemini_api_key:
+            from app.infrastructure.llm.factory import get_gemini_provider
+            return get_gemini_provider(
+                api_key=tenant_gemini_api_key,
+                model=tenant_chat_model or "gemini-2.5-flash",
+            )
+        return self._llm_provider
+
     async def process_message(
         self,
         message: str,
@@ -134,6 +162,8 @@ class ChatService:
         user_id: str = "",
         tenant_chat_model: str | None = None,
         tenant_embedding_model: str | None = None,
+        tenant_chat_provider: str | None = None,
+        tenant_gemini_api_key: str | None = None,
     ) -> dict[str, Any]:
         """Process a user message through the RAG pipeline.
 
@@ -201,9 +231,15 @@ class ChatService:
                 "moderation_reason": input_check.reason,
             }
 
+        # Resolve effective LLM provider for this request
+        effective_provider = self._resolve_effective_provider(
+            tenant_chat_provider, tenant_gemini_api_key, tenant_chat_model,
+        )
+
         # ── Smart escalation detection (before RAG) ──────────────
         history_messages = await self._load_conversation_history(
             conversation_id, is_new_conversation, chat_model=tenant_chat_model,
+            llm_provider=effective_provider,
         )
         escalation_check = self._escalation_detector.detect(
             message=message,
@@ -252,7 +288,7 @@ class ChatService:
             tenant_id=tenant_id,
             vector_store=self._vector_store,
             embedding_service=self._embedding_service,
-            llm_provider=self._llm_provider,
+            llm_provider=effective_provider,
             chat_model=tenant_chat_model,
             embedding_model=tenant_embedding_model,
         )
@@ -309,6 +345,8 @@ class ChatService:
         tenant_blocklist: list[str] | None = None,
         tenant_chat_model: str | None = None,
         tenant_embedding_model: str | None = None,
+        tenant_chat_provider: str | None = None,
+        tenant_gemini_api_key: str | None = None,
     ) -> AsyncGenerator[dict[str, Any], None]:
         """Stream a chat response token-by-token via the RAG pipeline.
 
@@ -399,10 +437,16 @@ class ChatService:
             )
             return
 
+        # Resolve effective LLM provider for this request
+        effective_provider = self._resolve_effective_provider(
+            tenant_chat_provider, tenant_gemini_api_key, tenant_chat_model,
+        )
+
         # ── Smart escalation detection (before RAG) ──────────────
         # Load conversation history for repetition detection
         history_messages = await self._load_conversation_history(
             conversation_id, is_new_conversation, chat_model=tenant_chat_model,
+            llm_provider=effective_provider,
         )
 
         escalation_check = self._escalation_detector.detect(
@@ -468,7 +512,7 @@ class ChatService:
         }
 
         state = await retrieve_node(state, self._vector_store, self._embedding_service, embedding_model=tenant_embedding_model)
-        state = await grade_node(state, self._llm_provider)
+        state = await grade_node(state, effective_provider)
 
         # Step 2: Check RAG-level escalation (no relevant docs found)
         if state.get("should_escalate"):
@@ -635,7 +679,7 @@ class ChatService:
                 content_tail=content[-400:] if len(content) > 400 else "(shown in head)",
             )
 
-        async for token_frame in self._llm_provider.stream(messages=messages, model=tenant_chat_model, temperature=temperature):  # type: ignore[attr-defined]
+        async for token_frame in effective_provider.stream(messages=messages, model=tenant_chat_model, temperature=temperature):  # type: ignore[attr-defined]
             frame_kind = token_frame.get("type", "content") if isinstance(token_frame, dict) else "content"
             token_text = token_frame.get("text", "") if isinstance(token_frame, dict) else token_frame
 
@@ -690,7 +734,7 @@ class ChatService:
                     full_answer_parts.append(buf_token)
                     yield {"type": "token", "data": buf_token}
 
-        model_used = tenant_chat_model or getattr(self._llm_provider, "default_model", "")
+        model_used = tenant_chat_model or getattr(effective_provider, "default_model", "")
         full_answer = "".join(full_answer_parts)
         full_thinking = "".join(full_thinking_parts)
 
@@ -797,6 +841,7 @@ class ChatService:
         is_new: bool,
         *,
         chat_model: str | None = None,
+        llm_provider: LLMProvider | None = None,
     ) -> list[dict[str, str]]:
         """Load recent conversation history for multi-turn context.
 
@@ -861,6 +906,7 @@ class ChatService:
                     previous_summary=latest_summary,
                     messages=recent_messages,
                     chat_model=chat_model,
+                    llm_provider=llm_provider,
                 )
                 # Persist the new summary
                 await self._persist_summary(conversation_id, summary_text)
@@ -919,6 +965,7 @@ class ChatService:
         messages: list,
         *,
         chat_model: str | None = None,
+        llm_provider: LLMProvider | None = None,
     ) -> str:
         """Compress conversation history into a short summary via LLM.
 
@@ -962,7 +1009,8 @@ class ChatService:
         ]
 
         try:
-            summary = await self._llm_provider.generate(
+            provider = llm_provider or self._llm_provider
+            summary = await provider.generate(
                 messages=summary_prompt,
                 model=chat_model,
                 temperature=0.3,  # low temp for factual accuracy
