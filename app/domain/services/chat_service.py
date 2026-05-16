@@ -132,6 +132,8 @@ class ChatService:
         conversation_id: str | None = None,
         tenant_blocklist: list[str] | None = None,
         user_id: str = "",
+        tenant_chat_model: str | None = None,
+        tenant_embedding_model: str | None = None,
     ) -> dict[str, Any]:
         """Process a user message through the RAG pipeline.
 
@@ -142,6 +144,8 @@ class ChatService:
             tenant_blocklist: Tenant-specific list of banned terms for
                 content moderation. Loaded from tenant ``config_json``.
             user_id: Authenticated user's ID (for conversation persistence).
+            tenant_chat_model: Tenant-specific chat model override.
+            tenant_embedding_model: Tenant-specific embedding model override.
 
         Returns:
             Dict with answer, sources, escalation status, etc.
@@ -199,7 +203,7 @@ class ChatService:
 
         # ── Smart escalation detection (before RAG) ──────────────
         history_messages = await self._load_conversation_history(
-            conversation_id, is_new_conversation,
+            conversation_id, is_new_conversation, chat_model=tenant_chat_model,
         )
         escalation_check = self._escalation_detector.detect(
             message=message,
@@ -249,6 +253,8 @@ class ChatService:
             vector_store=self._vector_store,
             embedding_service=self._embedding_service,
             llm_provider=self._llm_provider,
+            chat_model=tenant_chat_model,
+            embedding_model=tenant_embedding_model,
         )
 
         # Group sources by document (de-duplicate chunks from same file)
@@ -301,6 +307,8 @@ class ChatService:
         conversation_id: str | None = None,
         temperature: float = 0.2,
         tenant_blocklist: list[str] | None = None,
+        tenant_chat_model: str | None = None,
+        tenant_embedding_model: str | None = None,
     ) -> AsyncGenerator[dict[str, Any], None]:
         """Stream a chat response token-by-token via the RAG pipeline.
 
@@ -322,6 +330,10 @@ class ChatService:
                 this range are clamped to the default.
             tenant_blocklist: Tenant-specific list of banned terms for
                 content moderation. Loaded from tenant ``config_json``.
+            tenant_chat_model: Tenant-specific chat model override.
+                If ``None``, the server's default model is used.
+            tenant_embedding_model: Tenant-specific embedding model override.
+                If ``None``, the server's default model is used.
 
         Yields:
             Structured frame dicts for WebSocket delivery.
@@ -390,7 +402,7 @@ class ChatService:
         # ── Smart escalation detection (before RAG) ──────────────
         # Load conversation history for repetition detection
         history_messages = await self._load_conversation_history(
-            conversation_id, is_new_conversation,
+            conversation_id, is_new_conversation, chat_model=tenant_chat_model,
         )
 
         escalation_check = self._escalation_detector.detect(
@@ -455,7 +467,7 @@ class ChatService:
             "tokens_out": 0,
         }
 
-        state = await retrieve_node(state, self._vector_store, self._embedding_service)
+        state = await retrieve_node(state, self._vector_store, self._embedding_service, embedding_model=tenant_embedding_model)
         state = await grade_node(state, self._llm_provider)
 
         # Step 2: Check RAG-level escalation (no relevant docs found)
@@ -623,7 +635,7 @@ class ChatService:
                 content_tail=content[-400:] if len(content) > 400 else "(shown in head)",
             )
 
-        async for token_frame in self._llm_provider.stream(messages=messages, temperature=temperature):  # type: ignore[attr-defined]
+        async for token_frame in self._llm_provider.stream(messages=messages, model=tenant_chat_model, temperature=temperature):  # type: ignore[attr-defined]
             frame_kind = token_frame.get("type", "content") if isinstance(token_frame, dict) else "content"
             token_text = token_frame.get("text", "") if isinstance(token_frame, dict) else token_frame
 
@@ -678,7 +690,7 @@ class ChatService:
                     full_answer_parts.append(buf_token)
                     yield {"type": "token", "data": buf_token}
 
-        model_used = getattr(self._llm_provider, "default_model", "")
+        model_used = tenant_chat_model or getattr(self._llm_provider, "default_model", "")
         full_answer = "".join(full_answer_parts)
         full_thinking = "".join(full_thinking_parts)
 
@@ -783,6 +795,8 @@ class ChatService:
         self,
         conversation_id: str,
         is_new: bool,
+        *,
+        chat_model: str | None = None,
     ) -> list[dict[str, str]]:
         """Load recent conversation history for multi-turn context.
 
@@ -846,6 +860,7 @@ class ChatService:
                 summary_text = await self._summarize_history(
                     previous_summary=latest_summary,
                     messages=recent_messages,
+                    chat_model=chat_model,
                 )
                 # Persist the new summary
                 await self._persist_summary(conversation_id, summary_text)
@@ -902,6 +917,8 @@ class ChatService:
         self,
         previous_summary: object | None,
         messages: list,
+        *,
+        chat_model: str | None = None,
     ) -> str:
         """Compress conversation history into a short summary via LLM.
 
@@ -912,6 +929,7 @@ class ChatService:
         Args:
             previous_summary: Existing summary message object (if rolling).
             messages: Recent user+assistant messages to summarize.
+            chat_model: Optional tenant-specific chat model override.
 
         Returns:
             Summary text (3-10 sentences).
@@ -946,6 +964,7 @@ class ChatService:
         try:
             summary = await self._llm_provider.generate(
                 messages=summary_prompt,
+                model=chat_model,
                 temperature=0.3,  # low temp for factual accuracy
                 max_tokens=512,
             )

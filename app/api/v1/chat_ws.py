@@ -73,6 +73,8 @@ async def websocket_chat(
 
     tenant_temperature = 0.2  # default
     tenant_blocklist: list[str] = []  # default — no blocked terms
+    tenant_chat_model: str | None = None  # None → use server default
+    tenant_embedding_model: str | None = None  # None → use server default
     async with AsyncSessionLocal() as session:
         user_repo = SQLUserRepository(session)
         user = await user_repo.get_by_id(payload.user_id)
@@ -100,6 +102,11 @@ async def websocket_chat(
             raw_blocklist = tenant.config_json.get("moderation_blocklist")
             if isinstance(raw_blocklist, list):
                 tenant_blocklist = [str(t) for t in raw_blocklist if t]
+            # Per-tenant model selections (admin-configurable)
+            from app.core.tenant_config import resolve_tenant_models
+            tenant_models = resolve_tenant_models(tenant.config_json)
+            tenant_chat_model = tenant_models.chat_model
+            tenant_embedding_model = tenant_models.embedding_model
 
     tenant_id = user.tenant_id
     user_id = user.id
@@ -160,6 +167,8 @@ async def websocket_chat(
                     conversation_id=conversation_id,
                     temperature=tenant_temperature,
                     tenant_blocklist=tenant_blocklist,
+                    tenant_chat_model=tenant_chat_model,
+                    tenant_embedding_model=tenant_embedding_model,
                 )
                 try:
                     async for frame in stream_gen:

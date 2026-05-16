@@ -42,11 +42,12 @@ class EmbeddingService:
             timeout=httpx.Timeout(120.0, connect=10.0),
         )
 
-    async def embed(self, text: str) -> list[float]:
+    async def embed(self, text: str, *, model: str | None = None) -> list[float]:
         """Generate an embedding vector for a single text.
 
         Args:
             text: Input text to embed.
+            model: Optional model override. Falls back to ``self.model``.
 
         Returns:
             Embedding vector as a list of floats.
@@ -54,10 +55,11 @@ class EmbeddingService:
         Raises:
             LLMError: If embedding generation fails.
         """
+        resolved_model = model or self.model
         try:
             response = await self._client.post(
                 f"{self.base_url}/api/embeddings",
-                json={"model": self.model, "prompt": text},
+                json={"model": resolved_model, "prompt": text},
             )
             response.raise_for_status()
             data = response.json()
@@ -81,20 +83,21 @@ class EmbeddingService:
             msg = f"Embedding generation failed: {e}"
             raise LLMError(msg) from e
 
-    async def embed_batch(self, texts: list[str]) -> list[list[float]]:
+    async def embed_batch(self, texts: list[str], *, model: str | None = None) -> list[list[float]]:
         """Generate embeddings for multiple texts.
 
         Processes sequentially since Ollama doesn't support batch embeddings.
 
         Args:
             texts: List of texts to embed.
+            model: Optional model override. Falls back to ``self.model``.
 
         Returns:
             List of embedding vectors.
         """
         embeddings: list[list[float]] = []
         for text in texts:
-            embedding = await self.embed(text)
+            embedding = await self.embed(text, model=model)
             embeddings.append(embedding)
         return embeddings
 

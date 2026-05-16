@@ -59,10 +59,16 @@ async def chat_endpoint(
     if not tenant or tenant.status != TenantStatus.ACTIVE:
         raise TenantSuspendedError(tenant_id=user.tenant_id)
 
+    # Read per-tenant model overrides from config_json
+    from app.core.tenant_config import resolve_tenant_models
+    models = resolve_tenant_models(tenant.config_json)
+
     result = await chat_service.process_message(
         message=request.message,
         tenant_id=user.tenant_id,
         conversation_id=request.conversation_id,
+        tenant_chat_model=models.chat_model,
+        tenant_embedding_model=models.embedding_model,
     )
 
     sources = [

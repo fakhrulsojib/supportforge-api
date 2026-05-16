@@ -17,6 +17,7 @@ from app.domain.models.enums import DocumentStatus
 from app.domain.services.ingestion_service import IngestionService
 from app.infrastructure.database.connection import AsyncSessionLocal
 from app.infrastructure.database.repositories.document_repo import SQLDocumentRepository
+from app.infrastructure.database.repositories.tenant_repo import SQLTenantRepository
 
 if TYPE_CHECKING:
     from app.domain.interfaces.llm_provider import LLMProvider
@@ -92,6 +93,14 @@ async def run_ingestion_task(
             )
             await session.commit()
 
+            # Read per-tenant model overrides from config_json
+            from app.core.tenant_config import resolve_tenant_models
+            tenant_repo = SQLTenantRepository(session)
+            tenant = await tenant_repo.get_by_id(tenant_id)
+            tenant_models = resolve_tenant_models(
+                tenant.config_json if tenant else None,
+            )
+
             # Create the ingestion service and process
             service = IngestionService(
                 document_repo=document_repo,
@@ -103,6 +112,8 @@ async def run_ingestion_task(
             await service.process_document(
                 document=document,
                 file_content=file_content,
+                tenant_chat_model=tenant_models.chat_model,
+                tenant_embedding_model=tenant_models.embedding_model,
             )
 
             # Commit all changes (chunks, READY status, etc.)
