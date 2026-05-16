@@ -41,7 +41,7 @@ from app.core.tenant_config import (
 from app.domain.models.enums import UserRole
 from app.infrastructure.database.connection import get_async_session
 from app.infrastructure.database.repositories.tenant_repo import SQLTenantRepository
-from app.infrastructure.llm.gemini_adapter import GeminiAdapter
+from app.infrastructure.llm.gemini_adapter import GeminiAdapter, _GEMINI_CHAT_MODELS
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -107,15 +107,14 @@ async def list_models(
         for m in raw_embedding_models
     ]
 
-    # ── Gemini provider (static catalog) ────────────────────────
-    gemini_adapter = GeminiAdapter(api_key="catalog-only")
+    # ── Gemini provider (static catalog — no adapter needed) ────
     gemini_chat = [
         ModelInfo(
             id=str(m["id"]),
             name=str(m["name"]),
             size_gb=float(m.get("size_gb", 0)),
         )
-        for m in await gemini_adapter.list_models()
+        for m in _GEMINI_CHAT_MODELS
     ]
 
     providers = [
@@ -158,7 +157,7 @@ async def list_models(
             from app.core.crypto import decrypt_value
             decrypted = decrypt_value(raw_encrypted_key, settings.secret_key)
             key_preview = mask_api_key(decrypted)
-        except (ValueError, Exception):
+        except Exception:
             key_preview = "****"
 
     active = ActiveModel(
@@ -250,23 +249,8 @@ async def set_active_model(
             error_code="MODEL_NOT_FOUND",
         )
 
-    # ── Gemini-specific: validate and encrypt API key ───────────
+    # ── Gemini-specific: validate API key exists ─────────────────
     settings = get_settings()
-    if body.provider == "gemini" and body.model_type == "chat":
-        # Check if API key is provided or already exists
-        tenant_repo_check = SQLTenantRepository(session)
-        tenant_check = await tenant_repo_check.get_by_id(user.tenant_id)
-        existing_key = (
-            tenant_check.config_json.get(CONFIG_GEMINI_API_KEY)
-            if tenant_check and tenant_check.config_json
-            else None
-        )
-        if not body.api_key and not existing_key:
-            raise SupportForgeError(
-                message="Gemini API key is required when setting a Gemini model",
-                status_code=400,
-                error_code="API_KEY_REQUIRED",
-            )
 
     # ── Persist to tenant config_json ───────────────────────────
     tenant_repo = SQLTenantRepository(session)
@@ -277,6 +261,19 @@ async def set_active_model(
             status_code=404,
             error_code="TENANT_NOT_FOUND",
         )
+
+    if body.provider == "gemini" and body.model_type == "chat":
+        existing_key = (
+            tenant.config_json.get(CONFIG_GEMINI_API_KEY)
+            if tenant.config_json
+            else None
+        )
+        if not body.api_key and not existing_key:
+            raise SupportForgeError(
+                message="Gemini API key is required when setting a Gemini model",
+                status_code=400,
+                error_code="API_KEY_REQUIRED",
+            )
 
     old_value = tenant.config_json.get(config_key, "")
     updated_config = {**tenant.config_json, config_key: body.model_id}

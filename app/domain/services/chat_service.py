@@ -130,7 +130,7 @@ class ChatService:
         tenant_chat_provider: str | None,
         tenant_gemini_api_key: str | None,
         tenant_chat_model: str | None,
-    ) -> LLMProvider:
+    ) -> tuple[LLMProvider, bool]:
         """Resolve the LLM provider for a specific request.
 
         If the tenant has configured Gemini with a valid API key, returns
@@ -143,15 +143,28 @@ class ChatService:
             tenant_chat_model: Model identifier for the provider.
 
         Returns:
-            The effective LLMProvider to use for this request.
+            Tuple of (provider, is_disposable).  When ``is_disposable``
+            is True the caller must close the provider after use to
+            avoid leaking the underlying HTTP client.
         """
         if tenant_chat_provider == "gemini" and tenant_gemini_api_key:
             from app.infrastructure.llm.factory import get_gemini_provider
             return get_gemini_provider(
                 api_key=tenant_gemini_api_key,
                 model=tenant_chat_model or "gemini-2.5-flash",
-            )
-        return self._llm_provider
+            ), True
+        return self._llm_provider, False
+
+    @staticmethod
+    async def _close_if_disposable(
+        provider: LLMProvider, disposable: bool,
+    ) -> None:
+        """Close a per-request provider if it was created for this call."""
+        if disposable and hasattr(provider, "close"):
+            try:
+                await provider.close()
+            except Exception:  # pragma: no cover — best-effort cleanup
+                pass
 
     async def process_message(
         self,
@@ -232,108 +245,111 @@ class ChatService:
             }
 
         # Resolve effective LLM provider for this request
-        effective_provider = self._resolve_effective_provider(
+        effective_provider, _disposable = self._resolve_effective_provider(
             tenant_chat_provider, tenant_gemini_api_key, tenant_chat_model,
         )
 
-        # ── Smart escalation detection (before RAG) ──────────────
-        history_messages = await self._load_conversation_history(
-            conversation_id, is_new_conversation, chat_model=tenant_chat_model,
-            llm_provider=effective_provider,
-        )
-        escalation_check = self._escalation_detector.detect(
-            message=message,
-            conversation_history=history_messages,
-        )
-        if escalation_check.should_escalate:
-            trigger = escalation_check.trigger
-            answer_text = _ESCALATION_MESSAGES.get(
-                trigger, _ESCALATION_MESSAGES[EscalationTrigger.NO_CONTEXT],
+        try:
+            # ── Smart escalation detection (before RAG) ──────────────
+            history_messages = await self._load_conversation_history(
+                conversation_id, is_new_conversation, chat_model=tenant_chat_model,
+                llm_provider=effective_provider,
             )
-            logger.info(
-                "smart_escalation_triggered",
-                conversation_id=conversation_id,
-                trigger=trigger.value,
-                reason=escalation_check.reason,
-                sentiment_score=escalation_check.sentiment_score,
-                repetition_count=escalation_check.repetition_count,
+            escalation_check = self._escalation_detector.detect(
+                message=message,
+                conversation_history=history_messages,
+            )
+            if escalation_check.should_escalate:
+                trigger = escalation_check.trigger
+                answer_text = _ESCALATION_MESSAGES.get(
+                    trigger, _ESCALATION_MESSAGES[EscalationTrigger.NO_CONTEXT],
+                )
+                logger.info(
+                    "smart_escalation_triggered",
+                    conversation_id=conversation_id,
+                    trigger=trigger.value,
+                    reason=escalation_check.reason,
+                    sentiment_score=escalation_check.sentiment_score,
+                    repetition_count=escalation_check.repetition_count,
+                )
+
+                await self._persist_exchange(
+                    conversation_id=conversation_id,
+                    tenant_id=tenant_id,
+                    user_id=user_id,
+                    user_message=message,
+                    assistant_message=answer_text,
+                    assistant_thinking="",
+                    sources=[],
+                    model_used="",
+                    is_new=is_new_conversation,
+                    escalation_trigger=trigger.value,
+                )
+
+                return {
+                    "answer": answer_text,
+                    "conversation_id": conversation_id,
+                    "sources": [],
+                    "escalated": True,
+                    "escalation_reason": escalation_check.reason,
+                    "escalation_trigger": trigger.value,
+                    "model_used": "",
+                }
+
+            # Run the RAG pipeline
+            result = await run_rag_pipeline(
+                query=message,
+                tenant_id=tenant_id,
+                vector_store=self._vector_store,
+                embedding_service=self._embedding_service,
+                llm_provider=effective_provider,
+                chat_model=tenant_chat_model,
+                embedding_model=tenant_embedding_model,
             )
 
-            await self._persist_exchange(
-                conversation_id=conversation_id,
-                tenant_id=tenant_id,
-                user_id=user_id,
-                user_message=message,
-                assistant_message=answer_text,
-                assistant_thinking="",
-                sources=[],
-                model_used="",
-                is_new=is_new_conversation,
-                escalation_trigger=trigger.value,
-            )
+            # Group sources by document (de-duplicate chunks from same file)
+            grouped_sources = _group_sources_by_document(result.get("relevant_docs", []))
+            answer = result.get("answer", "")
+
+            # ── Output content moderation ────────────────────────────
+            output_check = self._content_moderator.check_output(answer, blocklist)
+            if output_check.flagged:
+                logger.warning(
+                    "content_moderation_output_flagged",
+                    conversation_id=conversation_id,
+                    reason=output_check.reason,
+                    matched_term=output_check.matched_term[:100],
+                )
+
+            should_escalate = result.get("should_escalate", False)
+            trigger_val = EscalationTrigger.NO_CONTEXT.value if should_escalate else "none"
+
+            # ── Failed query logging ─────────────────────────────────
+            if should_escalate:
+                retrieved_docs = result.get("retrieved_docs", [])
+                await self._persist_failed_query(
+                    tenant_id=tenant_id,
+                    conversation_id=conversation_id,
+                    query_text=message,
+                    failure_reason=FailureReason.NO_DOCS,
+                    retrieved_doc_count=len(retrieved_docs),
+                    max_relevance_score=max(
+                        (d.get("score", 0) for d in retrieved_docs), default=0.0,
+                    ),
+                    escalation_trigger=EscalationTrigger.NO_CONTEXT,
+                )
 
             return {
-                "answer": answer_text,
+                "answer": answer,
                 "conversation_id": conversation_id,
-                "sources": [],
-                "escalated": True,
-                "escalation_reason": escalation_check.reason,
-                "escalation_trigger": trigger.value,
-                "model_used": "",
+                "sources": grouped_sources,
+                "escalated": should_escalate,
+                "escalation_reason": result.get("escalation_reason", ""),
+                "escalation_trigger": trigger_val,
+                "model_used": result.get("model_used", ""),
             }
-
-        # Run the RAG pipeline
-        result = await run_rag_pipeline(
-            query=message,
-            tenant_id=tenant_id,
-            vector_store=self._vector_store,
-            embedding_service=self._embedding_service,
-            llm_provider=effective_provider,
-            chat_model=tenant_chat_model,
-            embedding_model=tenant_embedding_model,
-        )
-
-        # Group sources by document (de-duplicate chunks from same file)
-        grouped_sources = _group_sources_by_document(result.get("relevant_docs", []))
-        answer = result.get("answer", "")
-
-        # ── Output content moderation ────────────────────────────
-        output_check = self._content_moderator.check_output(answer, blocklist)
-        if output_check.flagged:
-            logger.warning(
-                "content_moderation_output_flagged",
-                conversation_id=conversation_id,
-                reason=output_check.reason,
-                matched_term=output_check.matched_term[:100],
-            )
-
-        should_escalate = result.get("should_escalate", False)
-        trigger_val = EscalationTrigger.NO_CONTEXT.value if should_escalate else "none"
-
-        # ── Failed query logging ─────────────────────────────────
-        if should_escalate:
-            retrieved_docs = result.get("retrieved_docs", [])
-            await self._persist_failed_query(
-                tenant_id=tenant_id,
-                conversation_id=conversation_id,
-                query_text=message,
-                failure_reason=FailureReason.NO_DOCS,
-                retrieved_doc_count=len(retrieved_docs),
-                max_relevance_score=max(
-                    (d.get("score", 0) for d in retrieved_docs), default=0.0,
-                ),
-                escalation_trigger=EscalationTrigger.NO_CONTEXT,
-            )
-
-        return {
-            "answer": answer,
-            "conversation_id": conversation_id,
-            "sources": grouped_sources,
-            "escalated": should_escalate,
-            "escalation_reason": result.get("escalation_reason", ""),
-            "escalation_trigger": trigger_val,
-            "model_used": result.get("model_used", ""),
-        }
+        finally:
+            await self._close_if_disposable(effective_provider, _disposable)
 
     async def stream_message(
         self,
@@ -438,7 +454,7 @@ class ChatService:
             return
 
         # Resolve effective LLM provider for this request
-        effective_provider = self._resolve_effective_provider(
+        effective_provider, _disposable = self._resolve_effective_provider(
             tenant_chat_provider, tenant_gemini_api_key, tenant_chat_model,
         )
 
@@ -828,6 +844,9 @@ class ChatService:
                 "validation_status": validation_status.value,
             },
         }
+
+        # Clean up per-request provider (Gemini) to avoid leaking HTTP clients
+        await self._close_if_disposable(effective_provider, _disposable)
 
     # ── Conversation History (rolling summarization) ──────────────
 

@@ -109,7 +109,7 @@ def resolve_tenant_models(
     if isinstance(raw_key, str) and raw_key and encryption_key:
         try:
             gemini_api_key = decrypt_value(raw_key, encryption_key)
-        except (ValueError, Exception):
+        except Exception:
             logger.warning(
                 "tenant_gemini_key_decrypt_failed",
                 extra={"reason": "invalid_ciphertext"},

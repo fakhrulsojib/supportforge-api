@@ -1,8 +1,9 @@
 """Cryptographic helpers for field-level encryption of tenant secrets.
 
-Provides AES-256 encryption via Fernet for storing sensitive values
-(e.g. API keys) in ``config_json``.  The application ``secret_key``
-from Settings is used to derive a Fernet-compatible key via SHA-256.
+Provides authenticated encryption via Fernet (AES-128-CBC + HMAC-SHA256)
+for storing sensitive values (e.g. API keys) in ``config_json``.  The
+application ``secret_key`` from Settings is used to derive a
+Fernet-compatible key via SHA-256.
 
 Usage::
 
@@ -23,7 +24,7 @@ from __future__ import annotations
 import base64
 import hashlib
 
-from cryptography.fernet import Fernet, InvalidToken
+from cryptography.fernet import Fernet
 
 
 def derive_fernet_key(secret: str) -> bytes:
@@ -79,7 +80,7 @@ def decrypt_value(ciphertext: str, key: str) -> str:
     f = Fernet(fernet_key)
     try:
         return f.decrypt(ciphertext.encode("utf-8")).decode("utf-8")
-    except (InvalidToken, Exception) as exc:
+    except Exception as exc:
         msg = f"Failed to decrypt value: {type(exc).__name__}"
         raise ValueError(msg) from exc
 
