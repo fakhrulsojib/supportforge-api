@@ -60,22 +60,15 @@ async def chat_endpoint(
         raise TenantSuspendedError(tenant_id=user.tenant_id)
 
     # Read per-tenant model overrides from config_json
-    tenant_chat_model: str | None = None
-    tenant_embedding_model: str | None = None
-    if tenant.config_json:
-        raw_chat = tenant.config_json.get("chat_model")
-        if isinstance(raw_chat, str) and raw_chat:
-            tenant_chat_model = raw_chat
-        raw_embed = tenant.config_json.get("embedding_model")
-        if isinstance(raw_embed, str) and raw_embed:
-            tenant_embedding_model = raw_embed
+    from app.core.tenant_config import resolve_tenant_models
+    models = resolve_tenant_models(tenant.config_json)
 
     result = await chat_service.process_message(
         message=request.message,
         tenant_id=user.tenant_id,
         conversation_id=request.conversation_id,
-        tenant_chat_model=tenant_chat_model,
-        tenant_embedding_model=tenant_embedding_model,
+        tenant_chat_model=models.chat_model,
+        tenant_embedding_model=models.embedding_model,
     )
 
     sources = [

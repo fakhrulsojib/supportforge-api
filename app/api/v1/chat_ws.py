@@ -102,14 +102,11 @@ async def websocket_chat(
             raw_blocklist = tenant.config_json.get("moderation_blocklist")
             if isinstance(raw_blocklist, list):
                 tenant_blocklist = [str(t) for t in raw_blocklist if t]
-            # Per-tenant chat model selection (admin-configurable)
-            raw_model = tenant.config_json.get("chat_model")
-            if isinstance(raw_model, str) and raw_model:
-                tenant_chat_model = raw_model
-            # Per-tenant embedding model selection (admin-configurable)
-            raw_embed = tenant.config_json.get("embedding_model")
-            if isinstance(raw_embed, str) and raw_embed:
-                tenant_embedding_model = raw_embed
+            # Per-tenant model selections (admin-configurable)
+            from app.core.tenant_config import resolve_tenant_models
+            tenant_models = resolve_tenant_models(tenant.config_json)
+            tenant_chat_model = tenant_models.chat_model
+            tenant_embedding_model = tenant_models.embedding_model
 
     tenant_id = user.tenant_id
     user_id = user.id

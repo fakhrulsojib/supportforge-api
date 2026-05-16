@@ -40,13 +40,13 @@ logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1/admin", tags=["models"])
 
-# Keys used in tenant config_json
-_CONFIG_CHAT_MODEL = "chat_model"
-_CONFIG_EMBEDDING_MODEL = "embedding_model"
+from app.core.tenant_config import CONFIG_CHAT_MODEL, CONFIG_EMBEDDING_MODEL
 
 
-def _get_tenant_model(config_json: dict, key: str, fallback: str) -> str:
+def _get_tenant_model(config_json: dict | None, key: str, fallback: str) -> str:
     """Extract a model ID from tenant config_json, falling back to server default."""
+    if not config_json:
+        return fallback
     return str(config_json.get(key, "")) or fallback
 
 
@@ -114,8 +114,8 @@ async def list_models(
 
     active = ActiveModel(
         provider="ollama",
-        model_id=_get_tenant_model(config, _CONFIG_CHAT_MODEL, server_chat_default),
-        embedding_model_id=_get_tenant_model(config, _CONFIG_EMBEDDING_MODEL, server_embed_default),
+        model_id=_get_tenant_model(config, CONFIG_CHAT_MODEL, server_chat_default),
+        embedding_model_id=_get_tenant_model(config, CONFIG_EMBEDDING_MODEL, server_embed_default),
     )
 
     logger.debug(
@@ -179,10 +179,10 @@ async def set_active_model(
     # Validate model exists in the correct list
     if body.model_type == "chat":
         available = await llm_provider.list_models()
-        config_key = _CONFIG_CHAT_MODEL
+        config_key = CONFIG_CHAT_MODEL
     else:
         available = await llm_provider.list_embedding_models()
-        config_key = _CONFIG_EMBEDDING_MODEL
+        config_key = CONFIG_EMBEDDING_MODEL
 
     model_ids = {str(m["id"]) for m in available}
 
