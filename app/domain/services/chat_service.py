@@ -63,6 +63,36 @@ _ESCALATION_MESSAGES: dict[EscalationTrigger, str] = {
 # Sentinel token the LLM can emit to trigger escalation
 _ESCALATE_SENTINEL = "[ESCALATE]"
 
+# Phrases in the LLM's *output* that indicate it self-escalated without
+# using the sentinel token.  Checked post-generation so the natural-
+# language response is preserved (not replaced by a canned message).
+_SELF_ESCALATION_PATTERNS: tuple[str, ...] = (
+    "escalate this",
+    "connect you with",
+    "specialist team",
+    "human agent",
+    "human support",
+    "someone from our team",
+    "i don't have that information",
+    "i don't have enough information",
+)
+
+
+def _detect_self_escalation(text: str) -> str | None:
+    """Return the first matched self-escalation pattern, or None."""
+    lower = text.lower()
+    for pattern in _SELF_ESCALATION_PATTERNS:
+        if pattern in lower:
+            return pattern
+    return None
+
+# Static reply for messages received after a conversation is already escalated.
+_POST_ESCALATION_REPLY = (
+    "Your conversation has already been escalated to a support agent. "
+    "They'll review everything you've shared here, including this message. "
+    "Please hold tight — someone will be with you shortly."
+)
+
 
 def _group_sources_by_document(
     relevant_docs: list[dict[str, Any]],
@@ -124,6 +154,23 @@ class ChatService:
         self._output_validator = OutputValidator()
         self._content_moderator = ContentModerator()
         self._escalation_detector = EscalationDetector()
+
+    async def _is_conversation_escalated(self, conversation_id: str) -> bool:
+        """Check if a conversation has already been escalated."""
+        try:
+            from app.infrastructure.database.connection import AsyncSessionLocal
+            from app.infrastructure.database.repositories.conversation_repo import (
+                SQLConversationRepository,
+            )
+
+            async with AsyncSessionLocal() as session:
+                repo = SQLConversationRepository(session)
+                conv = await repo.get_by_id(conversation_id)
+                if conv and conv.status and conv.status.value == "escalated":
+                    return True
+        except Exception:
+            logger.debug("escalation_check_failed", exc_info=True)
+        return False
 
     def _resolve_effective_provider(
         self,
@@ -288,6 +335,35 @@ class ChatService:
             message_length=len(message),
         )
 
+        # ── Already-escalated short circuit ────────────────────────
+        if not is_new_conversation and await self._is_conversation_escalated(
+            conversation_id,
+        ):
+            logger.info(
+                "post_escalation_message",
+                conversation_id=conversation_id,
+            )
+            await self._persist_exchange(
+                conversation_id=conversation_id,
+                tenant_id=tenant_id,
+                user_id=user_id,
+                user_message=message,
+                assistant_message=_POST_ESCALATION_REPLY,
+                assistant_thinking="",
+                sources=[],
+                model_used="",
+                is_new=False,
+            )
+            return {
+                "answer": _POST_ESCALATION_REPLY,
+                "conversation_id": conversation_id,
+                "sources": [],
+                "escalated": True,
+                "escalation_reason": "Conversation already escalated",
+                "escalation_trigger": "none",
+                "model_used": "",
+            }
+
         # ── Input content moderation (before RAG) ────────────────
         input_check = self._content_moderator.check_input(message, blocklist)
         if input_check.blocked:
@@ -417,6 +493,18 @@ class ChatService:
             should_escalate = result.get("should_escalate", False)
             trigger_val = EscalationTrigger.NO_CONTEXT.value if should_escalate else "none"
 
+            # ── Post-generation self-escalation detection ─────────────
+            if not should_escalate:
+                matched = _detect_self_escalation(answer)
+                if matched:
+                    should_escalate = True
+                    trigger_val = EscalationTrigger.LLM_DECISION.value
+                    logger.info(
+                        "post_gen_escalation_detected",
+                        conversation_id=conversation_id,
+                        matched_pattern=matched,
+                    )
+
             # ── Failed query logging ─────────────────────────────────
             if should_escalate:
                 retrieved_docs = result.get("retrieved_docs", [])
@@ -514,6 +602,39 @@ class ChatService:
             conversation_id=conversation_id,
             message_length=len(message),
         )
+
+        # ── Already-escalated short circuit ────────────────────────
+        if not is_new_conversation and await self._is_conversation_escalated(
+            conversation_id,
+        ):
+            logger.info(
+                "post_escalation_message",
+                conversation_id=conversation_id,
+            )
+            await self._persist_exchange(
+                conversation_id=conversation_id,
+                tenant_id=tenant_id,
+                user_id=user_id,
+                user_message=message,
+                assistant_message=_POST_ESCALATION_REPLY,
+                assistant_thinking="",
+                sources=[],
+                model_used="",
+                is_new=False,
+            )
+            yield {"type": "token", "data": _POST_ESCALATION_REPLY}
+            yield {
+                "type": "done",
+                "data": {
+                    "conversation_id": conversation_id,
+                    "model_used": "",
+                    "sources": [],
+                    "escalated": True,
+                    "escalation_reason": "Conversation already escalated",
+                    "escalation_trigger": "none",
+                },
+            }
+            return
 
         # ── Input content moderation (before RAG) ────────────────
         input_check = self._content_moderator.check_input(message, blocklist)
@@ -945,6 +1066,17 @@ class ChatService:
                     matched_term=output_check.matched_term[:100],
                 )
 
+            # ── Post-generation self-escalation detection ─────────────
+            if not llm_escalated:
+                matched = _detect_self_escalation(full_answer)
+                if matched:
+                    llm_escalated = True
+                    logger.info(
+                        "post_gen_escalation_detected",
+                        conversation_id=conversation_id,
+                        matched_pattern=matched,
+                    )
+
             # Resolve escalation trigger for persistence
             escalation_trigger_val = (
                 EscalationTrigger.LLM_DECISION.value if llm_escalated else "none"
@@ -988,6 +1120,21 @@ class ChatService:
                     "validation_status": validation_status.value,
                 },
             }
+
+            # ── Failed query logging for post-gen escalation ──────────
+            if llm_escalated:
+                await self._persist_failed_query(
+                    tenant_id=tenant_id,
+                    conversation_id=conversation_id,
+                    query_text=message,
+                    failure_reason=FailureReason.NO_DOCS,
+                    retrieved_doc_count=len(relevant_docs),
+                    max_relevance_score=max(
+                        (d.get("score", 0) for d in relevant_docs), default=0.0,
+                    ),
+                    escalation_trigger=EscalationTrigger.LLM_DECISION,
+                    message_id=assistant_message_id or "",
+                )
 
         finally:
             await self._close_if_disposable(effective_provider, _disposable)
