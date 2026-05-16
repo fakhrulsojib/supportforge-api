@@ -18,9 +18,15 @@ if TYPE_CHECKING:
 class LLMProvider(ABC):
     """Port for LLM communication.
 
-    All LLM providers (Ollama, OpenAI, Anthropic, etc.) must implement
+    All LLM providers (Ollama, OpenAI, Gemini, etc.) must implement
     this interface, enabling zero-change provider swaps via the adapter pattern.
     """
+
+    @property
+    @abstractmethod
+    def provider_name(self) -> str:
+        """Return the provider identifier (e.g. ``"ollama"``, ``"gemini"``)."""
+        ...
 
     @abstractmethod
     async def generate(
