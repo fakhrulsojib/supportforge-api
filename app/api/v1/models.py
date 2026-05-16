@@ -2,9 +2,10 @@
 
 Provides endpoints for admins to:
 - List all available LLM models from configured providers
-- Get/set the active chat model
+- Get/set the active chat model (persisted per tenant in config_json)
 
 All endpoints enforce admin-only access via ``require_role(UserRole.ADMIN)``.
+Model selection is tenant-scoped and persisted to the database.
 Designed to be extensible for future providers (OpenAI, Gemini, etc.).
 """
 
@@ -26,8 +27,12 @@ from app.api.schemas.models import (
 from app.core.dependencies import require_role
 from app.core.exceptions import SupportForgeError
 from app.domain.models.enums import UserRole
+from app.infrastructure.database.connection import get_async_session
+from app.infrastructure.database.repositories.tenant_repo import SQLTenantRepository
 
 if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
     from app.domain.models.user import User
 
 logger = structlog.get_logger(__name__)
@@ -35,18 +40,26 @@ logger = structlog.get_logger(__name__)
 router = APIRouter(prefix="/api/v1/admin", tags=["models"])
 
 
+def _get_tenant_chat_model(config_json: dict, fallback: str) -> str:
+    """Extract chat_model from tenant config_json, falling back to server default."""
+    return str(config_json.get("chat_model", "")) or fallback
+
+
 @router.get("/models", response_model=ModelListResponse)
 async def list_models(
     request: Request,
+    session: AsyncSession = Depends(get_async_session),
     user: User = Depends(require_role(UserRole.ADMIN)),
 ) -> ModelListResponse:
     """List all available chat models grouped by provider.
 
     Queries each registered LLM provider for its available models
-    and returns them grouped. Embedding-only models are filtered out.
+    and returns them grouped. The active model is read from the
+    authenticated user's tenant config (persisted per tenant).
 
     Args:
         request: FastAPI request (for accessing app state).
+        session: Database session.
         user: Authenticated admin user.
 
     Returns:
@@ -74,15 +87,21 @@ async def list_models(
         ),
     ]
 
-    # Current active model
-    active = ActiveModel(
-        provider="ollama",
-        model_id=getattr(llm_provider, "default_model", ""),
+    # Read tenant's active model from config_json (persisted)
+    tenant_repo = SQLTenantRepository(session)
+    tenant = await tenant_repo.get_by_id(user.tenant_id)
+    server_default = getattr(llm_provider, "default_model", "")
+    active_model_id = _get_tenant_chat_model(
+        tenant.config_json if tenant else {},
+        server_default,
     )
+
+    active = ActiveModel(provider="ollama", model_id=active_model_id)
 
     logger.debug(
         "models_listed",
         user_id=user.id,
+        tenant_id=user.tenant_id,
         model_count=len(ollama_models),
         active_model=active.model_id,
     )
@@ -94,13 +113,15 @@ async def list_models(
 async def set_active_model(
     body: SetActiveModelRequest,
     request: Request,
+    session: AsyncSession = Depends(get_async_session),
     user: User = Depends(require_role(UserRole.ADMIN)),
 ) -> SetActiveModelResponse:
-    """Set the active chat model.
+    """Set the active chat model for the current tenant.
 
-    Updates the LLM provider's default model at runtime. No server
-    restart required. The change takes effect for all subsequent
-    chat requests.
+    Persists the model selection to the tenant's ``config_json`` in the
+    database. This is tenant-scoped — each tenant can have a different
+    active model. The change takes effect for all subsequent chat
+    requests within this tenant.
 
     Validates that the requested model actually exists in the
     provider's available model list before activating.
@@ -108,6 +129,7 @@ async def set_active_model(
     Args:
         body: Provider and model ID to activate.
         request: FastAPI request (for accessing app state).
+        session: Database session.
         user: Authenticated admin user.
 
     Returns:
@@ -136,15 +158,30 @@ async def set_active_model(
             error_code="MODEL_NOT_FOUND",
         )
 
-    # Update the default model at runtime
-    old_model = getattr(llm_provider, "default_model", "")
-    llm_provider.default_model = body.model_id
+    # Persist to tenant config_json
+    tenant_repo = SQLTenantRepository(session)
+    tenant = await tenant_repo.get_by_id(user.tenant_id)
+    if not tenant:
+        raise SupportForgeError(
+            message="Tenant not found",
+            status_code=404,
+            error_code="TENANT_NOT_FOUND",
+        )
+
+    # Merge into existing config_json (preserve other keys)
+    updated_config = {**tenant.config_json, "chat_model": body.model_id}
+    await tenant_repo.update(user.tenant_id, config_json=updated_config)
+    await session.commit()
 
     logger.info(
         "active_model_changed",
-        old_model=old_model,
+        old_model=_get_tenant_chat_model(
+            tenant.config_json,
+            getattr(llm_provider, "default_model", ""),
+        ),
         new_model=body.model_id,
         changed_by=user.id,
+        tenant_id=user.tenant_id,
         provider=body.provider,
     )
 

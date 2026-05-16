@@ -301,6 +301,7 @@ class ChatService:
         conversation_id: str | None = None,
         temperature: float = 0.2,
         tenant_blocklist: list[str] | None = None,
+        tenant_chat_model: str | None = None,
     ) -> AsyncGenerator[dict[str, Any], None]:
         """Stream a chat response token-by-token via the RAG pipeline.
 
@@ -322,6 +323,8 @@ class ChatService:
                 this range are clamped to the default.
             tenant_blocklist: Tenant-specific list of banned terms for
                 content moderation. Loaded from tenant ``config_json``.
+            tenant_chat_model: Tenant-specific chat model override.
+                If ``None``, the server's default model is used.
 
         Yields:
             Structured frame dicts for WebSocket delivery.
@@ -623,7 +626,7 @@ class ChatService:
                 content_tail=content[-400:] if len(content) > 400 else "(shown in head)",
             )
 
-        async for token_frame in self._llm_provider.stream(messages=messages, temperature=temperature):  # type: ignore[attr-defined]
+        async for token_frame in self._llm_provider.stream(messages=messages, model=tenant_chat_model, temperature=temperature):  # type: ignore[attr-defined]
             frame_kind = token_frame.get("type", "content") if isinstance(token_frame, dict) else "content"
             token_text = token_frame.get("text", "") if isinstance(token_frame, dict) else token_frame
 
@@ -678,7 +681,7 @@ class ChatService:
                     full_answer_parts.append(buf_token)
                     yield {"type": "token", "data": buf_token}
 
-        model_used = getattr(self._llm_provider, "default_model", "")
+        model_used = tenant_chat_model or getattr(self._llm_provider, "default_model", "")
         full_answer = "".join(full_answer_parts)
         full_thinking = "".join(full_thinking_parts)
 
