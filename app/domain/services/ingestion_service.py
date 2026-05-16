@@ -74,12 +74,17 @@ class IngestionService:
         self,
         document: Document,
         file_content: bytes,
+        *,
+        tenant_chat_model: str | None = None,
+        tenant_embedding_model: str | None = None,
     ) -> None:
         """Process a document through the full ingestion pipeline.
 
         Args:
             document: Domain document model with metadata.
             file_content: Raw file bytes.
+            tenant_chat_model: Tenant-specific chat model for contextualisation.
+            tenant_embedding_model: Tenant-specific embedding model.
 
         Raises:
             IngestionError: If any step in the pipeline fails.
@@ -132,10 +137,13 @@ class IngestionService:
                     chunk_texts=chunk_texts,
                     full_document_text=text,
                     document_filename=document.filename,
+                    chat_model=tenant_chat_model,
                 )
 
             # Step 5: Generate embeddings (on contextualised text)
-            embeddings = await self._embedding_service.embed_batch(chunk_texts)
+            embeddings = await self._embedding_service.embed_batch(
+                chunk_texts, model=tenant_embedding_model,
+            )
 
             logger.info(
                 "embeddings_generated",
@@ -212,6 +220,8 @@ class IngestionService:
         chunk_texts: list[str],
         full_document_text: str,
         document_filename: str,
+        *,
+        chat_model: str | None = None,
     ) -> list[str]:
         """Add contextual prefixes to each chunk via the LLM.
 
@@ -241,6 +251,7 @@ class IngestionService:
             full_document_text=full_document_text,
             document_filename=document_filename,
             llm_provider=self._llm_provider,
+            chat_model=chat_model,
         )
 
         logger.info(

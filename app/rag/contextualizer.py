@@ -57,22 +57,23 @@ async def generate_chunk_context(
     full_document_text: str,
     document_filename: str,
     llm_provider: LLMProvider,
+    chat_model: str | None = None,
 ) -> str:
     """Generate a contextual prefix for a single chunk.
 
-    Uses the LLM to produce a short context that explains where this
-    chunk sits within the overall document.  The result is prepended
-    to the chunk text before embedding and vector storage.
+    Uses the LLM to produce a 2-4 sentence context snippet
+    explaining where the chunk fits within the overall document.
+    This context is prepended to the chunk before embedding,
+    improving retrieval accuracy.
+
+    If context generation fails, the original chunk is returned unchanged.
 
     Args:
-        chunk_text: The raw chunk content.
-        full_document_text: The complete document text (truncated internally).
-        document_filename: Original filename for reference in the context.
-        llm_provider: LLM adapter for generation.
-
-    Returns:
-        The contextualised chunk: ``"<context>\\n\\n<original chunk>"``.
-        If context generation fails, the original chunk is returned unchanged.
+        chunk_text: The raw chunk text.
+        full_document_text: The complete source document.
+        document_filename: Source filename.
+        llm_provider: LLM adapter.
+        chat_model: Optional tenant-specific chat model override.
     """
     # Truncate the full document to fit within prompt budget
     doc_excerpt = full_document_text[:_MAX_DOC_CONTEXT_CHARS]
@@ -93,6 +94,7 @@ async def generate_chunk_context(
                 {"role": "system", "content": _CONTEXT_SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt},
             ],
+            model=chat_model,
             temperature=0.0,  # fully deterministic
             max_tokens=4096,
         )
@@ -120,6 +122,7 @@ async def contextualize_chunks(
     full_document_text: str,
     document_filename: str,
     llm_provider: LLMProvider,
+    chat_model: str | None = None,
 ) -> list[str]:
     """Contextualise a batch of chunks from the same document.
 
@@ -131,6 +134,7 @@ async def contextualize_chunks(
         full_document_text: The complete source document.
         document_filename: Source filename.
         llm_provider: LLM adapter.
+        chat_model: Optional tenant-specific chat model override.
 
     Returns:
         List of contextualised chunk texts (same order as input).
@@ -149,6 +153,7 @@ async def contextualize_chunks(
             full_document_text=full_document_text,
             document_filename=document_filename,
             llm_provider=llm_provider,
+            chat_model=chat_model,
         )
         contextualised.append(result)
 

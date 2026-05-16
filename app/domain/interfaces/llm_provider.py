@@ -100,3 +100,20 @@ class LLMProvider(ABC):
             List of model info dicts.
         """
         ...
+
+    @abstractmethod
+    async def list_embedding_models(self) -> list[dict[str, object]]:
+        """List available embedding models from this provider.
+
+        Returns a list of embedding model descriptors. Each dict contains
+        at minimum:
+        - ``id`` (str): model identifier for API calls
+        - ``name`` (str): display name
+        - ``size_gb`` (float): approximate model size in GB (0 if unknown)
+
+        Chat-only models should be filtered out.
+
+        Returns:
+            List of embedding model info dicts.
+        """
+        ...

@@ -11,6 +11,7 @@ to avoid Cloudflare WAF blocks on OpenAI-style request headers.
 from __future__ import annotations
 
 import json
+import time
 from typing import TYPE_CHECKING
 
 import httpx
@@ -217,17 +218,33 @@ class OllamaAdapter(LLMProvider):
                 await response.aclose()
                 logger.debug("ollama_stream_closed")
 
+    # TTL cache for model list (avoids redundant HTTP calls to Ollama)
+    _MODEL_CACHE_TTL = 60  # seconds
+
     async def _query_ollama_models(self) -> list[dict]:
         """Query Ollama /api/tags and return raw model list.
+
+        Results are cached for ``_MODEL_CACHE_TTL`` seconds to avoid
+        redundant HTTP calls (list_models + list_embedding_models are
+        typically called in the same admin page load).
 
         Returns:
             Raw model dicts from Ollama, or empty list on failure.
         """
+        now = time.monotonic()
+        cache = getattr(self, "_models_cache", None)
+        if cache is not None:
+            cached_at, cached_models = cache
+            if now - cached_at < self._MODEL_CACHE_TTL:
+                return cached_models
+
         try:
             response = await self._http_client.get(f"{self.base_url}/api/tags")
             response.raise_for_status()
             data = response.json()
-            return data.get("models", [])
+            models = data.get("models", [])
+            self._models_cache = (now, models)
+            return models
         except Exception:
             logger.warning("ollama_list_models_failed", exc_info=True)
             return []
