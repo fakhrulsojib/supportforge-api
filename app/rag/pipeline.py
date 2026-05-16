@@ -54,6 +54,8 @@ async def retrieve_node(
     state: RAGState,
     vector_store: Any,
     embedding_service: Any,
+    *,
+    embedding_model: str | None = None,
 ) -> RAGState:
     """Retrieve relevant documents from the vector store.
 
@@ -66,6 +68,7 @@ async def retrieve_node(
         state: Current RAG state.
         vector_store: VectorStore adapter instance.
         embedding_service: EmbeddingService instance.
+        embedding_model: Optional tenant-specific embedding model override.
 
     Returns:
         Updated state with retrieved_docs populated.
@@ -76,7 +79,7 @@ async def retrieve_node(
     logger.info("rag_retrieve", query=query[:100], tenant_id=tenant_id)
 
     try:
-        query_embedding = await embedding_service.embed(query)
+        query_embedding = await embedding_service.embed(query, model=embedding_model)
         results = await vector_store.search(
             tenant_id=tenant_id,
             query_embedding=query_embedding,
@@ -151,6 +154,8 @@ async def grade_node(
 async def generate_node(
     state: RAGState,
     llm_provider: Any,
+    *,
+    chat_model: str | None = None,
 ) -> RAGState:
     """Generate an answer using the LLM with retrieved context.
 
@@ -160,6 +165,7 @@ async def generate_node(
     Args:
         state: Current RAG state with relevant_docs.
         llm_provider: LLMProvider adapter instance.
+        chat_model: Optional tenant-specific chat model override.
 
     Returns:
         Updated state with answer and sources.
@@ -196,10 +202,10 @@ async def generate_node(
     ]
 
     try:
-        answer = await llm_provider.generate(messages=messages)
+        answer = await llm_provider.generate(messages=messages, model=chat_model)
         state["answer"] = answer
         state["sources"] = sources
-        state["model_used"] = llm_provider.default_model
+        state["model_used"] = chat_model or llm_provider.default_model
     except LLMError as e:
         logger.error("rag_generate_failed", error=str(e))
         state["answer"] = "I'm sorry, I encountered an error generating a response. Please try again."
@@ -246,6 +252,9 @@ async def run_rag_pipeline(
     embedding_service: Any,
     llm_provider: Any,
     relevance_threshold: float = 0.3,
+    *,
+    chat_model: str | None = None,
+    embedding_model: str | None = None,
 ) -> RAGState:
     """Execute the full RAG pipeline.
 
@@ -258,6 +267,8 @@ async def run_rag_pipeline(
         embedding_service: EmbeddingService.
         llm_provider: LLMProvider adapter.
         relevance_threshold: Minimum relevance score.
+        chat_model: Optional tenant-specific chat model override.
+        embedding_model: Optional tenant-specific embedding model override.
 
     Returns:
         Final RAGState with answer and metadata.
@@ -277,7 +288,7 @@ async def run_rag_pipeline(
     }
 
     # Step 1: Retrieve
-    state = await retrieve_node(state, vector_store, embedding_service)
+    state = await retrieve_node(state, vector_store, embedding_service, embedding_model=embedding_model)
 
     # Step 2: Grade
     state = await grade_node(state, llm_provider, relevance_threshold)
@@ -286,6 +297,6 @@ async def run_rag_pipeline(
     if state.get("should_escalate"):
         state = await escalation_node(state)
     else:
-        state = await generate_node(state, llm_provider)
+        state = await generate_node(state, llm_provider, chat_model=chat_model)
 
     return state

@@ -217,6 +217,21 @@ class OllamaAdapter(LLMProvider):
                 await response.aclose()
                 logger.debug("ollama_stream_closed")
 
+    async def _query_ollama_models(self) -> list[dict]:
+        """Query Ollama /api/tags and return raw model list.
+
+        Returns:
+            Raw model dicts from Ollama, or empty list on failure.
+        """
+        try:
+            response = await self._http_client.get(f"{self.base_url}/api/tags")
+            response.raise_for_status()
+            data = response.json()
+            return data.get("models", [])
+        except Exception:
+            logger.warning("ollama_list_models_failed", exc_info=True)
+            return []
+
     async def list_models(self) -> list[dict[str, object]]:
         """List available chat models from Ollama.
 
@@ -226,29 +241,45 @@ class OllamaAdapter(LLMProvider):
         Returns:
             List of model info dicts with id, name, and size_gb.
         """
-        try:
-            response = await self._http_client.get(f"{self.base_url}/api/tags")
-            response.raise_for_status()
-            data = response.json()
+        raw_models = await self._query_ollama_models()
+        models: list[dict[str, object]] = []
+        for model in raw_models:
+            name = model.get("name", "")
+            # Skip embedding models
+            if "embed" in name.lower():
+                continue
+            size_bytes = model.get("size", 0)
+            size_gb = round(size_bytes / (1024 ** 3), 1) if size_bytes else 0
+            models.append({
+                "id": name,
+                "name": name,
+                "size_gb": size_gb,
+            })
+        return models
 
-            models: list[dict[str, object]] = []
-            for model in data.get("models", []):
-                name = model.get("name", "")
-                # Skip embedding models
-                if "embed" in name.lower():
-                    continue
-                # Convert size from bytes to GB
-                size_bytes = model.get("size", 0)
-                size_gb = round(size_bytes / (1024 ** 3), 1) if size_bytes else 0
-                models.append({
-                    "id": name,
-                    "name": name,
-                    "size_gb": size_gb,
-                })
-            return models
-        except Exception:
-            logger.warning("ollama_list_models_failed", exc_info=True)
-            return []
+    async def list_embedding_models(self) -> list[dict[str, object]]:
+        """List available embedding models from Ollama.
+
+        Queries the ``/api/tags`` endpoint and returns only
+        embedding models (those containing 'embed' in the name).
+
+        Returns:
+            List of embedding model info dicts with id, name, and size_gb.
+        """
+        raw_models = await self._query_ollama_models()
+        models: list[dict[str, object]] = []
+        for model in raw_models:
+            name = model.get("name", "")
+            if "embed" not in name.lower():
+                continue
+            size_bytes = model.get("size", 0)
+            size_gb = round(size_bytes / (1024 ** 3), 1) if size_bytes else 0
+            models.append({
+                "id": name,
+                "name": name,
+                "size_gb": size_gb,
+            })
+        return models
 
     async def health_check(self) -> bool:
         """Check if Ollama is reachable by hitting the base URL."""

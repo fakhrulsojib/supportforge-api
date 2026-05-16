@@ -1,8 +1,9 @@
 """Model management API router — admin-only model listing and selection.
 
 Provides endpoints for admins to:
-- List all available LLM models from configured providers
+- List all available LLM and embedding models from configured providers
 - Get/set the active chat model (persisted per tenant in config_json)
+- Get/set the active embedding model (persisted per tenant in config_json)
 
 All endpoints enforce admin-only access via ``require_role(UserRole.ADMIN)``.
 Model selection is tenant-scoped and persisted to the database.
@@ -39,10 +40,14 @@ logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1/admin", tags=["models"])
 
+# Keys used in tenant config_json
+_CONFIG_CHAT_MODEL = "chat_model"
+_CONFIG_EMBEDDING_MODEL = "embedding_model"
 
-def _get_tenant_chat_model(config_json: dict, fallback: str) -> str:
-    """Extract chat_model from tenant config_json, falling back to server default."""
-    return str(config_json.get("chat_model", "")) or fallback
+
+def _get_tenant_model(config_json: dict, key: str, fallback: str) -> str:
+    """Extract a model ID from tenant config_json, falling back to server default."""
+    return str(config_json.get(key, "")) or fallback
 
 
 @router.get("/models", response_model=ModelListResponse)
@@ -51,10 +56,10 @@ async def list_models(
     session: AsyncSession = Depends(get_async_session),
     user: User = Depends(require_role(UserRole.ADMIN)),
 ) -> ModelListResponse:
-    """List all available chat models grouped by provider.
+    """List all available chat and embedding models grouped by provider.
 
     Queries each registered LLM provider for its available models
-    and returns them grouped. The active model is read from the
+    and returns them grouped. The active models are read from the
     authenticated user's tenant config (persisted per tenant).
 
     Args:
@@ -63,47 +68,64 @@ async def list_models(
         user: Authenticated admin user.
 
     Returns:
-        Available models grouped by provider, plus the active model.
+        Available models grouped by provider, plus the active models.
     """
     llm_provider = request.app.state.llm_provider
 
-    # Query Ollama for available models
-    raw_models = await llm_provider.list_models()
+    # Query Ollama for available chat and embedding models
+    raw_chat_models = await llm_provider.list_models()
+    raw_embedding_models = await llm_provider.list_embedding_models()
 
-    ollama_models = [
+    chat_models = [
         ModelInfo(
             id=str(m["id"]),
             name=str(m["name"]),
             size_gb=float(m.get("size_gb", 0)),
         )
-        for m in raw_models
+        for m in raw_chat_models
+    ]
+
+    embedding_models = [
+        ModelInfo(
+            id=str(m["id"]),
+            name=str(m["name"]),
+            size_gb=float(m.get("size_gb", 0)),
+        )
+        for m in raw_embedding_models
     ]
 
     providers = [
         ProviderInfo(
             id="ollama",
             name="Ollama (Self-hosted)",
-            models=ollama_models,
+            models=chat_models,
+            embedding_models=embedding_models,
         ),
     ]
 
-    # Read tenant's active model from config_json (persisted)
+    # Read tenant's active models from config_json (persisted)
     tenant_repo = SQLTenantRepository(session)
     tenant = await tenant_repo.get_by_id(user.tenant_id)
-    server_default = getattr(llm_provider, "default_model", "")
-    active_model_id = _get_tenant_chat_model(
-        tenant.config_json if tenant else {},
-        server_default,
-    )
+    config = tenant.config_json if tenant else {}
 
-    active = ActiveModel(provider="ollama", model_id=active_model_id)
+    server_chat_default = getattr(llm_provider, "default_model", "")
+    embedding_service = getattr(request.app.state, "embedding_service", None)
+    server_embed_default = getattr(embedding_service, "model", "") if embedding_service else ""
+
+    active = ActiveModel(
+        provider="ollama",
+        model_id=_get_tenant_model(config, _CONFIG_CHAT_MODEL, server_chat_default),
+        embedding_model_id=_get_tenant_model(config, _CONFIG_EMBEDDING_MODEL, server_embed_default),
+    )
 
     logger.debug(
         "models_listed",
         user_id=user.id,
         tenant_id=user.tenant_id,
-        model_count=len(ollama_models),
-        active_model=active.model_id,
+        chat_model_count=len(chat_models),
+        embedding_model_count=len(embedding_models),
+        active_chat=active.model_id,
+        active_embedding=active.embedding_model_id,
     )
 
     return ModelListResponse(providers=providers, active_model=active)
@@ -116,18 +138,18 @@ async def set_active_model(
     session: AsyncSession = Depends(get_async_session),
     user: User = Depends(require_role(UserRole.ADMIN)),
 ) -> SetActiveModelResponse:
-    """Set the active chat model for the current tenant.
+    """Set the active chat or embedding model for the current tenant.
 
     Persists the model selection to the tenant's ``config_json`` in the
     database. This is tenant-scoped — each tenant can have a different
-    active model. The change takes effect for all subsequent chat
-    requests within this tenant.
+    active model. The change takes effect for all subsequent requests
+    within this tenant.
 
     Validates that the requested model actually exists in the
     provider's available model list before activating.
 
     Args:
-        body: Provider and model ID to activate.
+        body: Provider, model ID, and model type to activate.
         request: FastAPI request (for accessing app state).
         session: Database session.
         user: Authenticated admin user.
@@ -136,7 +158,7 @@ async def set_active_model(
         Confirmation of the activated model.
 
     Raises:
-        SupportForgeError: If provider or model not found.
+        SupportForgeError: If provider, model, or type not found.
     """
     if body.provider != "ollama":
         raise SupportForgeError(
@@ -145,15 +167,28 @@ async def set_active_model(
             error_code="PROVIDER_NOT_FOUND",
         )
 
+    if body.model_type not in ("chat", "embedding"):
+        raise SupportForgeError(
+            message=f"Invalid model_type '{body.model_type}'. Must be 'chat' or 'embedding'",
+            status_code=400,
+            error_code="INVALID_MODEL_TYPE",
+        )
+
     llm_provider = request.app.state.llm_provider
 
-    # Validate model exists
-    available = await llm_provider.list_models()
+    # Validate model exists in the correct list
+    if body.model_type == "chat":
+        available = await llm_provider.list_models()
+        config_key = _CONFIG_CHAT_MODEL
+    else:
+        available = await llm_provider.list_embedding_models()
+        config_key = _CONFIG_EMBEDDING_MODEL
+
     model_ids = {str(m["id"]) for m in available}
 
     if body.model_id not in model_ids:
         raise SupportForgeError(
-            message=f"Model '{body.model_id}' not found in provider '{body.provider}'",
+            message=f"Model '{body.model_id}' not found in provider '{body.provider}' ({body.model_type} models)",
             status_code=404,
             error_code="MODEL_NOT_FOUND",
         )
@@ -168,17 +203,15 @@ async def set_active_model(
             error_code="TENANT_NOT_FOUND",
         )
 
-    # Merge into existing config_json (preserve other keys)
-    updated_config = {**tenant.config_json, "chat_model": body.model_id}
+    old_value = tenant.config_json.get(config_key, "")
+    updated_config = {**tenant.config_json, config_key: body.model_id}
     await tenant_repo.update(user.tenant_id, config_json=updated_config)
     await session.commit()
 
     logger.info(
         "active_model_changed",
-        old_model=_get_tenant_chat_model(
-            tenant.config_json,
-            getattr(llm_provider, "default_model", ""),
-        ),
+        model_type=body.model_type,
+        old_model=old_value,
         new_model=body.model_id,
         changed_by=user.id,
         tenant_id=user.tenant_id,
@@ -188,5 +221,6 @@ async def set_active_model(
     return SetActiveModelResponse(
         provider=body.provider,
         model_id=body.model_id,
+        model_type=body.model_type,
         status="active",
     )
