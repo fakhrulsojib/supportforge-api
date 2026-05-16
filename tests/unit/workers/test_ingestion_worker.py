@@ -15,7 +15,8 @@ import pytest
 
 from app.core.exceptions import IngestionError
 from app.domain.models.document import Document
-from app.domain.models.enums import DocumentStatus
+from app.domain.models.enums import DocumentStatus, TenantStatus
+from app.domain.models.tenant import Tenant
 from app.workers.ingestion_worker import run_ingestion_task
 
 
@@ -41,6 +42,18 @@ def mock_session():
     return session
 
 
+@pytest.fixture
+def sample_tenant() -> Tenant:
+    """Create a sample tenant for testing."""
+    return Tenant(
+        id="tenant-xyz",
+        name="Test Tenant",
+        slug="test-tenant",
+        config_json={},
+        status=TenantStatus.ACTIVE,
+    )
+
+
 # ── Successful Processing ────────────────────────────────────────
 
 
@@ -48,14 +61,17 @@ class TestSuccessfulProcessing:
     """Tests for successful document processing by the worker."""
 
     @patch("app.workers.ingestion_worker.IngestionService")
+    @patch("app.workers.ingestion_worker.SQLTenantRepository")
     @patch("app.workers.ingestion_worker.SQLDocumentRepository")
     @patch("app.workers.ingestion_worker.AsyncSessionLocal")
     async def test_worker_processes_document(
         self,
         mock_session_factory: MagicMock,
         mock_repo_cls: MagicMock,
+        mock_tenant_repo_cls: MagicMock,
         mock_service_cls: MagicMock,
         sample_document: Document,
+        sample_tenant: Tenant,
     ) -> None:
         """Worker creates IngestionService and calls process_document."""
         mock_session = AsyncMock()
@@ -65,6 +81,10 @@ class TestSuccessfulProcessing:
         mock_repo = AsyncMock()
         mock_repo.get_by_id.return_value = sample_document
         mock_repo_cls.return_value = mock_repo
+
+        mock_tenant_repo = AsyncMock()
+        mock_tenant_repo.get_by_id.return_value = sample_tenant
+        mock_tenant_repo_cls.return_value = mock_tenant_repo
 
         mock_service = AsyncMock()
         mock_service_cls.return_value = mock_service
@@ -80,14 +100,17 @@ class TestSuccessfulProcessing:
         mock_service.process_document.assert_called_once()
 
     @patch("app.workers.ingestion_worker.IngestionService")
+    @patch("app.workers.ingestion_worker.SQLTenantRepository")
     @patch("app.workers.ingestion_worker.SQLDocumentRepository")
     @patch("app.workers.ingestion_worker.AsyncSessionLocal")
     async def test_worker_passes_correct_document_and_content(
         self,
         mock_session_factory: MagicMock,
         mock_repo_cls: MagicMock,
+        mock_tenant_repo_cls: MagicMock,
         mock_service_cls: MagicMock,
         sample_document: Document,
+        sample_tenant: Tenant,
     ) -> None:
         """Worker passes the correct document and file content to the service."""
         mock_session = AsyncMock()
@@ -97,6 +120,10 @@ class TestSuccessfulProcessing:
         mock_repo = AsyncMock()
         mock_repo.get_by_id.return_value = sample_document
         mock_repo_cls.return_value = mock_repo
+
+        mock_tenant_repo = AsyncMock()
+        mock_tenant_repo.get_by_id.return_value = sample_tenant
+        mock_tenant_repo_cls.return_value = mock_tenant_repo
 
         mock_service = AsyncMock()
         mock_service_cls.return_value = mock_service

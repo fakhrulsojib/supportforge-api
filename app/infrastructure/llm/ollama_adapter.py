@@ -59,6 +59,10 @@ class OllamaAdapter(LLMProvider):
             timeout=httpx.Timeout(300.0, connect=10.0),
         )
 
+    @property
+    def provider_name(self) -> str:  # noqa: D102
+        return "ollama"
+
     async def generate(
         self,
         messages: list[dict[str, str]],

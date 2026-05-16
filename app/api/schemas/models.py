@@ -18,7 +18,7 @@ class ModelInfo(BaseModel):
 class ProviderInfo(BaseModel):
     """A model provider with its available models."""
 
-    id: str = Field(..., description="Provider identifier (e.g. 'ollama')")
+    id: str = Field(..., description="Provider identifier (e.g. 'ollama', 'gemini')")
     name: str = Field(..., description="Display name (e.g. 'Ollama (Self-hosted)')")
     models: list[ModelInfo] = Field(default_factory=list, description="Chat models")
     embedding_models: list[ModelInfo] = Field(
@@ -32,6 +32,8 @@ class ActiveModel(BaseModel):
     provider: str = Field(..., description="Provider identifier")
     model_id: str = Field(..., description="Active chat model identifier")
     embedding_model_id: str = Field("", description="Active embedding model identifier")
+    has_api_key: bool = Field(False, description="Whether the tenant has a Gemini API key configured")
+    api_key_preview: str = Field("", description="Masked API key preview (e.g. 'AIza...****')")
 
 
 class ModelListResponse(BaseModel):
@@ -44,10 +46,13 @@ class ModelListResponse(BaseModel):
 class SetActiveModelRequest(BaseModel):
     """Request to set an active model (chat or embedding)."""
 
-    provider: str = Field(..., description="Provider identifier (e.g. 'ollama')")
+    provider: str = Field(..., description="Provider identifier (e.g. 'ollama', 'gemini')")
     model_id: str = Field(..., description="Model identifier (e.g. 'gemma3:4b')")
     model_type: Literal["chat", "embedding"] = Field(
         "chat", description="Model type: 'chat' or 'embedding'",
+    )
+    api_key: str | None = Field(
+        None, description="API key for cloud providers (e.g. Gemini). Required when provider is 'gemini'.",
     )
 
 

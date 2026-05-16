@@ -75,6 +75,8 @@ async def websocket_chat(
     tenant_blocklist: list[str] = []  # default — no blocked terms
     tenant_chat_model: str | None = None  # None → use server default
     tenant_embedding_model: str | None = None  # None → use server default
+    tenant_chat_provider: str | None = None  # None → use Ollama
+    tenant_gemini_api_key: str | None = None  # None → no Gemini key
     async with AsyncSessionLocal() as session:
         user_repo = SQLUserRepository(session)
         user = await user_repo.get_by_id(payload.user_id)
@@ -104,9 +106,15 @@ async def websocket_chat(
                 tenant_blocklist = [str(t) for t in raw_blocklist if t]
             # Per-tenant model selections (admin-configurable)
             from app.core.tenant_config import resolve_tenant_models
-            tenant_models = resolve_tenant_models(tenant.config_json)
+            settings = get_settings()
+            tenant_models = resolve_tenant_models(
+                tenant.config_json,
+                encryption_key=settings.secret_key,
+            )
             tenant_chat_model = tenant_models.chat_model
             tenant_embedding_model = tenant_models.embedding_model
+            tenant_chat_provider = tenant_models.chat_provider
+            tenant_gemini_api_key = tenant_models.gemini_api_key
 
     tenant_id = user.tenant_id
     user_id = user.id
@@ -169,6 +177,8 @@ async def websocket_chat(
                     tenant_blocklist=tenant_blocklist,
                     tenant_chat_model=tenant_chat_model,
                     tenant_embedding_model=tenant_embedding_model,
+                    tenant_chat_provider=tenant_chat_provider,
+                    tenant_gemini_api_key=tenant_gemini_api_key,
                 )
                 try:
                     async for frame in stream_gen:
