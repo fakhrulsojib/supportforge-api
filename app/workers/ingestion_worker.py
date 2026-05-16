@@ -131,13 +131,39 @@ async def run_ingestion_task(
                     hint="Gemini embeddings configured but API key missing — falling back to Ollama",
                 )
 
+            # Resolve effective chat LLM for contextualisation
+            effective_llm = llm_provider
+            llm_disposable = False
+            if (
+                tenant_models.chat_provider == "gemini"
+                and tenant_models.gemini_api_key
+            ):
+                from app.infrastructure.llm.factory import get_gemini_provider
+                resolved_chat_model = tenant_models.chat_model or "gemini-2.5-flash"
+                effective_llm = get_gemini_provider(
+                    api_key=tenant_models.gemini_api_key,
+                    model=resolved_chat_model,
+                )
+                llm_disposable = True
+                logger.info(
+                    "ingestion_using_gemini_chat",
+                    document_id=document_id,
+                    model=resolved_chat_model,
+                )
+            elif tenant_models.chat_provider == "gemini":
+                logger.warning(
+                    "ingestion_gemini_chat_key_missing",
+                    document_id=document_id,
+                    hint="Gemini chat configured but API key missing — falling back to Ollama for contextualisation",
+                )
+
             # Create the ingestion service and process
             try:
                 service = IngestionService(
                     document_repo=document_repo,
                     embedding_service=effective_embed,
                     vector_store=vector_store,
-                    llm_provider=llm_provider,
+                    llm_provider=effective_llm,
                 )
 
                 await service.process_document(
@@ -152,6 +178,11 @@ async def run_ingestion_task(
                         await effective_embed.close()
                     except Exception:  # noqa: S110
                         logger.debug("embed_adapter_close_failed", exc_info=True)
+                if llm_disposable and hasattr(effective_llm, 'close'):
+                    try:
+                        await effective_llm.close()
+                    except Exception:  # noqa: S110
+                        logger.debug("llm_adapter_close_failed", exc_info=True)
 
             # Commit all changes (chunks, READY status, etc.)
             await session.commit()
