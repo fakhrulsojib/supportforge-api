@@ -253,6 +253,7 @@ For each markdown file, check if this task requires an update:
 - [ ] All function signatures have full type annotations
 - [ ] All `Any` usage is justified with a comment explaining why a specific type cannot be used
 - [ ] ABCs have `close()` / cleanup methods for resources that need lifecycle management
+- [ ] `LLMProvider` ABC methods: `generate()`, `stream()`, `health_check()`, `list_models()`, `list_embedding_models()`
 
 ---
 
@@ -345,6 +346,9 @@ For **any** module not listed below, derive the test path using this rule:
 | `app/domain/models/analytics.py` | `tests/unit/domain/test_analytics.py` |
 | `app/api/schemas/analytics.py` | `tests/unit/schemas/test_analytics_schemas.py` |
 | `app/api/v1/analytics.py` | `tests/integration/api/test_analytics.py` |
+| `app/api/v1/models.py` | `tests/integration/api/test_models.py` _(planned)_ |
+| `app/core/tenant_config.py` | `tests/unit/test_tenant_config.py` _(planned)_ |
+| `app/workers/ingestion_queue.py` | `tests/unit/workers/test_ingestion_queue.py` |
 | `app/rag/contextualizer.py` | `tests/unit/domain/test_ingestion_service.py` (TestContextualRetrieval) |
 
 ### Testing Standards
@@ -365,7 +369,7 @@ For **any** module not listed below, derive the test path using this rule:
 ```bash
 # Required env vars (see .env.example for full list):
 OLLAMA_BASE_URL=https://localhost:11434
-OLLAMA_CHAT_MODEL=qwen3:4b
+OLLAMA_CHAT_MODEL=gemma3:4b              # Available: gemma3:4b, qwen3:4b
 OLLAMA_EMBEDDING_MODEL=nomic-embed-text
 CF_OLLAMA_ID=<cloudflare-service-token-id>
 CF_OLLAMA_SECRET=<cloudflare-service-token-secret>

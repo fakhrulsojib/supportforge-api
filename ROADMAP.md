@@ -163,11 +163,24 @@
 
 ---
 
-## Phase 3 — Frontend Integration 🔲
+## Phase 3 — Frontend Integration ✅
 
-> **Branch:** `phase-3/frontend-integration` (frontend repo)
+> **Branch:** `phase-3/frontend-implementation` (frontend repo)
 
 - See `supportforge-ui` ROADMAP.md
+
+---
+
+## Phase 4 — Response Timeout & Streaming Fallback ✅
+
+> **Branch:** `phase-4/response-timeout`
+
+- [x] First-token timeout (60s) on `OllamaAdapter.stream()`
+- [x] Retry with user-facing fallback frame on timeout
+- [x] Double-timeout escalation with `escalated=True` in done frame
+- [x] `StreamingIndicator.jsx` elapsed-time animation ("Still thinking...")
+- [x] Reduced httpx read timeout from 300s to 120s
+- [x] Tests: slow stream mock, retry success, double-timeout escalation
 
 ---
 

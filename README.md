@@ -19,13 +19,14 @@ SupportForge is a multi-tenant AI customer support agent powered by a self-hoste
 - **RAG Pipeline** — LangGraph state machine with semantic retrieval, contextual retrieval, relevance grading, and source-cited answers
 - **Multi-Tenant** — Full data isolation per tenant with RBAC (admin, agent, viewer, superadmin)
 - **Real-Time Streaming** — Token-by-token WebSocket responses for instant chat UX
-- **Self-Hosted LLM** — Zero-cost inference via Ollama behind Cloudflare Access
+- **Self-Hosted LLM** — Zero-cost inference via Ollama behind Cloudflare Access (qwen3, gemma3)
 - **Document Ingestion** — Upload PDF, Markdown, CSV, and plain text; chunks are contextualised via LLM before embedding for improved retrieval accuracy
 - **Conversation Memory** — Full audit trail in PostgreSQL with feedback tracking
 - **Analytics** — Daily stats, intent classification, satisfaction metrics
 - **Output Validation** — Anti-hallucination guard detects fabricated contact info, prices, and forbidden patterns with context cross-referencing
 - **Content Moderation** — Input filtering (jailbreak detection, tenant blocklist) and output flagging with full DB audit trail
 - **Smart Escalation** — Context-aware human handoff triggered by frustrated sentiment, repeated questions, or explicit user requests
+- **Per-Tenant Model Selection** — Admin-configurable chat and embedding models with live Ollama model listing and tenant-scoped persistence
 - **Feedback Review Queue** — Admin dashboard endpoints for reviewing negative feedback, escalations, and flagged messages
 - **Failed Query Logging** — Automatic tracking of RAG pipeline failures with admin analytics for identifying knowledge gaps
 - **Platform Superadmin** — Cross-tenant platform management role with dedicated RBAC, JWT claims, and CLI bootstrap script
@@ -54,7 +55,7 @@ Hexagonal Architecture (Ports & Adapters)
 | Component | Technology |
 |---|---|
 | Framework | FastAPI (async) |
-| LLM | Ollama (self-hosted, OpenAI-compatible) |
+| LLM | Ollama (self-hosted, OpenAI-compatible — qwen3, gemma3) |
 | RAG | LangGraph + ChromaDB |
 | Database | PostgreSQL (SQLAlchemy async) |
 | Cache | Redis |
@@ -152,6 +153,8 @@ supportforge-api/
 | `GET` | `/api/v1/platform/tenants` | Superadmin | List tenants (paginated, status filter) |
 | `PATCH` | `/api/v1/platform/tenants/{id}/status` | Superadmin | Update tenant lifecycle status |
 | `WS` | `/api/v1/ws/chat` | JWT | WebSocket chat with token-by-token streaming |
+| `GET` | `/api/v1/admin/models` | Admin | List available models |
+| `PUT` | `/api/v1/admin/models/active` | Admin | Set active chat/embedding model |
 | `POST` | `/api/v1/ingest/upload` | Admin | Upload document |
 | `GET` | `/api/v1/ingest/documents` | Admin | List documents |
 | `DELETE` | `/api/v1/ingest/documents/{id}` | Admin | Delete document |
