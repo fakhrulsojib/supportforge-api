@@ -34,11 +34,16 @@ if TYPE_CHECKING:
 
 logger = structlog.get_logger(__name__)
 
-# Hardcoded model catalog — Gemini models are not dynamically listed
-# via the API like Ollama; they're a known, fixed set.
+# Hardcoded model catalog — Gemini/Gemma models available on the
+# Google AI free tier.  Ordered by recommended usage (newest first).
+# Gemini 2.0 Flash/Lite omitted — deprecated June 1, 2026.
 _GEMINI_CHAT_MODELS: list[dict[str, object]] = [
     {"id": "gemini-2.5-flash", "name": "Gemini 2.5 Flash", "size_gb": 0},
     {"id": "gemini-2.5-flash-lite", "name": "Gemini 2.5 Flash Lite", "size_gb": 0},
+    {"id": "gemini-3-flash-preview", "name": "Gemini 3 Flash (Preview)", "size_gb": 0},
+    {"id": "gemini-3.1-flash-lite", "name": "Gemini 3.1 Flash Lite", "size_gb": 0},
+    {"id": "gemma-4-31b-it", "name": "Gemma 4 31B IT", "size_gb": 0},
+    {"id": "gemma-4-26b-a4b-it", "name": "Gemma 4 26B A4B IT", "size_gb": 0},
 ]
 
 _GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
