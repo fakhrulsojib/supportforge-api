@@ -994,9 +994,11 @@ class ChatService:
 
     # ── Conversation History (rolling summarization) ──────────────
 
-    # After this many user-assistant pairs, older history is summarized
-    _HISTORY_SUMMARIZE_THRESHOLD = 3
-    _HISTORY_MAX_CHARS = 6000
+    @property
+    def _history_summarize_threshold(self) -> int:
+        """Number of user-assistant pairs before summarization kicks in."""
+        from app.config import get_settings
+        return get_settings().history_summarize_threshold
 
     async def _load_conversation_history(
         self,
@@ -1064,7 +1066,7 @@ class ChatService:
             )
 
             # If we have enough pairs, trigger summarization
-            if pair_count >= self._HISTORY_SUMMARIZE_THRESHOLD:
+            if pair_count >= self._history_summarize_threshold:
                 summary_text = await self._summarize_history(
                     previous_summary=latest_summary,
                     messages=recent_messages,
@@ -1106,12 +1108,6 @@ class ChatService:
                 role_val = m.role.value if hasattr(m.role, "value") else m.role
                 history.append({"role": role_val, "content": m.content})
 
-            # Trim oldest messages until within character budget
-            total_chars = sum(len(h["content"]) for h in history)
-            while history and total_chars > self._HISTORY_MAX_CHARS:
-                removed = history.pop(0)
-                total_chars -= len(removed["content"])
-
             return history
 
         except Exception:
@@ -1142,7 +1138,7 @@ class ChatService:
             chat_model: Optional tenant-specific chat model override.
 
         Returns:
-            Summary text (3-10 sentences).
+            Summary text (3-N sentences, scaled by threshold).
         """
         # Build the conversation text to summarize
         parts: list[str] = []
@@ -1157,9 +1153,13 @@ class ChatService:
 
         conversation_text = "\n\n".join(parts)
 
+        # Scale sentence range based on threshold
+        threshold = self._history_summarize_threshold
+        max_sentences = 20 if threshold > 5 else 10
+
         summary_prompt = [
             {"role": "system", "content": (
-                "Summarize this customer support conversation in 3-10 sentences.\n"
+                f"Summarize this customer support conversation in 3-{max_sentences} sentences.\n"
                 "Rules:\n"
                 "- Preserve ALL customer-provided details exactly "
                 "(dates, order numbers, names, amounts, product names).\n"

@@ -65,6 +65,10 @@ class Settings(BaseSettings):
     # ── Ingestion Pipeline ───────────────────────────────────────
     ingestion_max_concurrent: int = 1
 
+    # ── Conversation History ─────────────────────────────────────
+    # After this many user-assistant pairs, older history is summarized
+    history_summarize_threshold: int = 10
+
     # ── JWT Authentication ───────────────────────────────────────
     jwt_secret_key: str = "change-me-to-another-random-secret"  # noqa: S105
     jwt_algorithm: str = "HS256"
