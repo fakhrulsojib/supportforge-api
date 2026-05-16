@@ -974,6 +974,7 @@ class ChatService:
             _sentinel_len = len(_ESCALATE_SENTINEL)
             _content_buffer: list[str] = []
             _buffer_flushed = False
+            _sentinel_tail = ""  # Rolling buffer for late [ESCALATE] filtering
 
             # DEBUG: Dump the full messages payload being sent to LLM
             provider_name = getattr(effective_provider, 'provider_name', 'unknown')
@@ -1033,8 +1034,59 @@ class ChatService:
                                 full_answer_parts.append(buf_token)
                                 yield {"type": "token", "data": buf_token}
                 else:
-                    full_answer_parts.append(token_text)
-                    yield {"type": "token", "data": token_text}
+                    # ── Late-sentinel filter ──────────────────────────
+                    # Buffer tokens when we see '[' to catch [ESCALATE]
+                    # that appears mid- or end-of-response.  When no '['
+                    # is pending, tokens pass through with zero latency.
+                    _sentinel_tail += token_text
+
+                    if "[" not in _sentinel_tail:
+                        # Fast path — no bracket, yield immediately
+                        full_answer_parts.append(_sentinel_tail)
+                        yield {"type": "token", "data": _sentinel_tail}
+                        _sentinel_tail = ""
+                        continue
+
+                    bracket_idx = _sentinel_tail.find("[")
+                    tail_from_bracket = _sentinel_tail[bracket_idx:]
+
+                    if _ESCALATE_SENTINEL == tail_from_bracket:
+                        # Exact match — swallow the sentinel
+                        llm_escalated = True
+                        safe = _sentinel_tail[:bracket_idx]
+                        if safe:
+                            full_answer_parts.append(safe)
+                            yield {"type": "token", "data": safe}
+                        _sentinel_tail = ""
+                    elif _ESCALATE_SENTINEL.startswith(tail_from_bracket):
+                        # Partial match — keep buffering, yield safe prefix
+                        safe = _sentinel_tail[:bracket_idx]
+                        if safe:
+                            full_answer_parts.append(safe)
+                            yield {"type": "token", "data": safe}
+                        _sentinel_tail = tail_from_bracket
+                    elif _ESCALATE_SENTINEL in _sentinel_tail:
+                        # Match with surrounding text — strip it
+                        llm_escalated = True
+                        cleaned = _sentinel_tail.replace(_ESCALATE_SENTINEL, "")
+                        if cleaned:
+                            full_answer_parts.append(cleaned)
+                            yield {"type": "token", "data": cleaned}
+                        _sentinel_tail = ""
+                    else:
+                        # '[' but not sentinel — flush everything
+                        full_answer_parts.append(_sentinel_tail)
+                        yield {"type": "token", "data": _sentinel_tail}
+                        _sentinel_tail = ""
+
+            # Flush any remaining sentinel buffer after stream ends
+            if _sentinel_tail:
+                if _ESCALATE_SENTINEL in _sentinel_tail:
+                    llm_escalated = True
+                    _sentinel_tail = _sentinel_tail.replace(_ESCALATE_SENTINEL, "")
+                if _sentinel_tail.strip():
+                    full_answer_parts.append(_sentinel_tail)
+                    yield {"type": "token", "data": _sentinel_tail}
 
             # If buffer was never flushed (very short response), check and flush now
             if not _buffer_flushed and not llm_escalated:
