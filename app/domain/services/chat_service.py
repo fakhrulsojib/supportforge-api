@@ -773,10 +773,10 @@ class ChatService:
             },
         }
 
-    # ── Conversation History (sliding window) ───────────────────
+    # ── Conversation History (rolling summarization) ──────────────
 
-    # Constraints for the sliding window
-    _HISTORY_MAX_MESSAGES = 20
+    # After this many user-assistant pairs, older history is summarized
+    _HISTORY_SUMMARIZE_THRESHOLD = 3
     _HISTORY_MAX_CHARS = 6000
 
     async def _load_conversation_history(
@@ -787,13 +787,16 @@ class ChatService:
         """Load recent conversation history for multi-turn context.
 
         Returns a list of ``{"role": ..., "content": ...}`` dicts ready
-        to splice into the LLM messages array.  Thinking traces are
-        excluded — only user/assistant content is included.
+        to splice into the LLM messages array.
 
-        Uses a sliding window bounded by:
-        - ``_HISTORY_MAX_MESSAGES`` (last N messages)
-        - ``_HISTORY_MAX_CHARS`` (total character budget)
-        Whichever limit is hit first wins.
+        Implements rolling summarization: when conversation history
+        exceeds ``_HISTORY_SUMMARIZE_THRESHOLD`` pairs (user+assistant),
+        older messages are compressed into a single summary message
+        via an LLM call.  The summary is persisted in the DB with
+        ``role=summary`` so it can be reused on subsequent turns.
+
+        The UI never sees summary messages — they are filtered out
+        in the API response layer.
 
         Args:
             conversation_id: UUID of the current conversation.
@@ -813,18 +816,71 @@ class ChatService:
 
             async with AsyncSessionLocal() as session:
                 msg_repo = SQLMessageRepository(session)
-                all_messages = await msg_repo.list_by_conversation(conversation_id, limit=self._HISTORY_MAX_MESSAGES)
+                all_messages = await msg_repo.list_by_conversation(
+                    conversation_id, limit=50,
+                )
 
             if not all_messages:
                 return []
 
-            # Build history oldest-first, then trim from the front if
-            # total character count exceeds the budget.
-            history: list[dict[str, str]] = [
-                {"role": m.role.value if hasattr(m.role, "value") else m.role, "content": m.content}
-                for m in all_messages
-                if m.content  # skip empty
-            ]
+            # Separate: find latest summary and messages after it
+            latest_summary = None
+            recent_messages: list = []
+            for m in all_messages:
+                role_val = m.role.value if hasattr(m.role, "value") else m.role
+                if role_val == "summary":
+                    latest_summary = m
+                    recent_messages = []  # reset — only keep messages AFTER summary
+                else:
+                    if m.content:  # skip empty
+                        recent_messages.append(m)
+
+            # Count user-assistant pairs in recent messages
+            pair_count = sum(
+                1 for m in recent_messages
+                if (m.role.value if hasattr(m.role, "value") else m.role) == "user"
+            )
+
+            # If we have enough pairs, trigger summarization
+            if pair_count >= self._HISTORY_SUMMARIZE_THRESHOLD:
+                summary_text = await self._summarize_history(
+                    previous_summary=latest_summary,
+                    messages=recent_messages,
+                )
+                # Persist the new summary
+                await self._persist_summary(conversation_id, summary_text)
+
+                logger.info(
+                    "history_summarized",
+                    conversation_id=conversation_id,
+                    pairs_summarized=pair_count,
+                    summary_length=len(summary_text),
+                    had_previous_summary=latest_summary is not None,
+                )
+
+                # Return only the summary for the LLM
+                return [{
+                    "role": "user",
+                    "content": (
+                        f"[Previous conversation summary — use as context, "
+                        f"do not repeat this back to the customer]\n{summary_text}"
+                    ),
+                }]
+
+            # Otherwise return summary (if any) + recent messages
+            history: list[dict[str, str]] = []
+            if latest_summary:
+                history.append({
+                    "role": "user",
+                    "content": (
+                        f"[Previous conversation summary — use as context, "
+                        f"do not repeat this back to the customer]\n"
+                        f"{latest_summary.content}"
+                    ),
+                })
+            for m in recent_messages:
+                role_val = m.role.value if hasattr(m.role, "value") else m.role
+                history.append({"role": role_val, "content": m.content})
 
             # Trim oldest messages until within character budget
             total_chars = sum(len(h["content"]) for h in history)
@@ -841,6 +897,110 @@ class ChatService:
                 exc_info=True,
             )
             return []  # non-critical — proceed without history
+
+    async def _summarize_history(
+        self,
+        previous_summary: object | None,
+        messages: list,
+    ) -> str:
+        """Compress conversation history into a short summary via LLM.
+
+        The summary preserves all customer-provided details (dates, order
+        numbers, amounts) without alteration and prioritizes the most
+        recent agent reply.
+
+        Args:
+            previous_summary: Existing summary message object (if rolling).
+            messages: Recent user+assistant messages to summarize.
+
+        Returns:
+            Summary text (3-10 sentences).
+        """
+        # Build the conversation text to summarize
+        parts: list[str] = []
+        if previous_summary:
+            content = previous_summary.content if hasattr(previous_summary, "content") else str(previous_summary)
+            parts.append(f"[Previous summary]\n{content}\n")
+
+        for m in messages:
+            role_val = m.role.value if hasattr(m.role, "value") else m.role
+            label = "Customer" if role_val == "user" else "Agent"
+            parts.append(f"{label}: {m.content}")
+
+        conversation_text = "\n\n".join(parts)
+
+        summary_prompt = [
+            {"role": "system", "content": (
+                "Summarize this customer support conversation in 3-10 sentences.\n"
+                "Rules:\n"
+                "- Preserve ALL customer-provided details exactly "
+                "(dates, order numbers, names, amounts, product names).\n"
+                "- Include what the agent suggested or resolved. "
+                "Prioritize the most recent agent reply.\n"
+                "- Do NOT add information that wasn't in the conversation.\n"
+                "- Output ONLY the summary, nothing else."
+            )},
+            {"role": "user", "content": conversation_text},
+        ]
+
+        try:
+            summary = await self._llm_provider.generate(
+                messages=summary_prompt,
+                temperature=0.3,  # low temp for factual accuracy
+                max_tokens=512,
+            )
+            return summary.strip()
+        except Exception:
+            logger.warning(
+                "history_summarization_failed",
+                exc_info=True,
+            )
+            # Fallback: just use the last 2 messages as a crude summary
+            fallback_parts = []
+            for m in messages[-2:]:
+                role_val = m.role.value if hasattr(m.role, "value") else m.role
+                label = "Customer" if role_val == "user" else "Agent"
+                fallback_parts.append(f"{label}: {m.content}")
+            return "\n".join(fallback_parts)
+
+    async def _persist_summary(
+        self,
+        conversation_id: str,
+        summary_text: str,
+    ) -> None:
+        """Save a summary message to the database.
+
+        The summary is stored as a regular message with ``role=summary``.
+        It is filtered out from API responses so the UI never sees it.
+
+        Args:
+            conversation_id: UUID of the conversation.
+            summary_text: The summarized conversation text.
+        """
+        try:
+            from app.domain.models.conversation import Message
+            from app.domain.models.enums import MessageRole
+            from app.infrastructure.database.connection import AsyncSessionLocal
+            from app.infrastructure.database.repositories.conversation_repo import (
+                SQLMessageRepository,
+            )
+
+            async with AsyncSessionLocal() as session:
+                msg_repo = SQLMessageRepository(session)
+                await msg_repo.create(
+                    Message(
+                        conversation_id=conversation_id,
+                        role=MessageRole.SUMMARY,
+                        content=summary_text,
+                    )
+                )
+                await session.commit()
+        except Exception:
+            logger.warning(
+                "summary_persist_failed",
+                conversation_id=conversation_id,
+                exc_info=True,
+            )
 
     async def _persist_exchange(
         self,

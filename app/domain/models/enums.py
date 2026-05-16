@@ -35,6 +35,7 @@ class MessageRole(str, enum.Enum):
     USER = "user"
     ASSISTANT = "assistant"
     SYSTEM = "system"
+    SUMMARY = "summary"
 
 
 class FeedbackType(str, enum.Enum):
