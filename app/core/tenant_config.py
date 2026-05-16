@@ -8,18 +8,21 @@ and ensure consistent validation.
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
+
+import structlog
 
 from app.core.crypto import decrypt_value
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 # Keys used in tenant config_json
 CONFIG_CHAT_MODEL = "chat_model"
 CONFIG_EMBEDDING_MODEL = "embedding_model"
 CONFIG_CHAT_PROVIDER = "chat_provider"
 CONFIG_GEMINI_API_KEY = "gemini_api_key"
+CONFIG_GEMINI_EMBEDDING_API_KEY = "gemini_embedding_api_key"
+CONFIG_EMBEDDING_PROVIDER = "embedding_provider"
 
 # Model-name prefixes that identify the Gemini provider
 GEMINI_MODEL_PREFIXES: tuple[str, ...] = ("gemini-",)
@@ -33,20 +36,24 @@ class TenantModelConfig:
         chat_model: Tenant's chat model override, or None for server default.
         embedding_model: Tenant's embedding model override, or None for server default.
         chat_provider: Provider identifier ("ollama" | "gemini"), or None for default.
-        gemini_api_key: Decrypted Gemini API key for runtime use, or None.
+        embedding_provider: Embedding provider ("ollama" | "gemini"), or None for default.
+        gemini_api_key: Decrypted Gemini API key for chat, or None.
+        gemini_embedding_api_key: Decrypted Gemini API key for embeddings, or None.
     """
 
     chat_model: str | None = None
     embedding_model: str | None = None
     chat_provider: str | None = None
+    embedding_provider: str | None = None
     gemini_api_key: str | None = None
+    gemini_embedding_api_key: str | None = None
 
 
 def _detect_provider(model_name: str | None) -> str | None:
     """Auto-detect provider from model name prefix.
 
     Args:
-        model_name: The chat model identifier.
+        model_name: The model identifier (chat or embedding).
 
     Returns:
         ``"gemini"`` if the model name starts with a known Gemini prefix,
@@ -94,7 +101,7 @@ def resolve_tenant_models(
     if isinstance(raw_embed, str) and raw_embed:
         embedding_model = raw_embed
 
-    # ── Provider resolution ─────────────────────────────────────
+    # ── Chat provider resolution ─────────────────────────────────
     chat_provider: str | None = None
     raw_provider = config_json.get(CONFIG_CHAT_PROVIDER)
     if isinstance(raw_provider, str) and raw_provider:
@@ -102,6 +109,15 @@ def resolve_tenant_models(
     elif chat_model:
         # Auto-detect from model name if provider not explicitly set
         chat_provider = _detect_provider(chat_model)
+
+    # ── Embedding provider resolution ────────────────────────────
+    embedding_provider: str | None = None
+    raw_embed_provider = config_json.get(CONFIG_EMBEDDING_PROVIDER)
+    if isinstance(raw_embed_provider, str) and raw_embed_provider:
+        embedding_provider = raw_embed_provider
+    elif embedding_model:
+        # Auto-detect from model name
+        embedding_provider = _detect_provider(embedding_model)
 
     # ── Gemini API key (encrypted in config_json) ───────────────
     gemini_api_key: str | None = None
@@ -112,20 +128,36 @@ def resolve_tenant_models(
         except Exception:
             logger.warning(
                 "tenant_gemini_key_decrypt_failed",
-                extra={"reason": "invalid_ciphertext"},
+                reason="invalid_ciphertext",
             )
 
-    logger.info(
+    # ── Gemini Embedding API key (separate, encrypted) ──────────
+    gemini_embedding_api_key: str | None = None
+    raw_embed_key = config_json.get(CONFIG_GEMINI_EMBEDDING_API_KEY)
+    if isinstance(raw_embed_key, str) and raw_embed_key and encryption_key:
+        try:
+            gemini_embedding_api_key = decrypt_value(raw_embed_key, encryption_key)
+        except Exception:
+            logger.warning(
+                "tenant_gemini_embedding_key_decrypt_failed",
+                reason="invalid_ciphertext",
+            )
+
+    logger.debug(
         "tenant_models_resolved",
         chat_model=chat_model,
         embedding_model=embedding_model,
         chat_provider=chat_provider,
+        embedding_provider=embedding_provider,
         has_gemini_key=gemini_api_key is not None,
+        has_gemini_embedding_key=gemini_embedding_api_key is not None,
     )
 
     return TenantModelConfig(
         chat_model=chat_model,
         embedding_model=embedding_model,
         chat_provider=chat_provider,
+        embedding_provider=embedding_provider,
         gemini_api_key=gemini_api_key,
+        gemini_embedding_api_key=gemini_embedding_api_key,
     )

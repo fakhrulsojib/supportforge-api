@@ -27,7 +27,9 @@ from app.core.tenant_config import (
     CONFIG_CHAT_MODEL,
     CONFIG_CHAT_PROVIDER,
     CONFIG_EMBEDDING_MODEL,
+    CONFIG_EMBEDDING_PROVIDER,
     CONFIG_GEMINI_API_KEY,
+    CONFIG_GEMINI_EMBEDDING_API_KEY,
     GEMINI_MODEL_PREFIXES,
     TenantModelConfig,
     resolve_tenant_models,
@@ -217,3 +219,94 @@ class TestConstants:
         config = TenantModelConfig()
         with pytest.raises(AttributeError):
             config.chat_model = "test"  # type: ignore[misc]
+
+
+# ── Embedding Provider ──────────────────────────────────────────
+
+
+class TestEmbeddingProvider:
+    """Tests for embedding_provider resolution."""
+
+    def test_explicit_gemini_embedding_provider(self) -> None:
+        """Embedding provider explicitly set to 'gemini'."""
+        result = resolve_tenant_models({
+            CONFIG_EMBEDDING_PROVIDER: "gemini",
+            CONFIG_EMBEDDING_MODEL: "gemini-embedding-2",
+        })
+        assert result.embedding_provider == "gemini"
+
+    def test_explicit_ollama_embedding_provider(self) -> None:
+        """Embedding provider explicitly set to 'ollama'."""
+        result = resolve_tenant_models({
+            CONFIG_EMBEDDING_PROVIDER: "ollama",
+            CONFIG_EMBEDDING_MODEL: "nomic-embed-text",
+        })
+        assert result.embedding_provider == "ollama"
+
+    def test_auto_detect_gemini_embedding_from_model_name(self) -> None:
+        """Provider auto-detected when embedding model starts with 'gemini-'."""
+        result = resolve_tenant_models({
+            CONFIG_EMBEDDING_MODEL: "gemini-embedding-2",
+        })
+        assert result.embedding_provider == "gemini"
+
+    def test_auto_detect_ollama_embedding_from_model_name(self) -> None:
+        """Non-gemini embedding model defaults to None."""
+        result = resolve_tenant_models({
+            CONFIG_EMBEDDING_MODEL: "nomic-embed-text",
+        })
+        assert result.embedding_provider is None
+
+    def test_no_embedding_provider_no_model(self) -> None:
+        """No embedding provider when no embedding model selected."""
+        result = resolve_tenant_models({})
+        assert result.embedding_provider is None
+
+
+# ── Gemini Embedding API Key ────────────────────────────────────
+
+
+class TestGeminiEmbeddingApiKey:
+    """Tests for separate encrypted embedding API key extraction."""
+
+    def test_embedding_key_decrypted(
+        self, secret_key: str, sample_api_key: str
+    ) -> None:
+        """Encrypted embedding API key in config should be decrypted."""
+        encrypted = encrypt_value(sample_api_key, secret_key)
+        result = resolve_tenant_models(
+            {CONFIG_GEMINI_EMBEDDING_API_KEY: encrypted},
+            encryption_key=secret_key,
+        )
+        assert result.gemini_embedding_api_key == sample_api_key
+
+    def test_embedding_key_independent_from_chat_key(
+        self, secret_key: str,
+    ) -> None:
+        """Chat key and embedding key should be independent."""
+        chat_key = "AIza-chat-key-1234"
+        embed_key = "AIza-embed-key-5678"
+        encrypted_chat = encrypt_value(chat_key, secret_key)
+        encrypted_embed = encrypt_value(embed_key, secret_key)
+        result = resolve_tenant_models(
+            {
+                CONFIG_GEMINI_API_KEY: encrypted_chat,
+                CONFIG_GEMINI_EMBEDDING_API_KEY: encrypted_embed,
+            },
+            encryption_key=secret_key,
+        )
+        assert result.gemini_api_key == chat_key
+        assert result.gemini_embedding_api_key == embed_key
+
+    def test_embedding_key_missing(self) -> None:
+        """Missing embedding API key should return None."""
+        result = resolve_tenant_models({CONFIG_EMBEDDING_PROVIDER: "gemini"})
+        assert result.gemini_embedding_api_key is None
+
+    def test_embedding_key_decryption_failure_returns_none(self) -> None:
+        """Invalid encrypted value should return None (not crash)."""
+        result = resolve_tenant_models(
+            {CONFIG_GEMINI_EMBEDDING_API_KEY: "not-valid-ciphertext"},
+            encryption_key="some-key",
+        )
+        assert result.gemini_embedding_api_key is None

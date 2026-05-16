@@ -225,12 +225,16 @@ class TestModelListing:
         assert "gemini-2.5-flash-lite" in model_ids
 
     @pytest.mark.asyncio
-    async def test_list_embedding_models_empty(
+    async def test_list_embedding_models_returns_catalog(
         self, adapter: GeminiAdapter
     ) -> None:
-        """list_embedding_models() should return empty list."""
+        """list_embedding_models() should return the Gemini embedding catalog."""
         models = await adapter.list_embedding_models()
-        assert models == []
+        assert len(models) == 3
+        model_ids = {m["id"] for m in models}
+        assert "gemini-embedding-2" in model_ids
+        assert "gemini-embedding-001" in model_ids
+        assert "gemini-embedding-2-preview" in model_ids
 
 
 # ── Close ───────────────────────────────────────────────────────

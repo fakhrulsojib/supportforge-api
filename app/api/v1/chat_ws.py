@@ -77,6 +77,8 @@ async def websocket_chat(
     tenant_embedding_model: str | None = None  # None → use server default
     tenant_chat_provider: str | None = None  # None → use Ollama
     tenant_gemini_api_key: str | None = None  # None → no Gemini key
+    tenant_embedding_provider: str | None = None  # None → use Ollama
+    tenant_gemini_embedding_api_key: str | None = None  # None → no Gemini embedding key
     async with AsyncSessionLocal() as session:
         user_repo = SQLUserRepository(session)
         user = await user_repo.get_by_id(payload.user_id)
@@ -115,6 +117,8 @@ async def websocket_chat(
             tenant_embedding_model = tenant_models.embedding_model
             tenant_chat_provider = tenant_models.chat_provider
             tenant_gemini_api_key = tenant_models.gemini_api_key
+            tenant_embedding_provider = tenant_models.embedding_provider
+            tenant_gemini_embedding_api_key = tenant_models.gemini_embedding_api_key
 
     tenant_id = user.tenant_id
     user_id = user.id
@@ -179,6 +183,8 @@ async def websocket_chat(
                     tenant_embedding_model=tenant_embedding_model,
                     tenant_chat_provider=tenant_chat_provider,
                     tenant_gemini_api_key=tenant_gemini_api_key,
+                    tenant_embedding_provider=tenant_embedding_provider,
+                    tenant_gemini_embedding_api_key=tenant_gemini_embedding_api_key,
                 )
                 try:
                     async for frame in stream_gen:

@@ -196,8 +196,11 @@ class GeminiAdapter(LLMProvider):
         return list(_GEMINI_CHAT_MODELS)
 
     async def list_embedding_models(self) -> list[dict[str, object]]:
-        """Gemini embeddings are not supported in this release."""
-        return []
+        """Return the hardcoded list of supported Gemini embedding models."""
+        from app.infrastructure.llm.gemini_embedding_adapter import (
+            _GEMINI_EMBEDDING_MODELS,
+        )
+        return list(_GEMINI_EMBEDDING_MODELS)
 
     async def close(self) -> None:
         """Close the underlying OpenAI async client."""

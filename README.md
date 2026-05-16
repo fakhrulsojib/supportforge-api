@@ -12,21 +12,21 @@
 
 ## Overview
 
-SupportForge is a multi-tenant AI customer support agent powered by a self-hosted Ollama LLM, RAG (Retrieval-Augmented Generation) via LangGraph, and real-time WebSocket streaming. It provides intelligent, context-aware responses grounded in your organization's knowledge base.
+SupportForge is a multi-tenant AI customer support agent powered by Ollama (self-hosted) and Google Gemini (cloud) LLMs, RAG (Retrieval-Augmented Generation) via LangGraph, and real-time WebSocket streaming. It provides intelligent, context-aware responses grounded in your organization's knowledge base.
 
 ### Key Features
 
 - **RAG Pipeline** — LangGraph state machine with semantic retrieval, contextual retrieval, relevance grading, and source-cited answers
 - **Multi-Tenant** — Full data isolation per tenant with RBAC (admin, agent, viewer, superadmin)
 - **Real-Time Streaming** — Token-by-token WebSocket responses for instant chat UX
-- **Self-Hosted LLM** — Zero-cost inference via Ollama behind Cloudflare Access (qwen3, gemma3)
+- **Self-Hosted + Cloud LLM** — Zero-cost self-hosted inference via Ollama, or Google Gemini cloud models with per-tenant API key isolation
 - **Document Ingestion** — Upload PDF, Markdown, CSV, and plain text; chunks are contextualised via LLM before embedding for improved retrieval accuracy
 - **Conversation Memory** — Full audit trail in PostgreSQL with feedback tracking
 - **Analytics** — Daily stats, intent classification, satisfaction metrics
 - **Output Validation** — Anti-hallucination guard detects fabricated contact info, prices, and forbidden patterns with context cross-referencing
 - **Content Moderation** — Input filtering (jailbreak detection, tenant blocklist) and output flagging with full DB audit trail
 - **Smart Escalation** — Context-aware human handoff triggered by frustrated sentiment, repeated questions, or explicit user requests
-- **Per-Tenant Model Selection** — Admin-configurable chat and embedding models with live Ollama model listing and tenant-scoped persistence
+- **Per-Tenant Model Selection** — Admin-configurable chat and embedding models with Ollama and Gemini provider support, separate API key management, and tenant-scoped persistence
 - **Feedback Review Queue** — Admin dashboard endpoints for reviewing negative feedback, escalations, and flagged messages
 - **Failed Query Logging** — Automatic tracking of RAG pipeline failures with admin analytics for identifying knowledge gaps
 - **Platform Superadmin** — Cross-tenant platform management role with dedicated RBAC, JWT claims, and CLI bootstrap script
@@ -55,7 +55,7 @@ Hexagonal Architecture (Ports & Adapters)
 | Component | Technology |
 |---|---|
 | Framework | FastAPI (async) |
-| LLM | Ollama (self-hosted, OpenAI-compatible — qwen3, gemma3) |
+| LLM | Ollama (self-hosted) + Google Gemini (cloud, per-tenant API key) |
 | RAG | LangGraph + ChromaDB |
 | Database | PostgreSQL (SQLAlchemy async) |
 | Cache | Redis |

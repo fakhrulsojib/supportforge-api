@@ -17,6 +17,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from app.infrastructure.llm.gemini_adapter import GeminiAdapter
+from app.infrastructure.llm.gemini_embedding_adapter import GeminiEmbeddingAdapter
 from app.infrastructure.llm.ollama_adapter import OllamaAdapter
 
 if TYPE_CHECKING:
@@ -55,3 +56,22 @@ def get_gemini_provider(
         A GeminiAdapter configured for the given tenant.
     """
     return GeminiAdapter(api_key=api_key, default_model=model)
+
+
+def get_gemini_embedding_provider(
+    api_key: str,
+    model: str = "gemini-embedding-2",
+) -> GeminiEmbeddingAdapter:
+    """Create a per-request Gemini embedding provider with a tenant's API key.
+
+    Each call returns a new adapter instance — providers are NOT shared
+    between tenants or cached across requests.
+
+    Args:
+        api_key: The decrypted Gemini embedding API key from tenant config.
+        model: The Gemini embedding model identifier.
+
+    Returns:
+        A GeminiEmbeddingAdapter configured for the given tenant.
+    """
+    return GeminiEmbeddingAdapter(api_key=api_key, model=model)

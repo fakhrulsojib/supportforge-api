@@ -94,27 +94,64 @@ async def run_ingestion_task(
             await session.commit()
 
             # Read per-tenant model overrides from config_json
+            from app.config import get_settings
             from app.core.tenant_config import resolve_tenant_models
+            settings = get_settings()
             tenant_repo = SQLTenantRepository(session)
             tenant = await tenant_repo.get_by_id(tenant_id)
             tenant_models = resolve_tenant_models(
                 tenant.config_json if tenant else None,
+                encryption_key=settings.secret_key,
             )
+
+            # Resolve effective embedding service for this tenant
+            effective_embed = embedding_service
+            embed_disposable = False
+            if (
+                tenant_models.embedding_provider == "gemini"
+                and tenant_models.gemini_embedding_api_key
+            ):
+                from app.infrastructure.llm.factory import get_gemini_embedding_provider
+                resolved_model = tenant_models.embedding_model or "gemini-embedding-2"
+                effective_embed = get_gemini_embedding_provider(
+                    api_key=tenant_models.gemini_embedding_api_key,
+                    model=resolved_model,
+                )
+                embed_disposable = True
+                logger.info(
+                    "ingestion_using_gemini_embeddings",
+                    document_id=document_id,
+                    model=resolved_model,
+                )
+            elif tenant_models.embedding_provider == "gemini":
+                # Provider is gemini but key is missing/corrupted
+                logger.warning(
+                    "ingestion_gemini_embedding_key_missing",
+                    document_id=document_id,
+                    hint="Gemini embeddings configured but API key missing — falling back to Ollama",
+                )
 
             # Create the ingestion service and process
-            service = IngestionService(
-                document_repo=document_repo,
-                embedding_service=embedding_service,
-                vector_store=vector_store,
-                llm_provider=llm_provider,
-            )
+            try:
+                service = IngestionService(
+                    document_repo=document_repo,
+                    embedding_service=effective_embed,
+                    vector_store=vector_store,
+                    llm_provider=llm_provider,
+                )
 
-            await service.process_document(
-                document=document,
-                file_content=file_content,
-                tenant_chat_model=tenant_models.chat_model,
-                tenant_embedding_model=tenant_models.embedding_model,
-            )
+                await service.process_document(
+                    document=document,
+                    file_content=file_content,
+                    tenant_chat_model=tenant_models.chat_model,
+                    tenant_embedding_model=tenant_models.embedding_model,
+                )
+            finally:
+                if embed_disposable and hasattr(effective_embed, 'close'):
+                    try:
+                        await effective_embed.close()
+                    except Exception:  # noqa: S110
+                        logger.debug("embed_adapter_close_failed", exc_info=True)
 
             # Commit all changes (chunks, READY status, etc.)
             await session.commit()

@@ -76,6 +76,8 @@ async def chat_endpoint(
         tenant_embedding_model=models.embedding_model,
         tenant_chat_provider=models.chat_provider,
         tenant_gemini_api_key=models.gemini_api_key,
+        tenant_embedding_provider=models.embedding_provider,
+        tenant_gemini_embedding_api_key=models.gemini_embedding_api_key,
     )
 
     sources = [

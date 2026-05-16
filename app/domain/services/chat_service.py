@@ -187,6 +187,54 @@ class ChatService:
                 )
                 pass
 
+    def _resolve_effective_embedding_service(
+        self,
+        tenant_embedding_provider: str | None,
+        tenant_gemini_embedding_api_key: str | None,
+        tenant_embedding_model: str | None,
+    ) -> tuple[Any, bool]:
+        """Resolve the embedding provider for a specific request.
+
+        If the tenant has Gemini embeddings configured with a valid API
+        key, returns a per-request ``GeminiEmbeddingAdapter``.  Otherwise
+        returns the shared Ollama ``EmbeddingService``.
+
+        Args:
+            tenant_embedding_provider: Provider identifier ("gemini" or "ollama").
+            tenant_gemini_embedding_api_key: Decrypted Gemini API key for embeddings.
+            tenant_embedding_model: Embedding model identifier.
+
+        Returns:
+            Tuple of (embedding_service, is_disposable).
+        """
+        if tenant_embedding_provider == "gemini" and tenant_gemini_embedding_api_key:
+            from app.infrastructure.llm.factory import get_gemini_embedding_provider
+            resolved_model = tenant_embedding_model or "gemini-embedding-2"
+            logger.info(
+                "embedding_provider_resolved",
+                provider="gemini",
+                model=resolved_model,
+                disposable=True,
+            )
+            return get_gemini_embedding_provider(
+                api_key=tenant_gemini_embedding_api_key,
+                model=resolved_model,
+            ), True
+        if tenant_embedding_provider == "gemini" and not tenant_gemini_embedding_api_key:
+            logger.warning(
+                "gemini_embedding_key_missing",
+                configured_provider="gemini",
+                falling_back_to="ollama",
+                hint="Tenant has Gemini embeddings configured but API key is missing or decryption failed",
+            )
+        logger.info(
+            "embedding_provider_resolved",
+            provider="ollama",
+            model=tenant_embedding_model or "default",
+            disposable=False,
+        )
+        return self._embedding_service, False
+
     async def process_message(
         self,
         message: str,
@@ -198,6 +246,8 @@ class ChatService:
         tenant_embedding_model: str | None = None,
         tenant_chat_provider: str | None = None,
         tenant_gemini_api_key: str | None = None,
+        tenant_embedding_provider: str | None = None,
+        tenant_gemini_embedding_api_key: str | None = None,
     ) -> dict[str, Any]:
         """Process a user message through the RAG pipeline.
 
@@ -214,6 +264,12 @@ class ChatService:
                 ``"ollama"``).  If ``None``, defaults to Ollama.
             tenant_gemini_api_key: Decrypted Gemini API key for runtime
                 use.  If ``None``, Gemini cannot be used.
+            tenant_embedding_provider: Embedding provider identifier
+                (``"gemini"`` or ``"ollama"``).  If ``None``, defaults
+                to Ollama.
+            tenant_gemini_embedding_api_key: Decrypted Gemini API key
+                for embedding requests.  If ``None``, Gemini embeddings
+                cannot be used.
 
         Returns:
             Dict with answer, sources, escalation status, etc.
@@ -321,16 +377,28 @@ class ChatService:
                     "model_used": "",
                 }
 
-            # Run the RAG pipeline
-            result = await run_rag_pipeline(
-                query=message,
-                tenant_id=tenant_id,
-                vector_store=self._vector_store,
-                embedding_service=self._embedding_service,
-                llm_provider=effective_provider,
-                chat_model=tenant_chat_model,
-                embedding_model=tenant_embedding_model,
+            # Resolve effective embedding service for this request
+            effective_embed, embed_disposable = self._resolve_effective_embedding_service(
+                tenant_embedding_provider, tenant_gemini_embedding_api_key,
+                tenant_embedding_model,
             )
+            try:
+                # Run the RAG pipeline
+                result = await run_rag_pipeline(
+                    query=message,
+                    tenant_id=tenant_id,
+                    vector_store=self._vector_store,
+                    embedding_service=effective_embed,
+                    llm_provider=effective_provider,
+                    chat_model=tenant_chat_model,
+                    embedding_model=tenant_embedding_model,
+                )
+            finally:
+                if embed_disposable and hasattr(effective_embed, 'close'):
+                    try:
+                        await effective_embed.close()
+                    except Exception:  # noqa: S110
+                        logger.debug("embed_adapter_close_failed", exc_info=True)
 
             # Group sources by document (de-duplicate chunks from same file)
             grouped_sources = _group_sources_by_document(result.get("relevant_docs", []))
@@ -388,6 +456,8 @@ class ChatService:
         tenant_embedding_model: str | None = None,
         tenant_chat_provider: str | None = None,
         tenant_gemini_api_key: str | None = None,
+        tenant_embedding_provider: str | None = None,
+        tenant_gemini_embedding_api_key: str | None = None,
     ) -> AsyncGenerator[dict[str, Any], None]:
         """Stream a chat response token-by-token via the RAG pipeline.
 
@@ -417,6 +487,12 @@ class ChatService:
                 ``"ollama"``).  If ``None``, defaults to Ollama.
             tenant_gemini_api_key: Decrypted Gemini API key for runtime
                 use.  If ``None``, Gemini cannot be used.
+            tenant_embedding_provider: Embedding provider identifier
+                (``"gemini"`` or ``"ollama"``).  If ``None``, defaults
+                to Ollama.
+            tenant_gemini_embedding_api_key: Decrypted Gemini API key
+                for embedding requests.  If ``None``, Gemini embeddings
+                cannot be used.
 
         Yields:
             Structured frame dicts for WebSocket delivery.
@@ -557,7 +633,22 @@ class ChatService:
                 "tokens_out": 0,
             }
 
-            state = await retrieve_node(state, self._vector_store, self._embedding_service, embedding_model=tenant_embedding_model)
+            # Resolve effective embedding service for this request
+            effective_embed, embed_disposable = self._resolve_effective_embedding_service(
+                tenant_embedding_provider, tenant_gemini_embedding_api_key,
+                tenant_embedding_model,
+            )
+            try:
+                state = await retrieve_node(
+                    state, self._vector_store, effective_embed,
+                    embedding_model=tenant_embedding_model,
+                )
+            finally:
+                if embed_disposable and hasattr(effective_embed, 'close'):
+                    try:
+                        await effective_embed.close()
+                    except Exception:  # noqa: S110
+                        logger.debug("embed_adapter_close_failed", exc_info=True)
             state = await grade_node(state, effective_provider)
 
             # Step 2: Check RAG-level escalation (no relevant docs found)
