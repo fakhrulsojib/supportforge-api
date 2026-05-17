@@ -45,7 +45,7 @@
 - [x] Tests: mock httpx responses, CF header injection
 
 ### 1.4 — ChromaDB + Embeddings ✅
-- [x] `VectorStore` ABC with `add_documents()`, `search()`, `delete_collection()`
+- [x] `VectorStore` ABC with `add_documents()`, `search()`, `delete_collection()`, `get_all_documents()`
 - [x] `ChromaAdapter` namespaced by `tenant_{id}`
 - [x] Embedding wrapper for Ollama `/api/embeddings`
 - [x] `RecursiveChunker` (chunk_size=2500, overlap=300)
@@ -59,7 +59,7 @@
 
 ### 1.6 — LangGraph RAG Pipeline ✅
 - [x] RAG pipeline with query/context/response/sources/should_escalate state
-- [x] Retriever — semantic search, top-k=5
+- [x] Retriever — hybrid search (vector + BM25 + weighted RRF fusion + optional cross-encoder reranker), configurable k, weights, and toggles
 - [x] Grader — relevance assessment
 - [x] Generator — cited answer generation
 - [x] Escalation — frustration/handoff detection
@@ -499,3 +499,42 @@
 - [x] 9 unit tests: analytics API schemas serialization and edge cases
 - [x] 12 integration tests: RBAC, happy path, empty state, parameter forwarding, boundaries
 - [x] 773 total tests passing (737 + 36 new), zero regressions
+
+---
+
+## Phase 14a — Hybrid Retrieval Pipeline ✅
+
+> **Branch:** `main` (direct commit)
+
+### 14a.1 — BM25 Keyword Retriever ✅
+- [x] `app/rag/bm25_retriever.py` — stateless BM25 search with min-max score normalization
+- [x] Whitespace tokenization (case-insensitive)
+- [x] Returns same dict shape as vector search (`content`, `metadata`, `score`, `id`)
+
+### 14a.2 — Weighted RRF Fusion ✅
+- [x] `app/rag/fusion.py` — Reciprocal Rank Fusion with per-list weights
+- [x] Preserves original `score` for downstream grading; adds `rrf_score` for observability
+- [x] Supports N-way fusion (2+ ranked lists)
+
+### 14a.3 — Reranker Interface + Adapters ✅
+- [x] `app/domain/interfaces/reranker.py` — `Reranker` ABC
+- [x] `app/infrastructure/reranker/noop_reranker.py` — pass-through (default)
+- [x] `app/infrastructure/reranker/cross_encoder_reranker.py` — lazy-loaded cross-encoder (optional `[reranker]` dependency)
+- [x] `app/infrastructure/reranker/factory.py` — config-driven factory with import-guarded fallback
+
+### 14a.4 — Pipeline Integration ✅
+- [x] `retrieve_node` upgraded to 4-stage hybrid pipeline (zero signature change)
+- [x] BM25 path wrapped in graceful degradation (falls back to vector-only on error)
+- [x] `get_all_documents()` added to `VectorStore` ABC and `ChromaAdapter`
+
+### 14a.5 — Config + Validation ✅
+- [x] 13 new config parameters in `app/config.py` (toggles, k values, weights, reranker model)
+- [x] Pydantic validators: k values ≥ 1, RRF k ≥ 1 (prevents division by zero), weights ≥ 0.0
+- [x] `rank_bm25` core dependency; `sentence-transformers` + `torch` optional `[reranker]` group
+
+### 14a.6 — Tests ✅
+- [x] 11 unit tests: BM25 retriever (empty corpus, normalization, ranking, edge cases)
+- [x] 12 unit tests: RRF fusion (weighting, deduplication, k parameter, multi-way)
+- [x] 5 unit tests: Reranker (NoOp, factory, interface, fallback)
+- [x] 2 pipeline tests: hybrid integration, BM25 degradation
+- [x] 775 total tests passing, zero regressions

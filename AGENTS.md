@@ -292,6 +292,7 @@ Infrastructure (adapters — implement the ports)
 ├── infrastructure/database/       → SQLAlchemy ORM + repositories
 ├── infrastructure/llm/            → Ollama adapter
 ├── infrastructure/vectorstore/    → ChromaDB adapter
+├── infrastructure/reranker/       → Cross-encoder reranker (optional)
 ├── infrastructure/cache/          → Redis adapter
 └── infrastructure/websocket/      → Connection manager
 
@@ -328,7 +329,7 @@ For **any** module not listed below, derive the test path using this rule:
 | `app/core/events.py` | `tests/unit/test_events.py` |
 | `app/core/dependencies.py` | `tests/unit/test_dependencies.py` |
 | `app/config.py` | `tests/unit/test_config.py` |
-| `app/rag/nodes/retriever.py` | `tests/unit/rag/test_retriever.py` |
+| `app/rag/pipeline.py` | `tests/unit/rag/test_pipeline.py` |
 | `app/rag/text_extractor.py` | `tests/unit/workers/test_text_extractor.py` |
 | `app/workers/ingestion_worker.py` | `tests/unit/workers/test_ingestion_worker.py` |
 | `app/domain/services/output_validator.py` | `tests/unit/domain/test_output_validator.py` |
@@ -350,6 +351,11 @@ For **any** module not listed below, derive the test path using this rule:
 | `app/core/tenant_config.py` | `tests/unit/test_tenant_config.py` _(planned)_ |
 | `app/workers/ingestion_queue.py` | `tests/unit/workers/test_ingestion_queue.py` |
 | `app/rag/contextualizer.py` | `tests/unit/domain/test_ingestion_service.py` (TestContextualRetrieval) |
+| `app/rag/bm25_retriever.py` | `tests/unit/rag/test_bm25_retriever.py` |
+| `app/rag/fusion.py` | `tests/unit/rag/test_fusion.py` |
+| `app/domain/interfaces/reranker.py` | `tests/unit/rag/test_reranker.py` |
+| `app/infrastructure/reranker/factory.py` | `tests/unit/rag/test_reranker.py` |
+| `app/infrastructure/reranker/noop_reranker.py` | `tests/unit/rag/test_reranker.py` |
 
 ### Testing Standards
 

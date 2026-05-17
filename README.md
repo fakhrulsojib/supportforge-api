@@ -16,7 +16,7 @@ SupportForge is a multi-tenant AI customer support agent powered by Ollama (self
 
 ### Key Features
 
-- **RAG Pipeline** — LangGraph state machine with semantic retrieval, contextual retrieval, relevance grading, and source-cited answers
+- **RAG Pipeline** — LangGraph state machine with hybrid retrieval (vector + BM25 + weighted RRF fusion + optional cross-encoder reranker), contextual retrieval, relevance grading, and source-cited answers
 - **Multi-Tenant** — Full data isolation per tenant with RBAC (admin, agent, viewer, superadmin)
 - **Real-Time Streaming** — Token-by-token WebSocket responses for instant chat UX
 - **Self-Hosted + Cloud LLM** — Zero-cost self-hosted inference via Ollama, or Google Gemini cloud models with per-tenant API key isolation
@@ -56,7 +56,7 @@ Hexagonal Architecture (Ports & Adapters)
 |---|---|
 | Framework | FastAPI (async) |
 | LLM | Ollama (self-hosted) + Google Gemini (cloud, per-tenant API key) |
-| RAG | LangGraph + ChromaDB |
+| RAG | LangGraph + ChromaDB + BM25 (rank_bm25) |
 | Database | PostgreSQL (SQLAlchemy async) |
 | Cache | Redis |
 | Auth | JWT (access + refresh tokens) |
@@ -100,6 +100,9 @@ source .venv/bin/activate
 
 # Install dependencies
 pip install -e ".[dev]"
+
+# Optional: Install cross-encoder reranker (adds ~80MB model)
+# pip install -e ".[dev,reranker]"
 
 # Run tests
 pytest --cov --cov-branch --cov-fail-under=95
