@@ -5,7 +5,7 @@
 | Decision | Choice |
 |---|---|
 | Scope | 🥇 Production-Grade |
-| LLM | Self-hosted Ollama (`https://localhost:11434`) — gemma3:4b, qwen3:4b |
+| LLM | Self-hosted Ollama (`http://localhost:11434`) — gemma3:4b, qwen3:4b |
 | Data | Bitext E-commerce Customer Support Dataset |
 | Vector DB | ChromaDB |
 | Frontend | React + Vite |
@@ -54,7 +54,7 @@
 
 ## Self-Hosted Ollama as LLM Gateway
 
-Your Ollama instance at `https://localhost:11434` is behind **Cloudflare Access** and provides an **OpenAI-compatible API** for locally-hosted models. Zero cost per token, full data privacy.
+Your Ollama instance at `http://localhost:11434` is behind **Cloudflare Access** and provides an **OpenAI-compatible API** for locally-hosted models. Zero cost per token, full data privacy.
 
 ### Authentication
 
@@ -80,7 +80,7 @@ http_client = httpx.AsyncClient(
 )
 
 client = AsyncOpenAI(
-    base_url="https://localhost:11434/v1",
+    base_url="http://localhost:11434/v1",
     api_key="ollama",  # Ollama accepts any string
     http_client=http_client,
 )
@@ -98,14 +98,14 @@ Models are **selectable per tenant** via the Admin Panel or API (`PUT /api/v1/ad
 
 ```env
 # .env — Server defaults (tenant overrides stored in DB)
-OLLAMA_BASE_URL=https://localhost:11434
+OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_CHAT_MODEL=gemma3:4b               # Default chat model (available: gemma3:4b, qwen3:4b)
 OLLAMA_EMBEDDING_MODEL=nomic-embed-text   # Embedding model
 CF_OLLAMA_ID=<your-cloudflare-service-token-id>
 CF_OLLAMA_SECRET=<your-cloudflare-service-token-secret>
 ```
 
-> **Pre-Implementation Step:** Manually run `curl -H "CF-Access-Client-Id: $CF_OLLAMA_ID" -H "CF-Access-Client-Secret: $CF_OLLAMA_SECRET" https://localhost:11434/api/tags` to identify available models and lock them into `.env`.
+> **Pre-Implementation Step:** Manually run `curl -H "CF-Access-Client-Id: $CF_OLLAMA_ID" -H "CF-Access-Client-Secret: $CF_OLLAMA_SECRET" http://localhost:11434/api/tags` to identify available models and lock them into `.env`.
 
 **Why Self-Hosted Ollama:**
 - Zero cost — no per-token billing, unlimited usage
@@ -529,7 +529,7 @@ Reference this plan: link to ROADMAP.md
 - [x] Handle streaming: yield `AsyncGenerator[str, None]` of token chunks
 - [x] Handle errors: connection refused, timeout, model not found → map to `LLMError`
 - [x] Create `app/infrastructure/llm/factory.py` — `get_llm_provider(settings)` returns `OllamaAdapter`
-- [x] Verify: adapter can connect to `https://localhost:11434` and get a response
+- [x] Verify: adapter can connect to `http://localhost:11434` and get a response
 - [x] **Tests:** mock httpx responses for generate/stream/error paths, CF header injection test
 
 #### 1.4 — ChromaDB + Embeddings ✅

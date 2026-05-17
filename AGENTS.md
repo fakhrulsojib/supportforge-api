@@ -374,7 +374,7 @@ For **any** module not listed below, derive the test path using this rule:
 
 ```bash
 # Required env vars (see .env.example for full list):
-OLLAMA_BASE_URL=https://localhost:11434
+OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_CHAT_MODEL=gemma3:4b              # Available: gemma3:4b, qwen3:4b
 OLLAMA_EMBEDDING_MODEL=nomic-embed-text
 CF_OLLAMA_ID=<cloudflare-service-token-id>

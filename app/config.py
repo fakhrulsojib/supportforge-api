@@ -36,7 +36,7 @@ class Settings(BaseSettings):
     secret_key: str = "change-me-to-a-random-secret-key"  # noqa: S105
 
     # ── Ollama (Self-Hosted LLM) ─────────────────────────────────
-    ollama_base_url: str = "https://localhost:11434"
+    ollama_base_url: str = "http://localhost:11434"
     ollama_chat_model: str = "gemma3:4b"
     ollama_embedding_model: str = "nomic-embed-text"
     cf_ollama_id: str = ""
