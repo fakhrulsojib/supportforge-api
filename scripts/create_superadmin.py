@@ -1,15 +1,15 @@
-"""Bootstrap script to create the first platform superadmin user.
+"""Bootstrap script — creates tables, platform tenant, and superadmin user.
+
+Self-sufficient: reads all config from .env (SUPERADMIN_EMAIL, SUPERADMIN_PASSWORD).
+Auto-creates a "Platform" system tenant for the superadmin if one doesn't exist.
+Idempotent: safe to run multiple times.
 
 Usage:
-    python scripts/create_superadmin.py --email admin@platform.dev --password 'StrongP@ss1' --tenant-id <UUID>
-
-The script is idempotent: if the email already exists in the specified tenant,
-it prints a warning and exits without error.
+    python scripts/create_superadmin.py
 """
 
 from __future__ import annotations
 
-import argparse
 import asyncio
 import sys
 from pathlib import Path
@@ -20,88 +20,83 @@ if _project_root not in sys.path:
     sys.path.insert(0, _project_root)
 
 from app.config import get_settings  # noqa: E402
-from app.core.security import hash_password, validate_password_strength  # noqa: E402
+from app.core.security import hash_password  # noqa: E402
 from app.domain.models.enums import UserRole  # noqa: E402
+from app.domain.models.tenant import TenantCreate  # noqa: E402
 from app.domain.models.user import UserCreate  # noqa: E402
-from app.infrastructure.database.connection import get_async_session  # noqa: E402
-from app.infrastructure.database.repositories.tenant_repo import SQLTenantRepository  # noqa: E402
-from app.infrastructure.database.repositories.user_repo import SQLUserRepository  # noqa: E402
+
+# Platform tenant defaults
+PLATFORM_TENANT_NAME = "Platform"
+PLATFORM_TENANT_SLUG = "platform"
 
 
-async def create_superadmin(email: str, password: str, tenant_id: str) -> None:
-    """Create a superadmin user in the database.
+async def bootstrap() -> None:
+    """Create tables, platform tenant, and superadmin user.
 
-    Args:
-        email: Superadmin email address.
-        password: Plaintext password (will be hashed).
-        tenant_id: UUID of the tenant to register under.
+    All config is read from .env via app settings:
+    - DATABASE_URL: PostgreSQL connection string
+    - SUPERADMIN_EMAIL: superadmin login email
+    - SUPERADMIN_PASSWORD: superadmin login password
     """
-    # Validate password strength
-    errors = validate_password_strength(password)
-    if errors:
-        print(f"❌ Password too weak: {'; '.join(errors)}")  # noqa: T201
-        sys.exit(1)
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-    async for session in get_async_session():
-        # Verify tenant exists
-        tenant_repo = SQLTenantRepository(session)
-        tenant = await tenant_repo.get_by_id(tenant_id)
-        if not tenant:
-            print(f"❌ Tenant '{tenant_id}' not found. Create the tenant first.")  # noqa: T201
-            sys.exit(1)
+    from app.infrastructure.database.models import Base
+    from app.infrastructure.database.repositories.tenant_repo import SQLTenantRepository
+    from app.infrastructure.database.repositories.user_repo import SQLUserRepository
 
-        # Check idempotency
-        user_repo = SQLUserRepository(session)
-        existing = await user_repo.get_by_email(email, tenant_id)
-        if existing:
-            print(f"⚠️  User '{email}' already exists in tenant '{tenant.name}' (role: {existing.role.value}).")  # noqa: T201
-            if existing.role == UserRole.SUPERADMIN:
-                print("   Already a superadmin. No action needed.")  # noqa: T201
-            else:
-                print(f"   Current role is '{existing.role.value}'. Update manually if needed.")  # noqa: T201
-            return
-
-        # Create superadmin user
-        hashed = hash_password(password)
-        user_create = UserCreate(email=email, role=UserRole.SUPERADMIN)
-        user = await user_repo.create(tenant_id, user_create, password_hash=hashed)
-        await session.commit()
-
-        print("✅ Superadmin created successfully!")  # noqa: T201
-        print(f"   Email:     {user.email}")  # noqa: T201
-        print(f"   User ID:   {user.id}")  # noqa: T201
-        print(f"   Tenant:    {tenant.name} ({tenant.id})")  # noqa: T201
-        print(f"   Role:      {user.role.value}")  # noqa: T201
-
-
-def main() -> None:
-    """Parse CLI arguments and run the superadmin creation."""
     settings = get_settings()
 
-    parser = argparse.ArgumentParser(
-        description="Create a platform superadmin user for SupportForge.",
-    )
-    parser.add_argument(
-        "--email",
-        required=True,
-        help="Superadmin email address",
-    )
-    parser.add_argument(
-        "--password",
-        required=True,
-        help="Superadmin password (must meet strength requirements)",
-    )
-    parser.add_argument(
-        "--tenant-id",
-        required=True,
-        help="UUID of the tenant to register the superadmin under",
-    )
+    email = settings.superadmin_email
+    password = settings.superadmin_password
 
-    args = parser.parse_args()
+    if not email or not password:
+        print("❌ SUPERADMIN_EMAIL and SUPERADMIN_PASSWORD must be set in .env")  # noqa: T201
+        sys.exit(1)
 
-    print(f"🔧 Creating superadmin for {settings.app_name}...")  # noqa: T201
-    asyncio.run(create_superadmin(args.email, args.password, args.tenant_id))
+    engine = create_async_engine(settings.computed_database_url, echo=False)
+
+    # 1. Create all tables
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    print("✅ Database tables created")  # noqa: T201
+
+    session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+    async with session_factory() as session:
+        # 2. Create or find platform tenant
+        tenant_repo = SQLTenantRepository(session)
+        tenant = await tenant_repo.get_by_slug(PLATFORM_TENANT_SLUG)
+        if tenant:
+            print(f"  ⚠ Platform tenant already exists: {tenant.id}")  # noqa: T201
+        else:
+            tenant = await tenant_repo.create(
+                TenantCreate(name=PLATFORM_TENANT_NAME, slug=PLATFORM_TENANT_SLUG),
+            )
+            print(f"  ✅ Platform tenant created: {tenant.id}")  # noqa: T201
+
+        # 3. Create or find superadmin user
+        user_repo = SQLUserRepository(session)
+        existing = await user_repo.get_by_email(email, tenant.id)
+        if existing:
+            print(f"  ⚠ Superadmin '{email}' already exists (role: {existing.role.value})")  # noqa: T201
+        else:
+            hashed = hash_password(password)
+            user = await user_repo.create(
+                tenant.id,
+                UserCreate(email=email, role=UserRole.SUPERADMIN),
+                password_hash=hashed,
+            )
+            print(f"  ✅ Superadmin created: {user.id}")  # noqa: T201
+
+        await session.commit()
+
+    print(f"\n  Tenant ID: {tenant.id}")  # noqa: T201
+    print(f"  Email:     {email}")  # noqa: T201
+    print(f"  Role:      superadmin")  # noqa: T201
+    print(f"  DB:        {settings.computed_database_url.split('@')[-1]}")  # noqa: T201
+
+    await engine.dispose()
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(bootstrap())
