@@ -52,6 +52,7 @@ class TestRetrieveNode:
         embedding_service = AsyncMock()
         embedding_service.embed.return_value = [0.1, 0.2, 0.3]
         vector_store.search.return_value = [_make_search_result()]
+        vector_store.get_all_documents.return_value = [_make_search_result()]
 
         state = _make_state()
         result = await retrieve_node(state, vector_store, embedding_service)
@@ -68,6 +69,7 @@ class TestRetrieveNode:
         embedding_service = AsyncMock()
         embedding_service.embed.return_value = [0.1, 0.2]
         vector_store.search.return_value = []
+        vector_store.get_all_documents.return_value = []
 
         state = _make_state()
         result = await retrieve_node(state, vector_store, embedding_service)
@@ -85,6 +87,54 @@ class TestRetrieveNode:
         result = await retrieve_node(state, vector_store, embedding_service)
 
         assert result["retrieved_docs"] == []
+
+    @pytest.mark.asyncio
+    async def test_retrieve_hybrid_includes_bm25_only_docs(self) -> None:
+        """Doc found only by BM25 (not vector) should appear in results via fusion."""
+        vector_store = AsyncMock()
+        embedding_service = AsyncMock()
+        embedding_service.embed.return_value = [0.1, 0.2, 0.3]
+
+        # Vector finds doc-A only
+        vector_store.search.return_value = [
+            _make_search_result(content="Vector hit", score=0.8),
+        ]
+        # Corpus contains doc-A AND doc-B (BM25 can find doc-B by keyword)
+        vector_store.get_all_documents.return_value = [
+            SearchResult(content="Vector hit", metadata={}, score=0.0, id="doc-1"),
+            SearchResult(
+                content="P.O. box delivery keyword match",
+                metadata={},
+                score=0.0,
+                id="doc-bm25-only",
+            ),
+        ]
+
+        state = _make_state(query="P.O. box delivery")
+        result = await retrieve_node(state, vector_store, embedding_service)
+
+        # Both docs should appear (vector hit via vector, BM25 hit via keyword match)
+        result_ids = [doc["id"] for doc in result["retrieved_docs"]]
+        assert "doc-1" in result_ids
+        assert "doc-bm25-only" in result_ids
+
+    @pytest.mark.asyncio
+    async def test_retrieve_bm25_failure_degrades_to_vector_only(self) -> None:
+        """If BM25/get_all_documents fails, should degrade to vector-only results."""
+        vector_store = AsyncMock()
+        embedding_service = AsyncMock()
+        embedding_service.embed.return_value = [0.1, 0.2, 0.3]
+
+        vector_store.search.return_value = [_make_search_result(score=0.9)]
+        # Simulate ChromaDB failure on get_all_documents
+        vector_store.get_all_documents.side_effect = RuntimeError("ChromaDB connection lost")
+
+        state = _make_state()
+        result = await retrieve_node(state, vector_store, embedding_service)
+
+        # Should still return vector results despite BM25 failure
+        assert len(result["retrieved_docs"]) >= 1
+        assert result["retrieved_docs"][0]["content"] == "Test content"
 
 
 class TestGradeNode:
@@ -216,6 +266,7 @@ class TestRunRAGPipeline:
 
         embedding_service.embed.return_value = [0.1, 0.2, 0.3]
         vector_store.search.return_value = [_make_search_result(score=0.9)]
+        vector_store.get_all_documents.return_value = [_make_search_result(score=0.9)]
         llm_provider.generate.return_value = "Here's your answer!"
         llm_provider.default_model = "test-model"
 
@@ -240,6 +291,7 @@ class TestRunRAGPipeline:
 
         embedding_service.embed.return_value = [0.1, 0.2]
         vector_store.search.return_value = []
+        vector_store.get_all_documents.return_value = []
 
         result = await run_rag_pipeline(
             query="Something completely unknown?",
@@ -262,6 +314,7 @@ class TestRunRAGPipeline:
 
         embedding_service.embed.return_value = [0.1, 0.2]
         vector_store.search.return_value = [_make_search_result(score=0.1)]
+        vector_store.get_all_documents.return_value = [_make_search_result(score=0.1)]
 
         result = await run_rag_pipeline(
             query="Obscure question",

@@ -88,3 +88,20 @@ class VectorStore(ABC):
             Dict with keys like 'count', 'name', etc.
         """
         ...
+
+    @abstractmethod
+    async def get_all_documents(self, tenant_id: str) -> list[SearchResult]:
+        """Retrieve all documents in a tenant's collection.
+
+        Used by BM25 to build a keyword index over the full corpus.
+        Each result has content, metadata, and id but score is 0.0
+        (not ranked).
+
+        Args:
+            tenant_id: Tenant identifier.
+
+        Returns:
+            List of all documents in the collection.
+        """
+        ...
+

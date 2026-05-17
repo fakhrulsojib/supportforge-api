@@ -123,3 +123,34 @@ class ChromaAdapter(VectorStore):
             "count": count,
             "tenant_id": tenant_id,
         }
+
+    async def get_all_documents(self, tenant_id: str) -> list[SearchResult]:
+        """Retrieve all documents from a tenant's ChromaDB collection."""
+        collection = self._get_or_create_collection(tenant_id)
+        result = collection.get(include=["documents", "metadatas"])
+
+        search_results: list[SearchResult] = []
+        if result["ids"]:
+            documents = result.get("documents") or []
+            metadatas = result.get("metadatas") or [{}] * len(result["ids"])
+
+            for doc_id, doc, meta in zip(
+                result["ids"], documents, metadatas, strict=False,
+            ):
+                search_results.append(
+                    SearchResult(
+                        content=doc or "",
+                        metadata=meta or {},
+                        score=0.0,
+                        id=doc_id,
+                    )
+                )
+
+        logger.debug(
+            "chroma_get_all_documents",
+            tenant_id=tenant_id,
+            count=len(search_results),
+        )
+
+        return search_results
+

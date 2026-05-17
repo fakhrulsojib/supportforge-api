@@ -57,12 +57,17 @@ async def retrieve_node(
     *,
     embedding_model: str | None = None,
 ) -> RAGState:
-    """Retrieve relevant documents from the vector store.
+    """Retrieve relevant documents via hybrid search.
 
-    Steps:
-        1. Embed the user query
-        2. Search the tenant's collection
-        3. Store results in state
+    Pipeline:
+        1. **Vector search** — always active, semantic similarity
+        2. **BM25 search** — config-toggled, keyword precision
+        3. **Weighted RRF** — fuses both ranked lists (if BM25 active)
+        4. **Reranker** — config-toggled, cross-encoder precision filter
+
+    All parameters (k values, weights, toggles) are read from
+    ``config.py``, keeping the function signature unchanged so
+    callers (``run_rag_pipeline``, ``chat_service``) need zero changes.
 
     Args:
         state: Current RAG state.
@@ -73,27 +78,106 @@ async def retrieve_node(
     Returns:
         Updated state with retrieved_docs populated.
     """
+    from app.config import get_settings
+
+    settings = get_settings()
+
     query = state["query"]
     tenant_id = state["tenant_id"]
 
     logger.info("rag_retrieve", query=query[:100], tenant_id=tenant_id)
 
     try:
+        # ── Stage 1: Vector search (always active) ────────────────
         query_embedding = await embedding_service.embed(query, model=embedding_model)
-        results = await vector_store.search(
+        vector_results_raw = await vector_store.search(
             tenant_id=tenant_id,
             query_embedding=query_embedding,
-            k=3,
+            k=settings.retrieval_k_per_method,
         )
-        retrieved_docs = [
+        vector_results: list[dict[str, Any]] = [
             {
                 "content": r.content,
                 "metadata": r.metadata,
                 "score": r.score,
                 "id": r.id,
             }
-            for r in results
+            for r in vector_results_raw
         ]
+
+        logger.info(
+            "rag_vector_search_complete",
+            result_count=len(vector_results),
+            top_score=vector_results[0]["score"] if vector_results else 0.0,
+        )
+
+        # ── Stage 2: BM25 search (config-toggled) ────────────────
+        if settings.bm25_enabled:
+            try:
+                from app.rag.bm25_retriever import bm25_search
+
+                all_docs_raw = await vector_store.get_all_documents(tenant_id)
+                all_docs = [
+                    {
+                        "content": r.content,
+                        "metadata": r.metadata,
+                        "score": 0.0,
+                        "id": r.id,
+                    }
+                    for r in all_docs_raw
+                ]
+
+                bm25_results = bm25_search(
+                    query=query,
+                    documents=all_docs,
+                    k=settings.retrieval_k_per_method,
+                )
+
+                logger.info(
+                    "rag_bm25_search_complete",
+                    corpus_size=len(all_docs),
+                    result_count=len(bm25_results),
+                    top_score=bm25_results[0]["score"] if bm25_results else 0.0,
+                )
+
+                # ── Stage 3: Weighted RRF fusion ──────────────────────
+                from app.rag.fusion import weighted_rrf
+
+                fused = weighted_rrf(
+                    ranked_lists=[vector_results, bm25_results],
+                    weights=[settings.retrieval_vector_weight, settings.retrieval_bm25_weight],
+                    k=settings.retrieval_rrf_k,
+                    top_n=settings.retrieval_final_k * 4,  # wider pool for reranker
+                )
+
+                logger.info(
+                    "rag_fusion_complete",
+                    vector_weight=settings.retrieval_vector_weight,
+                    bm25_weight=settings.retrieval_bm25_weight,
+                    fused_count=len(fused),
+                )
+            except Exception as exc:
+                logger.warning(
+                    "rag_bm25_degraded",
+                    error=str(exc),
+                    fallback="vector_only",
+                    exc_info=True,
+                )
+                fused = vector_results
+        else:
+            # BM25 disabled — use vector results directly
+            fused = vector_results
+
+        # ── Stage 4: Reranker (config-toggled) ────────────────────
+        from app.infrastructure.reranker.factory import get_reranker
+
+        reranker = get_reranker()
+        retrieved_docs = reranker.rerank(
+            query=query,
+            documents=fused,
+            top_k=settings.retrieval_final_k,
+        )
+
     except LLMError as e:
         logger.warning("rag_retrieve_failed", error=str(e))
         retrieved_docs = []

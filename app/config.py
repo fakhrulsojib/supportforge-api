@@ -67,6 +67,23 @@ class Settings(BaseSettings):
     chunk_size: int = 500          # Target chunk size in tokens
     chunk_overlap: int = 75        # Overlap between chunks in tokens (15%)
 
+    # ── Retrieval Pipeline ────────────────────────────────────────
+    # Toggle components on/off
+    bm25_enabled: bool = True              # Enable BM25 keyword search alongside vector
+    reranker_enabled: bool = False         # Enable cross-encoder reranking (needs sentence-transformers)
+
+    # Candidate counts
+    retrieval_k_per_method: int = 20       # Candidates retrieved per method (vector, BM25)
+    retrieval_final_k: int = 5             # Final chunks sent to LLM prompt
+
+    # Weighted RRF fusion tuning
+    retrieval_rrf_k: int = 60              # RRF smoothing constant (standard=60)
+    retrieval_vector_weight: float = 0.5   # Vector search priority in fusion (0.0–1.0)
+    retrieval_bm25_weight: float = 0.5     # BM25 search priority in fusion (0.0–1.0)
+
+    # Reranker configuration
+    reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+
     # ── Conversation History ─────────────────────────────────────
     # After this many user-assistant pairs, older history is summarized
     history_summarize_threshold: int = 10
@@ -120,6 +137,33 @@ class Settings(BaseSettings):
             msg = f"Invalid app_env '{v}'. Must be one of: {', '.join(sorted(allowed))}"
             raise ValueError(msg)
         return lower
+
+    @field_validator("retrieval_k_per_method", "retrieval_final_k")
+    @classmethod
+    def validate_retrieval_k_values(cls, v: int, info: Any) -> int:
+        """Ensure retrieval k values are at least 1."""
+        if v < 1:
+            msg = f"{info.field_name} must be >= 1, got {v}"
+            raise ValueError(msg)
+        return v
+
+    @field_validator("retrieval_rrf_k")
+    @classmethod
+    def validate_rrf_k(cls, v: int) -> int:
+        """Ensure RRF smoothing constant is positive (prevents division by zero)."""
+        if v < 1:
+            msg = f"retrieval_rrf_k must be >= 1, got {v} (k=0 causes division by zero)"
+            raise ValueError(msg)
+        return v
+
+    @field_validator("retrieval_vector_weight", "retrieval_bm25_weight")
+    @classmethod
+    def validate_retrieval_weights(cls, v: float, info: Any) -> float:
+        """Ensure retrieval weights are non-negative."""
+        if v < 0:
+            msg = f"{info.field_name} must be >= 0.0, got {v}"
+            raise ValueError(msg)
+        return v
 
     @property
     def computed_database_url(self) -> str:
