@@ -20,6 +20,7 @@ from fastapi import APIRouter, Depends, Query
 from app.api.schemas.review import (
     EscalationItemResponse,
     EscalationListResponse,
+    EscalationReviewActionResponse,
     FlaggedMessageListResponse,
     NegativeFeedbackListResponse,
     ReviewActionResponse,
@@ -130,6 +131,7 @@ async def list_negative_feedback(
 @router.get("/escalations", response_model=EscalationListResponse)
 async def list_escalations(
     trigger: str | None = Query(None, description="Filter by trigger type"),
+    reviewed: bool | None = Query(None, description="Filter: True=reviewed, False=unreviewed, None=all"),
     start_date: str | None = Query(None, description="ISO date lower bound"),
     end_date: str | None = Query(None, description="ISO date upper bound"),
     limit: int = Query(50, ge=1, le=100, description="Page size"),
@@ -143,6 +145,7 @@ async def list_escalations(
 
     Args:
         trigger: Optional escalation trigger type filter.
+        reviewed: Optional reviewed/unreviewed filter.
         start_date: Optional ISO date lower bound.
         end_date: Optional ISO date upper bound.
         limit: Page size (max 100).
@@ -166,6 +169,7 @@ async def list_escalations(
     conversations, total = await conv_repo.list_escalated(
         tenant_id=user.tenant_id,
         trigger=trigger_enum,
+        reviewed=reviewed,
         start_date=start_date,
         end_date=end_date,
         limit=limit,
@@ -194,12 +198,71 @@ async def list_escalations(
                 trigger=conv.escalation_trigger,
                 first_message=first_message,
                 status=conv.status,
+                reviewed_at=conv.reviewed_at,
+                reviewed_by=conv.reviewed_by,
                 started_at=conv.started_at,
             )
         )
 
     return EscalationListResponse(
         items=items, total=total, limit=limit, offset=offset,
+    )
+
+
+@router.patch("/escalations/{conversation_id}/review", response_model=EscalationReviewActionResponse)
+async def mark_escalation_reviewed(
+    conversation_id: str,
+    session: AsyncSession = Depends(get_async_session),
+    user: User = Depends(require_role(UserRole.ADMIN)),
+) -> EscalationReviewActionResponse:
+    """Mark an escalated conversation as reviewed.
+
+    Sets ``reviewed_at`` to current UTC time and ``reviewed_by`` to
+    the admin's user ID. Verifies tenant ownership before updating.
+
+    Args:
+        conversation_id: Conversation UUID to mark as reviewed.
+        session: Database session.
+        user: Authenticated admin user.
+
+    Returns:
+        Review action confirmation with timestamp.
+
+    Raises:
+        SupportForgeError: If conversation not found or belongs to different tenant.
+    """
+    conv_repo = SQLConversationRepository(session)
+
+    # Verify conversation exists and belongs to admin's tenant
+    existing = await conv_repo.get_by_id(conversation_id)
+    if not existing or existing.tenant_id != user.tenant_id:
+        raise SupportForgeError(
+            message=f"Conversation '{conversation_id}' not found",
+            status_code=404,
+            error_code="CONVERSATION_NOT_FOUND",
+        )
+
+    # Mark as reviewed
+    updated = await conv_repo.update_escalation_review_status(conversation_id, user.id)
+    if not updated:
+        raise SupportForgeError(
+            message=f"Conversation '{conversation_id}' not found",
+            status_code=404,
+            error_code="CONVERSATION_NOT_FOUND",
+        )
+
+    await session.commit()
+
+    logger.info(
+        "escalation_marked_reviewed",
+        conversation_id=conversation_id,
+        reviewed_by=user.id,
+    )
+
+    return EscalationReviewActionResponse(
+        conversation_id=updated.id,
+        reviewed_at=updated.reviewed_at,  # type: ignore[arg-type]
+        reviewed_by=updated.reviewed_by,
     )
 
 

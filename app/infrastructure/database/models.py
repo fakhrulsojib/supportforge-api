@@ -129,6 +129,8 @@ class ConversationModel(Base):
         Enum(EscalationTrigger, values_callable=_enum_values), nullable=False,
         default=EscalationTrigger.NONE, server_default="none",
     )
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    reviewed_by: Mapped[str] = mapped_column(String(36), nullable=False, default="")
 
     # Relationships
     tenant: Mapped[TenantModel] = relationship("TenantModel", back_populates="conversations")

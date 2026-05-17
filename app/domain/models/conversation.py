@@ -22,6 +22,8 @@ class Conversation(BaseModel):
     ended_at: datetime | None = None
     status: ConversationStatus = ConversationStatus.ACTIVE
     escalation_trigger: EscalationTrigger = EscalationTrigger.NONE
+    reviewed_at: datetime | None = None
+    reviewed_by: str = ""
 
 
 class Message(BaseModel):

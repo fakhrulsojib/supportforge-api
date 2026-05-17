@@ -114,6 +114,7 @@ class ConversationRepository(ABC):
         tenant_id: str,
         *,
         trigger: EscalationTrigger | None = None,
+        reviewed: bool | None = None,
         start_date: str | None = None,
         end_date: str | None = None,
         limit: int = 50,
@@ -122,6 +123,11 @@ class ConversationRepository(ABC):
 
     @abstractmethod
     async def count_open_escalations(self, tenant_id: str) -> int: ...
+
+    @abstractmethod
+    async def update_escalation_review_status(
+        self, conversation_id: str, reviewed_by: str,
+    ) -> Conversation | None: ...
 
 
 class MessageRepository(ABC):

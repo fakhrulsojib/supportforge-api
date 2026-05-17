@@ -53,6 +53,8 @@ class EscalationItemResponse(BaseModel):
     trigger: EscalationTrigger = Field(..., description="Escalation trigger type")
     first_message: str = Field("", description="First user message (preview)")
     status: ConversationStatus = Field(..., description="Conversation status")
+    reviewed_at: datetime | None = Field(None, description="When the escalation was reviewed")
+    reviewed_by: str = Field("", description="Reviewer user ID")
     started_at: datetime | None = Field(None, description="Conversation start time")
 
 
@@ -87,5 +89,13 @@ class ReviewActionResponse(BaseModel):
     """Response after marking a message as reviewed."""
 
     message_id: str = Field(..., description="Reviewed message UUID")
+    reviewed_at: datetime = Field(..., description="Review timestamp")
+    reviewed_by: str = Field(..., description="Reviewer user ID")
+
+
+class EscalationReviewActionResponse(BaseModel):
+    """Response after marking an escalation as reviewed."""
+
+    conversation_id: str = Field(..., description="Reviewed conversation UUID")
     reviewed_at: datetime = Field(..., description="Review timestamp")
     reviewed_by: str = Field(..., description="Reviewer user ID")

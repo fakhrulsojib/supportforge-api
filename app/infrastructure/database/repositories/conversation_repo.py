@@ -37,6 +37,8 @@ class SQLConversationRepository(ConversationRepository):
             ended_at=model.ended_at,
             status=model.status,
             escalation_trigger=model.escalation_trigger,
+            reviewed_at=model.reviewed_at,
+            reviewed_by=model.reviewed_by,
         )
 
     async def create(self, tenant_id: str, user_id: str, conversation_id: str = "") -> Conversation:
@@ -115,6 +117,7 @@ class SQLConversationRepository(ConversationRepository):
         tenant_id: str,
         *,
         trigger: EscalationTrigger | None = None,
+        reviewed: bool | None = None,
         start_date: str | None = None,
         end_date: str | None = None,
         limit: int = 50,
@@ -125,6 +128,7 @@ class SQLConversationRepository(ConversationRepository):
         Args:
             tenant_id: Tenant context for isolation.
             trigger: Optional filter by escalation trigger type.
+            reviewed: If True, only reviewed; if False, only unreviewed; None = all.
             start_date: Optional ISO date lower bound.
             end_date: Optional ISO date upper bound.
             limit: Page size.
@@ -140,6 +144,10 @@ class SQLConversationRepository(ConversationRepository):
 
         if trigger:
             base = base.where(ConversationModel.escalation_trigger == trigger)
+        if reviewed is True:
+            base = base.where(ConversationModel.reviewed_at.isnot(None))
+        elif reviewed is False:
+            base = base.where(ConversationModel.reviewed_at.is_(None))
         if start_date:
             base = base.where(ConversationModel.started_at >= start_date)
         if end_date:
@@ -156,18 +164,40 @@ class SQLConversationRepository(ConversationRepository):
         return [self._to_domain(m) for m in result.scalars().all()], total
 
     async def count_open_escalations(self, tenant_id: str) -> int:
-        """Count unresolved escalated conversations for a tenant."""
+        """Count unreviewed escalated conversations for a tenant."""
         stmt = (
             select(func.count())
             .select_from(ConversationModel)
             .where(
                 ConversationModel.tenant_id == tenant_id,
                 ConversationModel.escalation_trigger != EscalationTrigger.NONE,
-                ConversationModel.status == ConversationStatus.ESCALATED,
+                ConversationModel.reviewed_at.is_(None),
             )
         )
         result = await self._session.execute(stmt)
         return result.scalar() or 0
+
+    async def update_escalation_review_status(
+        self, conversation_id: str, reviewed_by: str,
+    ) -> Conversation | None:
+        """Mark an escalated conversation as reviewed.
+
+        Args:
+            conversation_id: Conversation UUID.
+            reviewed_by: Reviewer user ID.
+
+        Returns:
+            Updated conversation, or None if not found.
+        """
+        from datetime import datetime, timezone
+
+        model = await self._session.get(ConversationModel, conversation_id)
+        if not model:
+            return None
+        model.reviewed_at = datetime.now(timezone.utc)
+        model.reviewed_by = reviewed_by
+        await self._session.flush()
+        return self._to_domain(model)
 
 
 class SQLMessageRepository(MessageRepository):
