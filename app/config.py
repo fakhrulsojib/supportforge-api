@@ -64,8 +64,8 @@ class Settings(BaseSettings):
 
     # ── Ingestion Pipeline ───────────────────────────────────────
     ingestion_max_concurrent: int = 1
-    chunk_size: int = 2000
-    chunk_overlap: int = 200
+    chunk_size: int = 500          # Target chunk size in tokens
+    chunk_overlap: int = 75        # Overlap between chunks in tokens (15%)
 
     # ── Conversation History ─────────────────────────────────────
     # After this many user-assistant pairs, older history is summarized

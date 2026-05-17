@@ -16,7 +16,7 @@ import structlog
 from app.core.exceptions import IngestionError
 from app.domain.models.document import DocumentChunk
 from app.domain.models.enums import DocumentStatus
-from app.rag.chunking import RecursiveChunker
+from app.rag.chunking import Chunk, RecursiveChunker
 from app.rag.text_extractor import TextExtractionError, TextExtractor
 
 if TYPE_CHECKING:
@@ -117,14 +117,19 @@ class IngestionService:
             text = self._extract_text(file_content, document.file_type)
 
             # Step 3: Chunk text
-            chunks = self._chunker.chunk(
-                text,
-                metadata={
-                    "document_id": doc_id,
-                    "filename": document.filename,
-                    "file_type": document.file_type,
-                },
-            )
+            #   For markdown files: parse structure first, then chunk each section
+            #   For all other files: chunk the raw text directly
+            if document.file_type == "md":
+                chunks = self._chunk_markdown(text, doc_id, document.filename)
+            else:
+                chunks = self._chunker.chunk(
+                    text,
+                    metadata={
+                        "document_id": doc_id,
+                        "filename": document.filename,
+                        "file_type": document.file_type,
+                    },
+                )
 
             if not chunks:
                 msg = "Document produced no chunks after text extraction"
@@ -160,16 +165,20 @@ class IngestionService:
             # Step 6: Generate unique IDs and store in vector DB
             chroma_ids = [f"{doc_id}_chunk_{i}_{uuid.uuid4().hex[:8]}" for i in range(len(chunks))]
 
-            metadatas: list[dict[str, object]] = [
-                {
+            metadatas: list[dict[str, object]] = []
+            for i, chunk in enumerate(chunks):
+                meta: dict[str, object] = {
                     "document_id": doc_id,
                     "filename": document.filename,
                     "file_type": document.file_type,
                     "chunk_index": i,
                     "tenant_id": tenant_id,
                 }
-                for i in range(len(chunks))
-            ]
+                # Include heading_path from markdown parsing if present
+                heading_path = chunk.metadata.get("heading_path")
+                if heading_path:
+                    meta["heading_path"] = heading_path
+                metadatas.append(meta)
 
             await self._vector_store.add_documents(
                 tenant_id=tenant_id,
@@ -267,6 +276,79 @@ class IngestionService:
         )
 
         return contextualised
+
+    def _chunk_markdown(
+        self,
+        text: str,
+        document_id: str,
+        filename: str,
+    ) -> list[Chunk]:
+        """Parse markdown structure, then chunk each section.
+
+        Splits the document at heading boundaries first, keeping tables
+        and code blocks intact. Each section is then individually chunked
+        with the RecursiveChunker. Heading paths are injected into
+        chunk metadata for filtered retrieval.
+
+        For non-markdown files, this method is never called — the
+        RecursiveChunker is used directly.
+
+        Args:
+            text: Extracted markdown text.
+            document_id: Document ID for metadata.
+            filename: Filename for metadata.
+
+        Returns:
+            Flat list of Chunk objects with heading_path in metadata.
+        """
+        from app.rag.markdown_parser import parse_markdown_sections
+
+        sections = parse_markdown_sections(text)
+
+        if not sections:
+            # Fallback: no headings found, treat as plain text
+            return self._chunker.chunk(
+                text,
+                metadata={
+                    "document_id": document_id,
+                    "filename": filename,
+                    "file_type": "md",
+                },
+            )
+
+        all_chunks: list[Chunk] = []
+        global_index = 0
+
+        for section in sections:
+            section_metadata: dict[str, object] = {
+                "document_id": document_id,
+                "filename": filename,
+                "file_type": "md",
+            }
+            if section.heading_path:
+                section_metadata["heading_path"] = section.heading_path
+
+            section_chunks = self._chunker.chunk(
+                section.content,
+                metadata=section_metadata,
+            )
+
+            # Renumber indices to be globally sequential
+            for chunk in section_chunks:
+                chunk.index = global_index
+                chunk.metadata["chunk_index"] = global_index
+                global_index += 1
+
+            all_chunks.extend(section_chunks)
+
+        logger.info(
+            "markdown_chunking_complete",
+            document_id=document_id,
+            section_count=len(sections),
+            chunk_count=len(all_chunks),
+        )
+
+        return all_chunks
 
     def _extract_text(self, content: bytes, file_type: str) -> str:
         """Extract text from file content, wrapping extraction errors.

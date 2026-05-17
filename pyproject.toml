@@ -33,6 +33,7 @@ dependencies = [
     "passlib[bcrypt]>=1.7",
     "python-jose[cryptography]>=3.3",
     "pymupdf>=1.25",
+    "tiktoken>=0.7",
 ]
 
 [project.optional-dependencies]
