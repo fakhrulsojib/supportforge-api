@@ -12,7 +12,7 @@
 
 ## 🎬 Demo
 
-[![SupportForge Demo](https://img.youtube.com/vi/CP3tsJpi1q4/maxresdefault.jpg)](https://youtu.be/CP3tsJpi1q4)
+[![SupportForge Demo](https://img.youtube.com/vi/CP3tsJpi1q4/hqdefault.jpg)](https://youtu.be/CP3tsJpi1q4)
 
 > 3-minute walkthrough: live chat with RAG streaming, anti-hallucination guard, smart escalation, admin panel, and analytics dashboard.
 
