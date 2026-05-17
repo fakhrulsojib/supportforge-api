@@ -12,8 +12,8 @@ class TestRecursiveChunkerInit:
 
     def test_default_values(self) -> None:
         chunker = RecursiveChunker()
-        assert chunker.chunk_size == 800
-        assert chunker.overlap == 100
+        assert chunker.chunk_size == 2000
+        assert chunker.overlap == 200
 
     def test_custom_values(self) -> None:
         chunker = RecursiveChunker(chunk_size=256, overlap=25)

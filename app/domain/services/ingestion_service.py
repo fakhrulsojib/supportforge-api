@@ -61,14 +61,20 @@ class IngestionService:
         embedding_service: EmbeddingService,
         vector_store: VectorStore,
         llm_provider: LLMProvider | None = None,
-        chunk_size: int = 2500,
-        chunk_overlap: int = 300,
+        chunk_size: int | None = None,
+        chunk_overlap: int | None = None,
     ) -> None:
+        from app.config import get_settings
+
+        settings = get_settings()
         self._document_repo = document_repo
         self._embedding_service = embedding_service
         self._vector_store = vector_store
         self._llm_provider = llm_provider
-        self._chunker = RecursiveChunker(chunk_size=chunk_size, overlap=chunk_overlap)
+        self._chunker = RecursiveChunker(
+            chunk_size=chunk_size if chunk_size is not None else settings.chunk_size,
+            overlap=chunk_overlap if chunk_overlap is not None else settings.chunk_overlap,
+        )
 
     async def process_document(
         self,

@@ -33,7 +33,7 @@ class RecursiveChunker:
         overlap: Number of overlapping characters between chunks.
     """
 
-    def __init__(self, chunk_size: int = 800, overlap: int = 100) -> None:
+    def __init__(self, chunk_size: int = 2000, overlap: int = 200) -> None:
         if chunk_size <= 0:
             msg = "chunk_size must be positive"
             raise ValueError(msg)
