@@ -25,6 +25,7 @@ if TYPE_CHECKING:
     from app.domain.interfaces.vector_store import VectorStore
     from app.domain.models.document import Document
     from app.rag.embeddings import EmbeddingService
+    from app.rag.markdown_parser import MarkdownSection
 
 logger = structlog.get_logger(__name__)
 
@@ -197,7 +198,7 @@ class IngestionService:
             # Step 7: Persist chunk records in DB
             # Store the contextualised text so DB content matches what's
             # in the vector store (important for source display)
-            for i, chunk in enumerate(chunks):
+            for i, _chunk in enumerate(chunks):
                 db_chunk = DocumentChunk(
                     document_id=doc_id,
                     chunk_index=i,
@@ -283,12 +284,16 @@ class IngestionService:
         document_id: str,
         filename: str,
     ) -> list[Chunk]:
-        """Parse markdown structure, then chunk each section.
+        """Parse markdown structure, merge small sections, then chunk.
 
-        Splits the document at heading boundaries first, keeping tables
-        and code blocks intact. Each section is then individually chunked
-        with the RecursiveChunker. Heading paths are injected into
-        chunk metadata for filtered retrieval.
+        Strategy:
+            1. Split at heading boundaries (markdown parser)
+            2. **Merge** adjacent small sections until they approach
+               ``chunk_size`` tokens — prevents over-chunking when
+               documents have many short headings
+            3. Chunk each merged group with RecursiveChunker
+            4. Inject heading path from the *first* section in each
+               group as metadata for retrieval filtering
 
         For non-markdown files, this method is never called — the
         RecursiveChunker is used directly.
@@ -316,20 +321,23 @@ class IngestionService:
                 },
             )
 
+        # ── Merge small sections into chunk-sized groups ──────────
+        merged_groups = self._merge_small_sections(sections)
+
         all_chunks: list[Chunk] = []
         global_index = 0
 
-        for section in sections:
+        for group_text, heading_path in merged_groups:
             section_metadata: dict[str, object] = {
                 "document_id": document_id,
                 "filename": filename,
                 "file_type": "md",
             }
-            if section.heading_path:
-                section_metadata["heading_path"] = section.heading_path
+            if heading_path:
+                section_metadata["heading_path"] = heading_path
 
             section_chunks = self._chunker.chunk(
-                section.content,
+                group_text,
                 metadata=section_metadata,
             )
 
@@ -345,10 +353,65 @@ class IngestionService:
             "markdown_chunking_complete",
             document_id=document_id,
             section_count=len(sections),
+            merged_groups=len(merged_groups),
             chunk_count=len(all_chunks),
         )
 
         return all_chunks
+
+    def _merge_small_sections(
+        self,
+        sections: list[MarkdownSection],
+    ) -> list[tuple[str, str]]:
+        """Merge adjacent small sections up to chunk_size tokens.
+
+        Prevents over-chunking when a document has many short headings
+        (e.g., 31 sections averaging 88 tokens each).  Adjacent sections
+        are combined into a single text block until the accumulated token
+        count approaches ``chunk_size``.
+
+        The heading_path of the **first** section in each merged group
+        is used as the metadata for the resulting chunk(s).
+
+        Args:
+            sections: List of MarkdownSection objects from the parser.
+
+        Returns:
+            List of ``(merged_text, heading_path)`` tuples ready for
+            the RecursiveChunker.
+        """
+        if not sections:
+            return []
+
+        # Cost of the "\n\n" separator between merged sections (~1 token)
+        separator_cost = self._chunker._count_tokens("\n\n")
+
+        groups: list[tuple[str, str]] = []
+        current_texts: list[str] = [sections[0].content]
+        current_tokens = self._chunker._count_tokens(sections[0].content)
+        current_heading = sections[0].heading_path
+
+        for section in sections[1:]:
+            section_tokens = self._chunker._count_tokens(section.content)
+
+            # Account for the "\n\n" separator that will join them
+            merged_cost = current_tokens + separator_cost + section_tokens
+
+            # If adding this section would exceed chunk_size, flush
+            if merged_cost > self._chunker.chunk_size:
+                groups.append(("\n\n".join(current_texts), current_heading))
+                current_texts = [section.content]
+                current_tokens = section_tokens
+                current_heading = section.heading_path
+            else:
+                current_texts.append(section.content)
+                current_tokens = merged_cost
+
+        # Flush the last group
+        if current_texts:
+            groups.append(("\n\n".join(current_texts), current_heading))
+
+        return groups
 
     def _extract_text(self, content: bytes, file_type: str) -> str:
         """Extract text from file content, wrapping extraction errors.
