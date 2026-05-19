@@ -9,7 +9,14 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-from app.domain.models.enums import ConversationStatus, EscalationTrigger, FeedbackType, MessageRole, ValidationStatus
+from app.domain.models.enums import (
+    ConversationStatus,
+    EscalationTrigger,
+    FeedbackType,
+    MessageChannel,
+    MessageRole,
+    ValidationStatus,
+)
 
 
 class Conversation(BaseModel):
@@ -45,3 +52,4 @@ class Message(BaseModel):
     reviewed_at: datetime | None = None
     reviewed_by: str = ""
     created_at: datetime | None = None
+    channel: MessageChannel = MessageChannel.TEXT
