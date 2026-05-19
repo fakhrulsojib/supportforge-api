@@ -1050,7 +1050,7 @@ class ChatService:
                     bracket_idx = _sentinel_tail.find("[")
                     tail_from_bracket = _sentinel_tail[bracket_idx:]
 
-                    if _ESCALATE_SENTINEL == tail_from_bracket:
+                    if tail_from_bracket == _ESCALATE_SENTINEL:
                         # Exact match — swallow the sentinel
                         llm_escalated = True
                         safe = _sentinel_tail[:bracket_idx]

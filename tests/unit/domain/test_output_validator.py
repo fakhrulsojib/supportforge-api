@@ -35,7 +35,6 @@ from app.domain.services.output_validator import (
     ValidationViolation,
 )
 
-
 # ── Fixtures ────────────────────────────────────────────────────
 
 

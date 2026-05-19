@@ -18,17 +18,12 @@ Covers:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from app.core.exceptions import LLMError
 from app.infrastructure.llm.gemini_adapter import GeminiAdapter
-
-if TYPE_CHECKING:
-    pass
-
 
 # ── Fixtures ────────────────────────────────────────────────────
 
@@ -113,9 +108,8 @@ class TestGenerate:
             "create",
             new_callable=AsyncMock,
             side_effect=Exception("API quota exceeded"),
-        ):
-            with pytest.raises(LLMError):
-                await adapter.generate([{"role": "user", "content": "test"}])
+        ), pytest.raises(LLMError):
+            await adapter.generate([{"role": "user", "content": "test"}])
 
 
 # ── Stream ──────────────────────────────────────────────────────
@@ -165,12 +159,11 @@ class TestStream:
             "create",
             new_callable=AsyncMock,
             side_effect=Exception("Connection failed"),
-        ):
-            with pytest.raises(LLMError):
-                async for _ in adapter.stream(
-                    [{"role": "user", "content": "test"}],
-                ):
-                    pass
+        ), pytest.raises(LLMError):
+            async for _ in adapter.stream(
+                [{"role": "user", "content": "test"}],
+            ):
+                pass
 
 
 # ── Health Check ────────────────────────────────────────────────

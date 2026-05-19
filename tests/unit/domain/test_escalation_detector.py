@@ -11,7 +11,6 @@ import pytest
 from app.domain.models.enums import EscalationTrigger
 from app.domain.services.escalation_detector import EscalationDetector, EscalationResult
 
-
 # ── Fixtures ────────────────────────────────────────────────────
 
 

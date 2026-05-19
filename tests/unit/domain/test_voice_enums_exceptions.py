@@ -6,8 +6,6 @@ status codes and error codes.
 
 from __future__ import annotations
 
-import pytest
-
 from app.core.exceptions import SupportForgeError
 from app.domain.models.enums import MessageChannel
 

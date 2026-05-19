@@ -5,7 +5,7 @@ All Pipecat classes are mocked since pipecat-ai is an optional dependency.
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 

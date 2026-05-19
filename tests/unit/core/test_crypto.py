@@ -21,7 +21,6 @@ import pytest
 
 from app.core.crypto import decrypt_value, derive_fernet_key, encrypt_value, mask_api_key
 
-
 # ── Fixtures ────────────────────────────────────────────────────
 
 

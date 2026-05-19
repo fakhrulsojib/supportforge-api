@@ -9,7 +9,6 @@ Tests cover:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock
 
 import pytest
@@ -23,9 +22,6 @@ from app.domain.services.document_service import (
     MAX_FILES_PER_TENANT,
     DocumentService,
 )
-
-if TYPE_CHECKING:
-    pass
 
 
 @pytest.fixture
@@ -67,7 +63,7 @@ class TestConstants:
     """Verify exported constants have expected values."""
 
     def test_allowed_file_types(self) -> None:
-        assert ALLOWED_FILE_TYPES == {"pdf", "md", "csv", "txt"}
+        assert {"pdf", "md", "csv", "txt"} == ALLOWED_FILE_TYPES
 
     def test_max_file_size(self) -> None:
         assert MAX_FILE_SIZE == 10 * 1024 * 1024

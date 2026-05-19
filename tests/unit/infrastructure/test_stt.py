@@ -100,9 +100,11 @@ class TestWhisperAdapter:
         async def _fake_to_thread(func, *args, **kwargs):
             return func(*args, **kwargs)
 
-        with patch("app.infrastructure.stt.whisper_adapter.asyncio.to_thread", side_effect=_fake_to_thread):
-            with pytest.raises(STTError, match="Transcription failed"):
-                await adapter.transcribe(b"\x00\x01" * 100)
+        with (
+            patch("app.infrastructure.stt.whisper_adapter.asyncio.to_thread", side_effect=_fake_to_thread),
+            pytest.raises(STTError, match="Transcription failed"),
+        ):
+            await adapter.transcribe(b"\x00\x01" * 100)
 
     @pytest.mark.asyncio
     async def test_warm_up_calls_load_model(self) -> None:

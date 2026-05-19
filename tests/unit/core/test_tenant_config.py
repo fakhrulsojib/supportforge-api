@@ -35,7 +35,6 @@ from app.core.tenant_config import (
     resolve_tenant_models,
 )
 
-
 # ── Fixtures ────────────────────────────────────────────────────
 
 

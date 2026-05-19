@@ -99,9 +99,11 @@ class TestPiperAdapter:
         async def _fake_to_thread(func, *args, **kwargs):
             return func(*args, **kwargs)
 
-        with patch("app.infrastructure.tts.piper_adapter.asyncio.to_thread", side_effect=_fake_to_thread):
-            with pytest.raises(TTSError, match="Synthesis failed"):
-                await adapter.synthesize("test")
+        with (
+            patch("app.infrastructure.tts.piper_adapter.asyncio.to_thread", side_effect=_fake_to_thread),
+            pytest.raises(TTSError, match="Synthesis failed"),
+        ):
+            await adapter.synthesize("test")
 
     @pytest.mark.asyncio
     async def test_warm_up_calls_load_voice(self) -> None:
