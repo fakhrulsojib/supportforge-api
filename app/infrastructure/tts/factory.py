@@ -29,6 +29,11 @@ def get_tts_provider(provider: str, **kwargs: Any) -> TTSProvider:
 
         return PiperAdapter(**kwargs)
 
+    if provider == "azure":
+        from app.infrastructure.tts.azure_adapter import AzureTTSAdapter
+
+        return AzureTTSAdapter(**kwargs)  # accepts subscription_key, region, voice
+
     if provider == "google":
         msg = "Google TTS adapter not available. Install with: pip install 'supportforge[voice-cloud]'"
         raise ValueError(msg)
@@ -37,5 +42,5 @@ def get_tts_provider(provider: str, **kwargs: Any) -> TTSProvider:
         msg = "ElevenLabs TTS adapter not available. Install with: pip install 'supportforge[voice-cloud]'"
         raise ValueError(msg)
 
-    msg = f"Unknown TTS provider: '{provider}'. Available: piper, google, elevenlabs"
+    msg = f"Unknown TTS provider: '{provider}'. Available: piper, azure, google, elevenlabs"
     raise ValueError(msg)

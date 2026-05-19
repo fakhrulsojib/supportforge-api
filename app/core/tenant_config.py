@@ -171,6 +171,7 @@ CONFIG_TTS_PROVIDER = "tts_provider"
 CONFIG_TTS_API_KEY = "tts_api_key"
 CONFIG_TTS_VOICE = "tts_voice"
 CONFIG_MAX_VOICE_SESSIONS = "max_voice_sessions"
+CONFIG_AZURE_REGION = "azure_speech_region"
 
 
 @dataclass(frozen=True, slots=True)
@@ -185,6 +186,7 @@ class TenantVoiceConfig:
         tts_api_key: Decrypted TTS API key (cloud only), or None.
         tts_voice: Voice model to use for TTS.
         max_voice_sessions: Concurrent voice session limit.
+        azure_region: Azure Speech region (e.g. ``eastus``).
     """
 
     voice_enabled: bool = False
@@ -194,6 +196,7 @@ class TenantVoiceConfig:
     tts_api_key: str | None = None
     tts_voice: str = "en_US-lessac-medium"
     max_voice_sessions: int = 3
+    azure_region: str = "eastus"
 
 
 def resolve_tenant_voice_config(
@@ -226,12 +229,17 @@ def resolve_tenant_voice_config(
         TenantVoiceConfig — always valid, never raises.
     """
     if not config_json:
+        logger.debug("voice_config_resolve_empty_config")
         return TenantVoiceConfig()
 
     try:
         # Check if voice is enabled
         raw_enabled = config_json.get(CONFIG_VOICE_ENABLED)
         if raw_enabled is not True:
+            logger.debug(
+                "voice_config_resolve_disabled",
+                voice_enabled_value=raw_enabled,
+            )
             return TenantVoiceConfig()
 
         # Read optional overrides
@@ -254,6 +262,7 @@ def resolve_tenant_voice_config(
                 if encryption_key:
                     try:
                         stt_api_key = decrypt_value(raw_stt_key, encryption_key)
+                        logger.debug("voice_config_stt_key_decrypted")
                     except Exception:
                         logger.warning("tenant_stt_key_decrypt_failed")
                         stt_api_key = None
@@ -269,14 +278,27 @@ def resolve_tenant_voice_config(
                 if encryption_key:
                     try:
                         tts_api_key = decrypt_value(raw_tts_key, encryption_key)
+                        logger.debug("voice_config_tts_key_decrypted")
                     except Exception:
                         logger.warning("tenant_tts_key_decrypt_failed")
                         tts_api_key = None
                 else:
                     tts_api_key = raw_tts_key
 
+        # Read Azure-specific config (region)
+        azure_region = config_json.get(CONFIG_AZURE_REGION, "eastus")
+        if not isinstance(azure_region, str) or not azure_region:
+            azure_region = "eastus"
+
         # Cloud STT+TTS both have keys → Tier 1
         if stt_api_key and tts_api_key:
+            logger.info(
+                "voice_config_resolved_tier1_cloud",
+                stt_provider=stt_provider,
+                tts_provider=tts_provider,
+                azure_region=azure_region,
+                tts_voice=tts_voice,
+            )
             return TenantVoiceConfig(
                 voice_enabled=True,
                 stt_provider=stt_provider,
@@ -285,10 +307,17 @@ def resolve_tenant_voice_config(
                 tts_api_key=tts_api_key,
                 tts_voice=tts_voice,
                 max_voice_sessions=max_sessions,
+                azure_region=azure_region,
             )
 
         # ── Tier 2: Local providers available ────────────────────
         if stt_locally_available and tts_locally_available:
+            logger.info(
+                "voice_config_resolved_tier2_local",
+                tts_voice=tts_voice,
+                had_stt_key=bool(stt_api_key),
+                had_tts_key=bool(tts_api_key),
+            )
             return TenantVoiceConfig(
                 voice_enabled=True,
                 stt_provider="whisper",
@@ -298,6 +327,13 @@ def resolve_tenant_voice_config(
             )
 
         # ── Tier 3: Disabled ─────────────────────────────────────
+        logger.info(
+            "voice_config_resolved_tier3_disabled",
+            stt_locally_available=stt_locally_available,
+            tts_locally_available=tts_locally_available,
+            had_stt_key=bool(stt_api_key),
+            had_tts_key=bool(tts_api_key),
+        )
         return TenantVoiceConfig(
             tts_voice=tts_voice,
             max_voice_sessions=max_sessions,
