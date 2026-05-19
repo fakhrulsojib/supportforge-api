@@ -38,6 +38,13 @@ class MessageRole(str, enum.Enum):
     SUMMARY = "summary"
 
 
+class MessageChannel(str, enum.Enum):
+    """How a message was sent — text input or voice input."""
+
+    TEXT = "text"
+    VOICE = "voice"
+
+
 class FeedbackType(str, enum.Enum):
     """User feedback on an assistant message."""
 
