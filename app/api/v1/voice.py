@@ -244,11 +244,9 @@ async def transcribe_audio(
             logger.warning("transcribe_no_audio_field", tenant_id=user.tenant_id)
             return {"error": "No 'audio' field in form data", "text": ""}
         audio_bytes = await audio_file.read()
-        filename = getattr(audio_file, "filename", "audio.webm")
     else:
         # Raw body upload
         audio_bytes = await request.body()
-        filename = "audio.webm"
 
     if not audio_bytes:
         logger.warning("transcribe_empty_audio", tenant_id=user.tenant_id)
@@ -258,7 +256,6 @@ async def transcribe_audio(
         "transcribe_audio_received",
         tenant_id=user.tenant_id,
         audio_bytes=len(audio_bytes),
-        filename=filename,
     )
 
     # Decode webm/opus → PCM float32 numpy array using PyAV,
@@ -317,14 +314,17 @@ async def transcribe_audio(
             duration_secs=round(len(samples) / 16000, 2),
         )
 
-        # Run whisper transcription on the numpy array
+        # Run whisper transcription on the numpy array.
+        # IMPORTANT: consume the segment generator inside the thread —
+        # faster-whisper's generator holds CT2 model state that is NOT
+        # thread-safe; reading it from the event-loop thread can segfault.
+        def _transcribe_sync() -> tuple[str, object]:
+            segments, info = stt_provider._model.transcribe(samples, language="en")
+            text = " ".join(s.text.strip() for s in segments)
+            return text, info
+
         t0 = time.monotonic()
-        segments, info = await asyncio.to_thread(
-            stt_provider._model.transcribe,
-            samples,
-            language="en",
-        )
-        text = " ".join(s.text.strip() for s in segments)
+        text, info = await asyncio.to_thread(_transcribe_sync)
         elapsed = round(time.monotonic() - t0, 3)
 
         logger.info(
