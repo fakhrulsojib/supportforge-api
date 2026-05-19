@@ -218,11 +218,10 @@ async def transcribe_audio(
 ) -> dict:
     """Transcribe an uploaded audio file to text via STT.
 
-    Accepts any audio format that ffmpeg can decode (webm, wav, mp3, ogg, etc).
-    The STT provider (whisper) handles format conversion internally.
+    Accepts multipart form upload with an ``audio`` field, or raw body.
+    Audio is decoded via PyAV (webm, wav, mp3, ogg, etc) to PCM,
+    then transcribed by faster-whisper.
     """
-
-
     stt_provider = getattr(request.app.state, "stt_provider", None)
     if stt_provider is None:
         logger.warning("transcribe_no_stt_provider", tenant_id=user.tenant_id)
