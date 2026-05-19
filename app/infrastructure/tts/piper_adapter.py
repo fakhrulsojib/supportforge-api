@@ -136,7 +136,11 @@ class PiperAdapter(TTSProvider):
                 """Run synthesis synchronously (CPU-bound)."""
                 chunks: list[bytes] = []
                 for audio_chunk in self._voice_model.synthesize(text):
-                    chunks.append(audio_chunk)
+                    # piper-tts returns AudioChunk dataclass with audio_int16_bytes
+                    if isinstance(audio_chunk, bytes):
+                        chunks.append(audio_chunk)
+                    else:
+                        chunks.append(audio_chunk.audio_int16_bytes)
                 return b"".join(chunks)
 
             t0 = time.monotonic()
