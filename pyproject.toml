@@ -42,6 +42,17 @@ reranker = [
     "sentence-transformers>=3.0",
     "torch>=2.0",
 ]
+voice = [
+    "faster-whisper>=1.0",
+    "piper-tts>=1.4",
+    "numpy>=1.24",
+]
+voice-cloud = [
+    "deepgram-sdk>=3.0",
+    "elevenlabs>=1.0",
+    "google-cloud-speech>=2.0",
+    "google-cloud-texttospeech>=2.0",
+]
 dev = [
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
@@ -55,6 +66,7 @@ dev = [
     "hypothesis>=6.120",
     "types-passlib>=1.7",
     "types-python-jose>=3.3",
+    "numpy>=1.24",
 ]
 
 [tool.pytest.ini_options]
@@ -84,7 +96,7 @@ init_typed = true
 warn_required_dynamic_aliases = true
 
 [[tool.mypy.overrides]]
-module = ["chromadb.*", "langchain.*", "langgraph.*", "fitz.*", "pymupdf.*"]
+module = ["chromadb.*", "langchain.*", "langgraph.*", "fitz.*", "pymupdf.*", "faster_whisper.*", "piper.*"]
 ignore_missing_imports = true
 
 # m8: ignore_errors is a nuclear option but SQLAlchemy ORM typing is
@@ -96,6 +108,9 @@ module = [
     "app.infrastructure.database.repositories.*",
     "app.infrastructure.database.connection",
     "app.infrastructure.vectorstore.*",
+    "app.infrastructure.stt.*",
+    "app.infrastructure.tts.*",
+    "app.infrastructure.voice.*",
 ]
 ignore_errors = true
 
@@ -154,6 +169,10 @@ omit = [
     "app/domain/interfaces/*.py",
     # Async background worker — tested via unit tests with mocks
     "app/workers/ingestion_worker.py",
+    # Voice adapters — require optional dependencies (faster-whisper, piper-tts)
+    "app/infrastructure/stt/*.py",
+    "app/infrastructure/tts/*.py",
+    "app/infrastructure/voice/*.py",
 ]
 
 [tool.coverage.report]
