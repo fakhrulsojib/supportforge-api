@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from collections.abc import AsyncGenerator
 from typing import Any
 
@@ -112,10 +113,11 @@ class PiperAdapter(TTSProvider):
             raise TTSError("Piper voice model not loaded — call warm_up() first")
 
         try:
-            # Split into sentences for streaming
-            sentences = [s.strip() for s in text.split(".") if s.strip()]
+            # Split on sentence boundaries (after .!? followed by whitespace)
+            # Avoids breaking on abbreviations ("Dr."), decimals ("$3.99"), etc.
+            sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', text) if s.strip()]
             for sentence in sentences:
-                audio = await self.synthesize(sentence + ".", voice, sample_rate=sample_rate)
+                audio = await self.synthesize(sentence, voice, sample_rate=sample_rate)
                 if audio:
                     yield audio
         except TTSError:

@@ -35,6 +35,9 @@ class VoiceSessionManager:
     async def acquire(self, tenant_id: str, max_sessions: int | None = None) -> None:
         """Acquire a voice session slot for the given tenant.
 
+        The availability check and semaphore acquire are performed
+        atomically under a lock to prevent TOCTOU race conditions.
+
         Args:
             tenant_id: Tenant identifier.
             max_sessions: Override max sessions for this tenant.
@@ -49,12 +52,15 @@ class VoiceSessionManager:
                 self._semaphores[tenant_id] = asyncio.Semaphore(max_s)
                 self._active_counts[tenant_id] = 0
 
-        sem = self._semaphores[tenant_id]
-        if not sem._value:  # type: ignore[attr-defined]
-            raise VoiceBusyError()
+            sem = self._semaphores[tenant_id]
 
-        await sem.acquire()
-        async with self._lock:
+            # Check availability while holding the lock (atomic)
+            if sem.locked():
+                raise VoiceBusyError()
+
+            # Safe to acquire — we hold the lock so no other coroutine
+            # can steal this slot between the check and the acquire.
+            await sem.acquire()
             self._active_counts[tenant_id] = self._active_counts.get(tenant_id, 0) + 1
 
     async def release(self, tenant_id: str) -> None:

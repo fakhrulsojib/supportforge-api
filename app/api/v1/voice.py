@@ -12,11 +12,16 @@ from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, Request
 
+from app.config import get_settings
 from app.core.dependencies import get_current_user, require_role
 from app.core.tenant_config import resolve_tenant_voice_config
 from app.domain.models.enums import UserRole
+from app.infrastructure.database.connection import get_async_session
+from app.infrastructure.database.repositories.tenant_repo import SQLTenantRepository
 
 if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
     from app.domain.models.user import User
 
 router = APIRouter(prefix="/api/v1/voice", tags=["Voice"])
@@ -26,6 +31,7 @@ router = APIRouter(prefix="/api/v1/voice", tags=["Voice"])
 async def get_voice_config(
     request: Request,
     user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_async_session),
 ) -> dict:
     """Return voice availability for the authenticated tenant.
 
@@ -34,18 +40,21 @@ async def get_voice_config(
     2. Local whisper/piper if available
     3. Disabled
     """
-    # Get tenant config from DB (simplified — uses request state)
+    # Fetch tenant config_json from the database
+    tenant_repo = SQLTenantRepository(session)
+    tenant = await tenant_repo.get_by_id(user.tenant_id)
     tenant_config_json: dict = {}
-    if hasattr(request.app.state, "chat_service"):
-        # In production, we'd fetch from tenant repo
-        # For now, return based on what's available in app state
-        pass
+    if tenant and tenant.config_json:
+        tenant_config_json = tenant.config_json
+
+    settings = get_settings()
 
     stt_available = hasattr(request.app.state, "stt_provider") and request.app.state.stt_provider is not None
     tts_available = hasattr(request.app.state, "tts_provider") and request.app.state.tts_provider is not None
 
     voice_config = resolve_tenant_voice_config(
         tenant_config_json,
+        encryption_key=settings.secret_key,
         stt_locally_available=stt_available,
         tts_locally_available=tts_available,
     )
