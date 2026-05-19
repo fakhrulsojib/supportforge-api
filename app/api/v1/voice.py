@@ -115,3 +115,46 @@ async def get_voice_sessions(
         "tenant_id": user.tenant_id,
         "active_sessions": active,
     }
+
+
+@router.put("/toggle")
+async def toggle_voice(
+    request: Request,
+    user: User = Depends(require_role(UserRole.ADMIN)),
+) -> dict:
+    """Enable or disable voice for this tenant (admin only).
+
+    Toggles the ``voice_enabled`` flag in the tenant's ``config_json``.
+    """
+    from app.infrastructure.database.connection import AsyncSessionLocal
+    from app.infrastructure.database.repositories.tenant_repo import SQLTenantRepository
+
+    async with AsyncSessionLocal() as session:
+        repo = SQLTenantRepository(session)
+        tenant = await repo.get_by_id(user.tenant_id)
+        if not tenant:
+            return {"voice_enabled": False}
+
+        config = dict(tenant.config_json or {})
+        current = config.get("voice_enabled", False)
+        config["voice_enabled"] = not current
+        await repo.update(user.tenant_id, config_json=config)
+        await session.commit()
+
+    # Re-resolve voice config to return current state
+    stt_locally = getattr(request.app.state, "stt_provider", None) is not None
+    tts_locally = getattr(request.app.state, "tts_provider", None) is not None
+
+    voice_config = resolve_tenant_voice_config(
+        config,
+        stt_locally_available=stt_locally,
+        tts_locally_available=tts_locally,
+    )
+
+    return {
+        "voice_enabled": voice_config.voice_enabled,
+        "stt_provider": voice_config.stt_provider,
+        "tts_provider": voice_config.tts_provider,
+        "tts_voice": voice_config.tts_voice,
+        "max_voice_sessions": voice_config.max_voice_sessions,
+    }

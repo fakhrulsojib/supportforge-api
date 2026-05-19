@@ -26,17 +26,55 @@ class PiperAdapter(TTSProvider):
     """TTS adapter using Piper for local speech synthesis.
 
     Args:
-        voice: Piper voice model name (e.g. ``en_US-lessac-medium``).
+        voice: Piper voice model name (e.g. ``en_US-lessac-medium``)
+            or absolute path to a ``.onnx`` model file.
+        models_dir: Directory to search for model files. Defaults to
+            ``<project_root>/.voice_models/``.
     """
 
-    def __init__(self, voice: str = "en_US-lessac-medium") -> None:
+    def __init__(
+        self,
+        voice: str = "en_US-lessac-medium",
+        models_dir: str | None = None,
+    ) -> None:
         self._voice_name = voice
+        self._models_dir = models_dir
         self._voice_model: Any = None
 
     @property
     def provider_name(self) -> str:
         """Return ``'piper'``."""
         return "piper"
+
+    def _resolve_model_path(self) -> str:
+        """Resolve the voice name to an actual .onnx file path.
+
+        Resolution order:
+        1. If ``voice`` is an absolute path and exists → use it directly.
+        2. Look for ``<voice>.onnx`` in ``models_dir``.
+        3. Look for ``<voice>.onnx`` in ``<project_root>/.voice_models/``.
+        4. Fall back to the raw name (let Piper raise its own error).
+        """
+        from pathlib import Path
+
+        # 1. Absolute path
+        if Path(self._voice_name).is_absolute() and Path(self._voice_name).exists():
+            return self._voice_name
+
+        # 2. Explicit models dir
+        if self._models_dir:
+            candidate = Path(self._models_dir) / f"{self._voice_name}.onnx"
+            if candidate.exists():
+                return str(candidate)
+
+        # 3. Default project .voice_models/
+        project_root = Path(__file__).resolve().parent.parent.parent.parent
+        candidate = project_root / ".voice_models" / f"{self._voice_name}.onnx"
+        if candidate.exists():
+            return str(candidate)
+
+        # 4. Raw fallback
+        return self._voice_name
 
     def _load_voice(self) -> None:
         """Load the Piper voice model.
@@ -46,8 +84,9 @@ class PiperAdapter(TTSProvider):
         try:
             from piper import PiperVoice  # type: ignore[import-untyped]
 
-            self._voice_model = PiperVoice.load(self._voice_name)
-            logger.info("piper_voice_loaded", extra={"voice": self._voice_name})
+            model_path = self._resolve_model_path()
+            self._voice_model = PiperVoice.load(model_path)
+            logger.info("piper_voice_loaded", extra={"voice": self._voice_name, "path": model_path})
         except ImportError:
             msg = "piper-tts is not installed. Install with: pip install piper-tts>=1.4"
             raise TTSError(msg) from None

@@ -68,8 +68,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     from app.infrastructure.llm.factory import get_llm_provider
     from app.infrastructure.vectorstore.chroma_adapter import ChromaAdapter
     from app.infrastructure.websocket.connection_manager import ConnectionManager
-    from app.workers.ingestion_queue import IngestionQueue
     from app.rag.embeddings import EmbeddingService
+    from app.workers.ingestion_queue import IngestionQueue
 
     settings = get_settings()
 
@@ -145,6 +145,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         max_concurrent=settings.ingestion_max_concurrent,
     )
 
+    # ── Voice Pipeline (optional) ────────────────────────────────
+    await _init_voice_providers(app, settings)
+
     # ── Superadmin Auto-Bootstrap ────────────────────────────────
     await _bootstrap_superadmin(settings)
 
@@ -166,6 +169,62 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     if getattr(app.state, "cache", None) is not None:
         await app.state.cache.close()
         logger.info("redis_disconnected")
+
+
+async def _init_voice_providers(app: FastAPI, settings: object) -> None:
+    """Try to initialize local STT/TTS providers.
+
+    Graceful: if voice dependencies (faster-whisper, piper-tts) are not
+    installed, the app starts normally with voice disabled. The voice API
+    endpoints use ``getattr(app.state, "stt_provider", None)`` so they
+    handle the missing attribute cleanly.
+    """
+    from app.infrastructure.voice.pipeline_factory import VoiceSessionManager
+
+    app.state.stt_provider = None
+    app.state.tts_provider = None
+    app.state.voice_session_manager = VoiceSessionManager(
+        default_max_sessions=getattr(settings, "voice_max_sessions_per_tenant", 3),
+    )
+
+    # ── STT (Whisper) ────────────────────────────────────────────
+    try:
+        from app.infrastructure.stt.factory import get_stt_provider
+
+        stt = get_stt_provider(
+            "whisper",
+            model_size=getattr(settings, "voice_stt_model", "base"),
+            max_audio_bytes=getattr(settings, "voice_max_audio_bytes", 10 * 1024 * 1024),
+        )
+        await stt.warm_up()
+        app.state.stt_provider = stt
+        logger.info("voice_stt_initialized", provider="whisper")
+    except Exception:
+        logger.info("voice_stt_unavailable", reason="faster-whisper not installed or model load failed")
+
+    # ── TTS (Piper) ──────────────────────────────────────────────
+    try:
+        from app.infrastructure.tts.factory import get_tts_provider
+
+        tts = get_tts_provider(
+            "piper",
+            voice=getattr(settings, "voice_tts_voice", "en_US-lessac-medium"),
+        )
+        await tts.warm_up()
+        app.state.tts_provider = tts
+        logger.info("voice_tts_initialized", provider="piper")
+    except Exception:
+        logger.info("voice_tts_unavailable", reason="piper-tts not installed or model load failed")
+
+    # Summary
+    stt_ok = app.state.stt_provider is not None
+    tts_ok = app.state.tts_provider is not None
+    if stt_ok and tts_ok:
+        logger.info("voice_pipeline_ready")
+    elif stt_ok or tts_ok:
+        logger.warning("voice_pipeline_partial", stt=stt_ok, tts=tts_ok)
+    else:
+        logger.info("voice_pipeline_disabled", reason="no local providers available")
 
 
 # ── Well-known management tenant ────────────────────────────────
