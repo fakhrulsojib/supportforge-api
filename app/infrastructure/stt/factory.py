@@ -8,9 +8,10 @@ the affected provider.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from app.domain.interfaces.stt_provider import STTProvider
+if TYPE_CHECKING:
+    from app.domain.interfaces.stt_provider import STTProvider
 
 
 def get_stt_provider(provider: str, **kwargs: Any) -> STTProvider:

@@ -11,8 +11,10 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
-from collections.abc import AsyncGenerator
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
 
 from app.core.exceptions import TTSError
 from app.domain.interfaces.tts_provider import TTSProvider
@@ -84,8 +86,7 @@ class PiperAdapter(TTSProvider):
                     chunks.append(audio_chunk)
                 return b"".join(chunks)
 
-            result = await asyncio.to_thread(_sync_synthesize)
-            return result
+            return await asyncio.to_thread(_sync_synthesize)
 
         except TTSError:
             raise

@@ -5,9 +5,10 @@ Follows the same pattern as ``app.infrastructure.stt.factory``.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from app.domain.interfaces.tts_provider import TTSProvider
+if TYPE_CHECKING:
+    from app.domain.interfaces.tts_provider import TTSProvider
 
 
 def get_tts_provider(provider: str, **kwargs: Any) -> TTSProvider:

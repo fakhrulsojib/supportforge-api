@@ -17,7 +17,7 @@ class VoiceFrameType:
     """
 
     TRANSCRIPT = "transcript"
-    TEXT_TOKEN = "text_token"
+    TEXT_TOKEN = "text_token"  # noqa: S105 — frame type, not a password
     AUDIO = "audio"
     SOURCE = "source"
     DONE = "done"

@@ -8,10 +8,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from app.core.exceptions import VoiceBusyError
-from app.core.tenant_config import TenantVoiceConfig
+
+if TYPE_CHECKING:
+    from app.core.tenant_config import TenantVoiceConfig
+
 from app.infrastructure.voice.pipecat_stt_adapter import PipecatSTTAdapter
 from app.infrastructure.voice.pipecat_tts_adapter import PipecatTTSAdapter
 from app.infrastructure.voice.rag_processor import SupportForgeRAGProcessor

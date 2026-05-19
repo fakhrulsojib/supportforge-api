@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import structlog
 from fastapi import APIRouter, Depends, Request
 
 from app.config import get_settings
@@ -82,14 +83,14 @@ async def get_voice_health(
         try:
             stt_available = await stt_provider.health_check()
         except Exception:
-            pass
+            structlog.get_logger(__name__).warning("stt_health_check_failed", exc_info=True)
 
     tts_provider = getattr(request.app.state, "tts_provider", None)
     if tts_provider is not None:
         try:
             tts_available = await tts_provider.health_check()
         except Exception:
-            pass
+            structlog.get_logger(__name__).warning("tts_health_check_failed", exc_info=True)
 
     return {
         "stt_available": stt_available,
