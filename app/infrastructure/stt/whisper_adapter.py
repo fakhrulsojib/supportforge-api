@@ -8,13 +8,14 @@ to avoid blocking the async event loop.
 from __future__ import annotations
 
 import asyncio
-import logging
 from typing import Any
+
+import structlog
 
 from app.core.exceptions import STTError
 from app.domain.interfaces.stt_provider import STTProvider
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 # Default max audio size: 10 MB ≈ 5 minutes of PCM@16kHz mono
 DEFAULT_MAX_AUDIO_BYTES = 10 * 1024 * 1024
@@ -64,7 +65,9 @@ class WhisperAdapter(STTProvider):
             )
             logger.info(
                 "whisper_model_loaded",
-                extra={"model": self._model_size, "device": self._device},
+                model=self._model_size,
+                device=self._device,
+                compute_type=self._compute_type,
             )
         except ImportError:
             msg = "faster-whisper is not installed. Install with: pip install faster-whisper>=1.0"
@@ -103,19 +106,42 @@ class WhisperAdapter(STTProvider):
             raise STTError("Whisper model not loaded — call warm_up() first")
 
         try:
+            import time
+
             import numpy as np  # type: ignore[import-untyped]
+
+            logger.info(
+                "whisper_transcribe_start",
+                audio_bytes=len(audio),
+                sample_rate=sample_rate,
+                language=language,
+                duration_secs=round(len(audio) / (sample_rate * 2), 2),
+            )
 
             # Convert PCM Int16 to float32 normalized [-1.0, 1.0]
             samples = np.frombuffer(audio, dtype=np.int16).astype(np.float32) / 32768.0
 
+            t0 = time.monotonic()
             # CPU-bound — offload to thread pool
-            segments, _ = await asyncio.to_thread(
+            segments, info = await asyncio.to_thread(
                 self._model.transcribe,
                 samples,
                 language=language,
             )
 
-            return " ".join(s.text.strip() for s in segments)
+            text = " ".join(s.text.strip() for s in segments)
+            elapsed = round(time.monotonic() - t0, 3)
+
+            logger.info(
+                "whisper_transcribe_done",
+                text_length=len(text),
+                text_preview=text[:80] if text else "(empty)",
+                elapsed_secs=elapsed,
+                language=getattr(info, "language", language),
+                language_probability=round(getattr(info, "language_probability", 0), 3),
+            )
+
+            return text
 
         except STTError:
             raise
@@ -125,14 +151,14 @@ class WhisperAdapter(STTProvider):
             raise STTError(msg) from exc
 
     async def warm_up(self) -> None:
-        """Pre-load the Whisper model into memory.
-
-        Offloaded to a thread pool to avoid blocking the event loop
-        during model download and initialization.
-        """
+        """Pre-load the Whisper model into memory."""
         if self._model is None:
+            logger.info("whisper_warm_up_start", model=self._model_size, device=self._device)
             await asyncio.to_thread(self._load_model)
+            logger.info("whisper_warm_up_done")
 
     async def health_check(self) -> bool:
         """Return True if the model is loaded and ready."""
-        return self._model is not None
+        ready = self._model is not None
+        logger.debug("whisper_health_check", ready=ready)
+        return ready

@@ -9,9 +9,10 @@ Requires the ``espeak-ng`` system package (documented in Dockerfile).
 from __future__ import annotations
 
 import asyncio
-import logging
 import re
 from typing import TYPE_CHECKING, Any
+
+import structlog
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
@@ -19,7 +20,7 @@ if TYPE_CHECKING:
 from app.core.exceptions import TTSError
 from app.domain.interfaces.tts_provider import TTSProvider
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class PiperAdapter(TTSProvider):
@@ -59,21 +60,25 @@ class PiperAdapter(TTSProvider):
 
         # 1. Absolute path
         if Path(self._voice_name).is_absolute() and Path(self._voice_name).exists():
+            logger.debug("piper_model_resolved", method="absolute_path", path=self._voice_name)
             return self._voice_name
 
         # 2. Explicit models dir
         if self._models_dir:
             candidate = Path(self._models_dir) / f"{self._voice_name}.onnx"
             if candidate.exists():
+                logger.debug("piper_model_resolved", method="models_dir", path=str(candidate))
                 return str(candidate)
 
         # 3. Default project .voice_models/
         project_root = Path(__file__).resolve().parent.parent.parent.parent
         candidate = project_root / ".voice_models" / f"{self._voice_name}.onnx"
         if candidate.exists():
+            logger.debug("piper_model_resolved", method="project_voice_models", path=str(candidate))
             return str(candidate)
 
         # 4. Raw fallback
+        logger.debug("piper_model_resolved", method="raw_fallback", path=self._voice_name)
         return self._voice_name
 
     def _load_voice(self) -> None:
@@ -118,6 +123,15 @@ class PiperAdapter(TTSProvider):
             raise TTSError("Piper voice model not loaded — call warm_up() first")
 
         try:
+            import time
+
+            logger.info(
+                "piper_synthesize_start",
+                text_length=len(text),
+                text_preview=text[:60],
+                voice=self._voice_name,
+            )
+
             def _sync_synthesize() -> bytes:
                 """Run synthesis synchronously (CPU-bound)."""
                 chunks: list[bytes] = []
@@ -125,7 +139,17 @@ class PiperAdapter(TTSProvider):
                     chunks.append(audio_chunk)
                 return b"".join(chunks)
 
-            return await asyncio.to_thread(_sync_synthesize)
+            t0 = time.monotonic()
+            result = await asyncio.to_thread(_sync_synthesize)
+            elapsed = round(time.monotonic() - t0, 3)
+
+            logger.info(
+                "piper_synthesize_done",
+                audio_bytes=len(result),
+                elapsed_secs=elapsed,
+            )
+
+            return result
 
         except TTSError:
             raise
@@ -182,14 +206,14 @@ class PiperAdapter(TTSProvider):
         ]
 
     async def warm_up(self) -> None:
-        """Pre-load the Piper voice model.
-
-        Offloaded to a thread pool to avoid blocking the event loop
-        during model loading.
-        """
+        """Pre-load the Piper voice model."""
         if self._voice_model is None:
+            logger.info("piper_warm_up_start", voice=self._voice_name)
             await asyncio.to_thread(self._load_voice)
+            logger.info("piper_warm_up_done", voice=self._voice_name)
 
     async def health_check(self) -> bool:
         """Return True if the voice model is loaded."""
-        return self._voice_model is not None
+        ready = self._voice_model is not None
+        logger.debug("piper_health_check", ready=ready)
+        return ready
