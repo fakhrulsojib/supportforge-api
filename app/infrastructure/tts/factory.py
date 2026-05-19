@@ -29,12 +29,12 @@ def get_tts_provider(provider: str, **kwargs: Any) -> TTSProvider:
         return PiperAdapter(**kwargs)
 
     if provider == "google":
-        msg = "Google TTS adapter requires 'google-cloud-texttospeech'. Install with: pip install google-cloud-texttospeech>=2.0"
-        raise ImportError(msg)
+        msg = "Google TTS adapter not available. Install with: pip install 'supportforge[voice-cloud]'"
+        raise ValueError(msg)
 
     if provider == "elevenlabs":
-        msg = "ElevenLabs TTS adapter requires 'elevenlabs'. Install with: pip install elevenlabs>=1.0"
-        raise ImportError(msg)
+        msg = "ElevenLabs TTS adapter not available. Install with: pip install 'supportforge[voice-cloud]'"
+        raise ValueError(msg)
 
     msg = f"Unknown TTS provider: '{provider}'. Available: piper, google, elevenlabs"
     raise ValueError(msg)

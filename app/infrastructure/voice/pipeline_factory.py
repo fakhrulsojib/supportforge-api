@@ -38,9 +38,14 @@ class VoiceSessionManager:
         The availability check and semaphore acquire are performed
         atomically under a lock to prevent TOCTOU race conditions.
 
+        Note:
+            ``max_sessions`` only takes effect on the **first** call per
+            tenant. Subsequent calls reuse the cached semaphore. Changing
+            a tenant's ``max_voice_sessions`` requires a server restart.
+
         Args:
             tenant_id: Tenant identifier.
-            max_sessions: Override max sessions for this tenant.
+            max_sessions: Override max sessions (first call per tenant only).
 
         Raises:
             VoiceBusyError: If all session slots are occupied.

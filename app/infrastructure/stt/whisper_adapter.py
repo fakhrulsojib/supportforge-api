@@ -17,7 +17,7 @@ from app.domain.interfaces.stt_provider import STTProvider
 logger = logging.getLogger(__name__)
 
 # Default max audio size: 10 MB ≈ 5 minutes of PCM@16kHz mono
-MAX_AUDIO_BYTES = 10 * 1024 * 1024
+DEFAULT_MAX_AUDIO_BYTES = 10 * 1024 * 1024
 
 
 class WhisperAdapter(STTProvider):
@@ -28,6 +28,7 @@ class WhisperAdapter(STTProvider):
             ``medium``, or ``large-v3``.
         device: Compute device — ``cpu`` (default) or ``cuda``.
         compute_type: Quantization — ``int8``, ``float16``, ``float32``.
+        max_audio_bytes: Maximum audio buffer size in bytes.
     """
 
     def __init__(
@@ -35,10 +36,12 @@ class WhisperAdapter(STTProvider):
         model_size: str = "base",
         device: str = "cpu",
         compute_type: str = "int8",
+        max_audio_bytes: int = DEFAULT_MAX_AUDIO_BYTES,
     ) -> None:
         self._model_size = model_size
         self._device = device
         self._compute_type = compute_type
+        self._max_audio_bytes = max_audio_bytes
         self._model: Any = None
 
     @property
@@ -90,9 +93,9 @@ class WhisperAdapter(STTProvider):
         if not audio:
             raise STTError("Empty audio buffer")
 
-        if len(audio) > MAX_AUDIO_BYTES:
+        if len(audio) > self._max_audio_bytes:
             raise STTError(
-                f"Audio exceeds {MAX_AUDIO_BYTES // 1024 // 1024}MB limit "
+                f"Audio exceeds {self._max_audio_bytes // 1024 // 1024}MB limit "
                 f"(received {len(audio) // 1024 // 1024}MB)"
             )
 
@@ -122,9 +125,13 @@ class WhisperAdapter(STTProvider):
             raise STTError(msg) from exc
 
     async def warm_up(self) -> None:
-        """Pre-load the Whisper model into memory."""
+        """Pre-load the Whisper model into memory.
+
+        Offloaded to a thread pool to avoid blocking the event loop
+        during model download and initialization.
+        """
         if self._model is None:
-            self._load_model()
+            await asyncio.to_thread(self._load_model)
 
     async def health_check(self) -> bool:
         """Return True if the model is loaded and ready."""

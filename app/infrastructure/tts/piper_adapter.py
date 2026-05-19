@@ -142,9 +142,13 @@ class PiperAdapter(TTSProvider):
         ]
 
     async def warm_up(self) -> None:
-        """Pre-load the Piper voice model."""
+        """Pre-load the Piper voice model.
+
+        Offloaded to a thread pool to avoid blocking the event loop
+        during model loading.
+        """
         if self._voice_model is None:
-            self._load_voice()
+            await asyncio.to_thread(self._load_voice)
 
     async def health_check(self) -> bool:
         """Return True if the voice model is loaded."""

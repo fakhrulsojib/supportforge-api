@@ -29,17 +29,17 @@ def get_stt_provider(provider: str, **kwargs: Any) -> STTProvider:
     if provider == "whisper":
         from app.infrastructure.stt.whisper_adapter import WhisperAdapter
 
-        return WhisperAdapter(**kwargs)
+        return WhisperAdapter(**kwargs)  # accepts model_size, device, compute_type, max_audio_bytes
 
     if provider == "deepgram":
         # Placeholder — deepgram adapter is in voice-cloud extras
-        msg = "Deepgram STT adapter requires 'deepgram-sdk'. Install with: pip install deepgram-sdk>=3.0"
-        raise ImportError(msg)
+        msg = "Deepgram STT adapter not available. Install with: pip install 'supportforge[voice-cloud]'"
+        raise ValueError(msg)
 
     if provider == "google":
         # Placeholder — Google STT adapter is in voice-cloud extras
-        msg = "Google STT adapter requires 'google-cloud-speech'. Install with: pip install google-cloud-speech>=2.0"
-        raise ImportError(msg)
+        msg = "Google STT adapter not available. Install with: pip install 'supportforge[voice-cloud]'"
+        raise ValueError(msg)
 
     msg = f"Unknown STT provider: '{provider}'. Available: whisper, deepgram, google"
     raise ValueError(msg)

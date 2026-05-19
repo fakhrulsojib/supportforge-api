@@ -33,10 +33,10 @@ class TestSTTFactory:
             get_stt_provider("nonexistent")
 
     def test_deepgram_not_installed(self) -> None:
-        """Factory raises ImportError when deepgram SDK is not installed."""
+        """Factory raises ValueError when deepgram adapter is not available."""
         from app.infrastructure.stt.factory import get_stt_provider
 
-        with pytest.raises((ValueError, ImportError)):
+        with pytest.raises(ValueError, match="not available"):
             get_stt_provider("deepgram", api_key="test")
 
 
