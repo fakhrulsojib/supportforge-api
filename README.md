@@ -31,6 +31,7 @@ SupportForge is a multi-tenant AI customer support agent powered by Ollama (self
 - **Failed Query Logging** — Automatic tracking of RAG pipeline failures with admin analytics for identifying knowledge gaps
 - **Platform Superadmin** — Cross-tenant platform management role with dedicated RBAC, JWT claims, and CLI bootstrap script
 - **Tenant Provisioning** — Full lifecycle management (create, activate, suspend, archive) with chat gate enforcement for suspended tenants
+- **Voice Pipeline** _(feature branch)_ — Pipecat-based STT/TTS with hexagonal adapters (Whisper, Piper), per-tenant concurrency management, and three-tier config resolution (cloud → local → disabled)
 
 ## Architecture
 
@@ -46,7 +47,8 @@ Hexagonal Architecture (Ports & Adapters)
     │  API Layer       │ │  Infrastructure      │
     │  (FastAPI routes │ │  (adapters)          │
     │   + schemas)     │ │  DB, LLM, Vector,   │
-    │                  │ │  Redis, WebSocket    │
+    │                  │ │  Redis, WebSocket,   │
+    │                  │ │  STT, TTS, Voice     │
     └──────────────────┘ └─────────────────────┘
 ```
 
@@ -61,6 +63,7 @@ Hexagonal Architecture (Ports & Adapters)
 | Cache | Redis |
 | Auth | JWT (access + refresh tokens) |
 | Streaming | WebSocket |
+| Voice (optional) | Pipecat + faster-whisper (STT) + piper-tts (TTS) |
 | Validation | Pydantic v2 |
 | Logging | structlog (JSON) |
 | Testing | pytest + testcontainers + hypothesis |
@@ -104,6 +107,9 @@ pip install -e ".[dev]"
 # Optional: Install cross-encoder reranker (adds ~80MB model)
 # pip install -e ".[dev,reranker]"
 
+# Optional: Install voice pipeline (STT + TTS)
+# pip install -e ".[dev,voice]"
+
 # Run tests
 pytest --cov --cov-branch --cov-fail-under=95
 
@@ -123,7 +129,7 @@ supportforge-api/
 │   ├── config.py                  # Pydantic Settings
 │   ├── core/                      # Security, middleware, dependencies
 │   ├── domain/                    # Pure business logic (models, services, interfaces)
-│   ├── infrastructure/            # Adapters (DB, LLM, vector, cache, WebSocket)
+│   ├── infrastructure/            # Adapters (DB, LLM, vector, cache, WebSocket, STT, TTS, voice)
 │   ├── rag/                       # LangGraph RAG pipeline
 │   ├── api/                       # HTTP + WebSocket endpoints
 │   └── workers/                   # Background tasks
@@ -172,6 +178,9 @@ supportforge-api/
 | `GET` | `/api/v1/analytics/daily-stats` | Admin | Daily conversation and message counts |
 | `GET` | `/api/v1/analytics/top-intents` | Admin | Top topics by frequency |
 | `GET` | `/api/v1/analytics/satisfaction` | Admin | Customer satisfaction rate |
+| `GET` | `/api/v1/voice/config` | JWT | Voice availability for tenant |
+| `GET` | `/api/v1/voice/health` | JWT | STT/TTS service health |
+| `GET` | `/api/v1/voice/sessions` | Admin | Active voice session count |
 
 ### Roles
 
