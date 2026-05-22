@@ -35,7 +35,9 @@ class ActiveModel(BaseModel):
     has_api_key: bool = Field(False, description="Whether the tenant has a Gemini chat API key configured")
     api_key_preview: str = Field("", description="Masked chat API key preview (e.g. 'AIza...****')")
     embedding_provider: str = Field("ollama", description="Embedding provider identifier")
-    has_embedding_api_key: bool = Field(False, description="Whether the tenant has a Gemini embedding API key configured")
+    has_embedding_api_key: bool = Field(
+        False, description="Whether the tenant has a Gemini embedding API key configured",
+    )
     embedding_api_key_preview: str = Field("", description="Masked embedding API key preview")
 
 

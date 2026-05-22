@@ -9,7 +9,7 @@ from sqlalchemy import cast, func, select
 from sqlalchemy.types import Date
 
 from app.domain.interfaces.repository import FailedQueryRepository
-from app.domain.models.enums import EscalationTrigger, FailureReason
+from app.domain.models.enums import FailureReason
 from app.domain.models.failed_query import FailedQuery
 from app.infrastructure.database.models import FailedQueryModel
 

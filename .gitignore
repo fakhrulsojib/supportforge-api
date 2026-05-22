@@ -109,3 +109,6 @@ logs/
 # ============================
 data/bitext/*.csv
 data/bitext/*.parquet
+
+# Voice model files (downloaded at runtime)
+.voice_models/

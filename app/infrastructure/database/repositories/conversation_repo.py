@@ -225,6 +225,7 @@ class SQLMessageRepository(MessageRepository):
             reviewed_at=model.reviewed_at,
             reviewed_by=model.reviewed_by,
             created_at=model.created_at,
+            channel=model.channel,
         )
 
     async def create(self, message: Message) -> Message:
@@ -242,6 +243,7 @@ class SQLMessageRepository(MessageRepository):
             validation_status=message.validation_status,
             moderation_reason=message.moderation_reason,
             moderation_matched_term=message.moderation_matched_term,
+            channel=message.channel,
         )
         self._session.add(model)
         await self._session.flush()

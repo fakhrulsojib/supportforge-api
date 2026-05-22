@@ -15,7 +15,6 @@ from dataclasses import dataclass, field
 
 from app.domain.models.enums import ValidationStatus
 
-
 # ── Result Types ────────────────────────────────────────────────
 
 

@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import pytest
-
-from app.rag.markdown_parser import MarkdownSection, parse_markdown_sections
+from app.rag.markdown_parser import parse_markdown_sections
 
 
 class TestParseMarkdownSections:

@@ -999,7 +999,9 @@ class ChatService:
                     content_tail=content[-400:] if len(content) > 400 else "(shown in head)",
                 )
 
-            async for token_frame in effective_provider.stream(messages=messages, model=tenant_chat_model, temperature=temperature):  # type: ignore[attr-defined]
+            async for token_frame in effective_provider.stream(  # type: ignore[attr-defined]
+                messages=messages, model=tenant_chat_model, temperature=temperature,
+            ):
                 frame_kind = token_frame.get("type", "content") if isinstance(token_frame, dict) else "content"
                 token_text = token_frame.get("text", "") if isinstance(token_frame, dict) else token_frame
 
@@ -1050,7 +1052,7 @@ class ChatService:
                     bracket_idx = _sentinel_tail.find("[")
                     tail_from_bracket = _sentinel_tail[bracket_idx:]
 
-                    if _ESCALATE_SENTINEL == tail_from_bracket:
+                    if tail_from_bracket == _ESCALATE_SENTINEL:
                         # Exact match — swallow the sentinel
                         llm_escalated = True
                         safe = _sentinel_tail[:bracket_idx]

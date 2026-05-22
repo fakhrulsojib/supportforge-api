@@ -17,8 +17,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.rag.text_extractor import TextExtractor, TextExtractionError
-
+from app.rag.text_extractor import TextExtractionError, TextExtractor
 
 # ── PDF Extraction ───────────────────────────────────────────────
 
@@ -101,7 +100,7 @@ class TestMarkdownExtraction:
 
     def test_extract_markdown_unicode(self) -> None:
         """Markdown with unicode characters extracted correctly."""
-        content = "# Héading with ünïcödë\n\nParagraph with émojis 🎉".encode("utf-8")
+        content = "# Héading with ünïcödë\n\nParagraph with émojis 🎉".encode()
         result = TextExtractor.extract(content, "md")
         assert "ünïcödë" in result
         assert "🎉" in result
@@ -159,7 +158,7 @@ class TestTextExtraction:
 
     def test_extract_txt_unicode(self) -> None:
         """Plain text with UTF-8 unicode."""
-        content = "Héllo wörld".encode("utf-8")
+        content = "Héllo wörld".encode()
         result = TextExtractor.extract(content, "txt")
         assert result == "Héllo wörld"
 

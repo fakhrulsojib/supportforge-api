@@ -29,6 +29,7 @@ from app.domain.models.enums import (
     EscalationTrigger,
     FailureReason,
     FeedbackType,
+    MessageChannel,
     MessageRole,
     TenantStatus,
     UserRole,
@@ -99,7 +100,9 @@ class UserModel(Base):
     tenant_id: Mapped[str] = mapped_column(String(36), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
     email: Mapped[str] = mapped_column(String(320), nullable=False)
     password_hash: Mapped[str] = mapped_column(String(128), nullable=False, default="")
-    role: Mapped[UserRole] = mapped_column(Enum(UserRole, values_callable=_enum_values), nullable=False, default=UserRole.VIEWER)
+    role: Mapped[UserRole] = mapped_column(
+        Enum(UserRole, values_callable=_enum_values), nullable=False, default=UserRole.VIEWER,
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
 
     # Relationships
@@ -160,7 +163,9 @@ class MessageModel(Base):
     model_used: Mapped[str] = mapped_column(String(100), nullable=False, default="")
     tokens_in: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     tokens_out: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    feedback: Mapped[FeedbackType] = mapped_column(Enum(FeedbackType, values_callable=_enum_values), nullable=False, default=FeedbackType.NONE)
+    feedback: Mapped[FeedbackType] = mapped_column(
+        Enum(FeedbackType, values_callable=_enum_values), nullable=False, default=FeedbackType.NONE,
+    )
     validation_status: Mapped[ValidationStatus] = mapped_column(
         Enum(ValidationStatus, values_callable=_enum_values), nullable=False, default=ValidationStatus.NONE
     )
@@ -168,6 +173,12 @@ class MessageModel(Base):
     moderation_matched_term: Mapped[str] = mapped_column(String(200), nullable=False, default="")
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     reviewed_by: Mapped[str] = mapped_column(String(36), nullable=False, default="")
+    channel: Mapped[MessageChannel] = mapped_column(
+        Enum(MessageChannel, values_callable=_enum_values),
+        nullable=False,
+        default=MessageChannel.TEXT,
+        server_default="text",
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
 
     # Relationships
@@ -178,6 +189,7 @@ class MessageModel(Base):
         Index("ix_messages_created_at", "created_at"),
         Index("ix_messages_validation_status", "validation_status"),
         Index("ix_messages_feedback", "feedback"),
+        Index("ix_messages_channel", "channel"),
     )
 
 
@@ -191,7 +203,9 @@ class DocumentModel(Base):
     filename: Mapped[str] = mapped_column(String(500), nullable=False)
     file_type: Mapped[str] = mapped_column(String(50), nullable=False)
     chunk_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    status: Mapped[DocumentStatus] = mapped_column(Enum(DocumentStatus, values_callable=_enum_values), nullable=False, default=DocumentStatus.PENDING)
+    status: Mapped[DocumentStatus] = mapped_column(
+        Enum(DocumentStatus, values_callable=_enum_values), nullable=False, default=DocumentStatus.PENDING,
+    )
     uploaded_by: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
 

@@ -38,6 +38,7 @@ SupportForge is a production-grade, multi-tenant AI customer support agent. This
 | Phase 21 | `phase-21/ab-testing-config` | Tenant config (model, temperature, prompt variant), admin settings UI |
 | Phase 22 | `phase-22/webhook-integration` | Webhook service for escalation/feedback/new conversation events |
 | Phase 23 | `phase-23/deployment-e2e` | Docker prod, deployment guides, E2E test suite, tech debt cleanup |
+| Voice V1 | `feature/voice-v1` | Pipecat pipeline, STT/TTS adapters, session management, voice API |
 
 ### Branch Rules
 
@@ -294,6 +295,9 @@ Infrastructure (adapters — implement the ports)
 ├── infrastructure/vectorstore/    → ChromaDB adapter
 ├── infrastructure/reranker/       → Cross-encoder reranker (optional)
 ├── infrastructure/cache/          → Redis adapter
+├── infrastructure/stt/            → STT adapters (Whisper) + factory
+├── infrastructure/tts/            → TTS adapters (Piper) + factory
+├── infrastructure/voice/          → Pipecat pipeline (RAG processor, session manager)
 └── infrastructure/websocket/      → Connection manager
 
 API Layer (FastAPI routes + Pydantic schemas)
@@ -356,6 +360,17 @@ For **any** module not listed below, derive the test path using this rule:
 | `app/domain/interfaces/reranker.py` | `tests/unit/rag/test_reranker.py` |
 | `app/infrastructure/reranker/factory.py` | `tests/unit/rag/test_reranker.py` |
 | `app/infrastructure/reranker/noop_reranker.py` | `tests/unit/rag/test_reranker.py` |
+| `app/domain/interfaces/stt_provider.py` | `tests/unit/domain/test_stt_provider.py` |
+| `app/domain/interfaces/tts_provider.py` | `tests/unit/domain/test_tts_provider.py` |
+| `app/domain/models/voice.py` | `tests/unit/domain/test_voice_models.py` |
+| `app/domain/models/enums.py` (MessageChannel) | `tests/unit/domain/test_voice_enums_exceptions.py` |
+| `app/core/exceptions.py` (STTError, TTSError, VoiceBusyError) | `tests/unit/domain/test_voice_enums_exceptions.py` |
+| `app/infrastructure/stt/whisper_adapter.py` | `tests/unit/infrastructure/test_stt.py` |
+| `app/infrastructure/tts/piper_adapter.py` | `tests/unit/infrastructure/test_tts.py` |
+| `app/infrastructure/voice/rag_processor.py` | `tests/unit/infrastructure/test_voice_pipeline.py` |
+| `app/infrastructure/voice/pipeline_factory.py` | `tests/unit/infrastructure/test_voice_session.py` |
+| `app/core/tenant_config.py` (TenantVoiceConfig) | `tests/unit/test_tenant_voice_config.py` |
+| `app/api/v1/voice.py` | `tests/integration/api/test_voice.py` |
 
 ### Testing Standards
 

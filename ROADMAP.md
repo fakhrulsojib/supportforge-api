@@ -196,6 +196,7 @@
 | 11 | Failed Query Logging & Analytics | High | ✅ |
 | 12 | Tenant Provisioning UI + Failed Queries UI | High | ✅ |
 | 13 | Analytics Backend API | High | ✅ |
+| V1 | Voice Pipeline (STT/TTS + Pipecat) | High | 🔧 (`feature/voice-v1`) |
 | 14 | Rate Limiting Middleware | Medium | 🔲 |
 | 15 | PII Detection & Masking | Medium | 🔲 |
 | 16 | User Approval Workflow | Medium | 🔲 |
@@ -217,6 +218,61 @@
 - [ ] Replace `mypy ignore_errors = true` → Phase 23
 - [ ] Fix `.env.example` interpolation → Phase 23
 - [ ] Per-tenant admin scoping tests → Phase 23
+
+---
+
+## Phase V1 — Voice Pipeline (STT/TTS + Pipecat) 🔧
+
+> **Branch:** `feature/voice-v1`
+> **Status:** Feature branch — pending merge to `main`
+
+### V1.1 — Domain Layer ✅
+- [x] `STTProvider` ABC with `transcribe()`, `warm_up()`, `health_check()`
+- [x] `TTSProvider` ABC with `synthesize()`, `synthesize_stream()`, `list_voices()`, `warm_up()`, `health_check()`
+- [x] `VoiceFrame` frozen dataclass, `VoiceFrameType` constants
+- [x] `MessageChannel` enum (`text`, `voice`)
+- [x] `STTError`, `TTSError`, `VoiceBusyError` exception classes
+- [x] Tests: 23 unit tests (ABC enforcement, enums, value objects, exceptions)
+
+### V1.2 — STT/TTS Infrastructure ✅
+- [x] `WhisperAdapter` — faster-whisper with `asyncio.to_thread` offloading, configurable max_audio_bytes
+- [x] `PiperAdapter` — piper-tts with sentence-boundary streaming, regex split
+- [x] `get_stt_provider()` and `get_tts_provider()` factories with lazy imports
+- [x] Tests: 20 unit tests (adapter, factory, error wrapping)
+
+### V1.3 — Tenant Voice Config ✅
+- [x] `TenantVoiceConfig` frozen dataclass
+- [x] `resolve_tenant_voice_config()` — 3-tier resolver (cloud → local → disabled), never raises
+- [x] Voice settings in `app/config.py`: `voice_stt_model`, `voice_tts_voice`, `voice_tts_sample_rate`, `voice_max_audio_bytes`, `voice_max_sessions_per_tenant`
+- [x] `MessageChannel` column on `MessageModel` ORM (`channel` with `server_default="text"`)
+- [x] `.env.example` updated with voice section
+- [x] Tests: 12 unit tests (resolver tiers, edge cases, clamping)
+
+### V1.4 — Pipecat Integration ✅
+- [x] `SupportForgeRAGProcessor` — bridges ChatService stream to Pipecat frames
+- [x] `PipecatSTTAdapter` and `PipecatTTSAdapter` — domain adapter wrappers
+- [x] `VoiceSessionManager` — per-tenant `asyncio.Semaphore` concurrency with atomic check+acquire
+- [x] `create_voice_pipeline()` factory
+- [x] Tests: 18 unit tests (processor, adapters, session manager, factory)
+
+### V1.5 — REST API Endpoints ✅
+- [x] `GET /api/v1/voice/config` — tenant voice availability (reads from DB)
+- [x] `GET /api/v1/voice/health` — STT/TTS health status
+- [x] `GET /api/v1/voice/sessions` — active session count (admin only)
+- [x] Router registered in `main.py`
+- [x] Tests: 7 integration tests (auth, config resolution, health, tenant-not-found)
+
+### V1.6 — Frontend UI ✅ _(supportforge-ui)_
+- [x] `voiceApi.js` — centralized voice API client
+- [x] `useVoice.js` — custom hook (MediaRecorder, state machine)
+- [x] `VoiceButton.jsx` — 5-state component (idle, listening, processing, speaking, error)
+- [x] `VoiceButton.css` — animations, responsive, dark-mode-safe
+- [x] Voice API routes in `constants.js`
+
+### V1.7 — Deployment & Config ✅
+- [x] `pyproject.toml` — `voice` and `voice-cloud` optional dependency groups
+- [x] `Dockerfile` — `INSTALL_VOICE` build arg, conditional `espeak-ng` installation
+- [x] `scripts/migrate_add_channel.py` — idempotent migration for existing databases
 
 
 ---

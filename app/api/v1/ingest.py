@@ -28,7 +28,6 @@ from app.domain.models.enums import UserRole
 from app.domain.services.document_service import DocumentService
 from app.infrastructure.database.connection import get_async_session
 from app.infrastructure.database.repositories.document_repo import SQLDocumentRepository
-from app.workers.ingestion_queue import IngestionQueue
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -37,6 +36,7 @@ if TYPE_CHECKING:
     from app.domain.interfaces.vector_store import VectorStore
     from app.domain.models.user import User
     from app.rag.embeddings import EmbeddingService
+    from app.workers.ingestion_queue import IngestionQueue
 
 logger = structlog.get_logger(__name__)
 

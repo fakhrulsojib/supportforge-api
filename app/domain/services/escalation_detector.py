@@ -15,7 +15,6 @@ from dataclasses import dataclass
 
 from app.domain.models.enums import EscalationTrigger
 
-
 # ── Result Types ────────────────────────────────────────────────
 
 

@@ -124,3 +124,36 @@ class TenantSuspendedError(SupportForgeError):
             status_code=403,
             error_code="TENANT_SUSPENDED",
         )
+
+
+class STTError(SupportForgeError):
+    """Speech-to-Text processing failure."""
+
+    def __init__(self, message: str = "STT processing failed") -> None:
+        super().__init__(
+            message=message,
+            status_code=502,
+            error_code="STT_ERROR",
+        )
+
+
+class TTSError(SupportForgeError):
+    """Text-to-Speech synthesis failure."""
+
+    def __init__(self, message: str = "TTS synthesis failed") -> None:
+        super().__init__(
+            message=message,
+            status_code=502,
+            error_code="TTS_ERROR",
+        )
+
+
+class VoiceBusyError(SupportForgeError):
+    """Too many concurrent voice sessions for this tenant."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            message="Voice service is busy. Please try again shortly.",
+            status_code=429,
+            error_code="VOICE_BUSY",
+        )

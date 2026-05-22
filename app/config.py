@@ -107,6 +107,13 @@ class Settings(BaseSettings):
     superadmin_email: str = ""
     superadmin_password: str = ""  # noqa: S105
 
+    # ── Voice Pipeline (server defaults) ─────────────────────────
+    voice_stt_model: str = "base"
+    voice_tts_voice: str = "en_US-lessac-medium"
+    voice_tts_sample_rate: int = 22050
+    voice_max_audio_bytes: int = 10 * 1024 * 1024  # 10MB ≈ 5min PCM@16kHz
+    voice_max_sessions_per_tenant: int = 3
+
     @field_validator("app_log_level")
     @classmethod
     def validate_log_level(cls, v: str) -> str:

@@ -17,7 +17,6 @@ import pytest
 
 from app.workers.ingestion_queue import IngestionQueue
 
-
 # ── Helpers ──────────────────────────────────────────────────────
 
 
