@@ -18,7 +18,7 @@ from app.api.schemas.platform_tenant import (
     TenantStatusUpdateRequest,
 )
 from app.core.dependencies import require_superadmin
-from app.domain.models.enums import TenantStatus
+from app.domain.models.enums import TenantStatus  # noqa: TC001 — FastAPI needs at runtime
 from app.domain.models.tenant import TenantCreate
 from app.domain.services.tenant_service import TenantService
 from app.infrastructure.database.connection import get_async_session

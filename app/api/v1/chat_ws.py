@@ -17,6 +17,7 @@ JSON Frame Protocol:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 
 import structlog
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
@@ -170,13 +171,17 @@ async def websocket_chat(
 
             stop_event = asyncio.Event()
 
-            async def _stream_to_client() -> None:
+            async def _stream_to_client(
+                _message: str = message,
+                _conversation_id: str | None = conversation_id,
+                _stop: asyncio.Event = stop_event,
+            ) -> None:
                 """Consume the LLM stream and forward frames to the client."""
                 stream_gen = chat_service.stream_message(
-                    message=message,
+                    message=_message,
                     tenant_id=tenant_id,
                     user_id=user_id,
-                    conversation_id=conversation_id,
+                    conversation_id=_conversation_id,
                     temperature=tenant_temperature,
                     tenant_blocklist=tenant_blocklist,
                     tenant_chat_model=tenant_chat_model,
@@ -188,7 +193,7 @@ async def websocket_chat(
                 )
                 try:
                     async for frame in stream_gen:
-                        if stop_event.is_set():
+                        if _stop.is_set():
                             break
                         await ws_manager.send_json(websocket, frame)
                 except (LLMError, SupportForgeError) as e:
@@ -198,7 +203,7 @@ async def websocket_chat(
                         tenant_id=tenant_id,
                         user_id=user_id,
                     )
-                    if not stop_event.is_set():
+                    if not _stop.is_set():
                         await ws_manager.send_json(
                             websocket,
                             {
@@ -214,7 +219,7 @@ async def websocket_chat(
                         tenant_id=tenant_id,
                         user_id=user_id,
                     )
-                    if not stop_event.is_set():
+                    if not _stop.is_set():
                         await ws_manager.send_json(
                             websocket,
                             {
@@ -229,10 +234,12 @@ async def websocket_chat(
                     # Ollama detects the disconnect and stops GPU work.
                     await stream_gen.aclose()
 
-            async def _wait_for_stop() -> None:
+            async def _wait_for_stop(
+                _stop: asyncio.Event = stop_event,
+            ) -> None:
                 """Listen for a stop command while the stream is active."""
                 try:
-                    while not stop_event.is_set():
+                    while not _stop.is_set():
                         msg = await websocket.receive_json()
                         if msg.get("type") == "stop":
                             logger.info(
@@ -240,10 +247,10 @@ async def websocket_chat(
                                 tenant_id=tenant_id,
                                 user_id=user_id,
                             )
-                            stop_event.set()
+                            _stop.set()
                             return
                 except WebSocketDisconnect:
-                    stop_event.set()
+                    _stop.set()
                     raise
 
             stream_task = asyncio.create_task(_stream_to_client())
@@ -256,10 +263,10 @@ async def websocket_chat(
                 )
                 for task in pending:
                     task.cancel()
-                    try:
+                    with contextlib.suppress(
+                        asyncio.CancelledError, WebSocketDisconnect,
+                    ):
                         await task
-                    except (asyncio.CancelledError, WebSocketDisconnect):
-                        pass
 
                 # Re-raise WebSocketDisconnect if the stop listener caught it
                 for task in done:

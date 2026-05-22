@@ -31,7 +31,11 @@ SupportForge is a multi-tenant AI customer support agent powered by Ollama (self
 - **Failed Query Logging** — Automatic tracking of RAG pipeline failures with admin analytics for identifying knowledge gaps
 - **Platform Superadmin** — Cross-tenant platform management role with dedicated RBAC, JWT claims, and CLI bootstrap script
 - **Tenant Provisioning** — Full lifecycle management (create, activate, suspend, archive) with chat gate enforcement for suspended tenants
-- **Voice Pipeline** _(feature branch)_ — Pipecat-based STT/TTS with hexagonal adapters (Whisper, Piper), per-tenant concurrency management, and three-tier config resolution (cloud → local → disabled)
+- **Voice Pipeline** _(feature branch)_ — Pipecat-based STT/TTS with hexagonal adapters (Whisper, Piper, Azure), per-tenant concurrency management, and three-tier config resolution (cloud → local → disabled)
+
+#### Voice Call Overlay
+
+![Voice Call Overlay — Agent speaking with Mute and End controls](docs/screenshots/voice-call-overlay.png)
 
 ## Architecture
 
