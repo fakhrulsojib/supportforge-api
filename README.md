@@ -10,6 +10,12 @@
 ![LangGraph](https://img.shields.io/badge/LangGraph-RAG-1C3C3C?style=flat-square)
 ![License](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)
 
+## 🎬 Demo
+
+[![SupportForge Demo](https://img.youtube.com/vi/CP3tsJpi1q4/hqdefault.jpg)](https://youtu.be/CP3tsJpi1q4)
+
+> 3-minute walkthrough: live chat with RAG streaming, anti-hallucination guard, smart escalation, admin panel, and analytics dashboard.
+
 ## Overview
 
 SupportForge is a multi-tenant AI customer support agent powered by Ollama (self-hosted) and Google Gemini (cloud) LLMs, RAG (Retrieval-Augmented Generation) via LangGraph, and real-time WebSocket streaming. It provides intelligent, context-aware responses grounded in your organization's knowledge base.
