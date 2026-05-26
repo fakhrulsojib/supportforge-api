@@ -138,9 +138,12 @@ supportforge-api/
 │   ├── main.py                    # FastAPI app factory
 │   ├── config.py                  # Pydantic Settings
 │   ├── core/                      # Security, middleware, dependencies
+│   │   ├── event_hooks.py         # Outbound event webhook dispatcher
+│   │   └── config_validators.py   # Config JSON validation
 │   ├── domain/                    # Pure business logic (models, services, interfaces)
 │   ├── infrastructure/            # Adapters (DB, LLM, vector, cache, WebSocket, STT, TTS, voice)
 │   ├── rag/                       # LangGraph RAG pipeline
+│   │   ├── prompt_builder.py      # Pluggable system prompt builder
 │   │   └── tools/                 # Pluggable tool system (executor, webhook, resolver, tool loop)
 │   ├── api/                       # HTTP + WebSocket endpoints
 │   └── workers/                   # Background tasks
@@ -175,9 +178,11 @@ supportforge-api/
 | `WS` | `/api/v1/ws/chat` | JWT | WebSocket chat with token-by-token streaming |
 | `GET` | `/api/v1/admin/models` | Admin | List available models |
 | `PUT` | `/api/v1/admin/models/active` | Admin | Set active chat/embedding model |
-| `POST` | `/api/v1/ingest/upload` | Admin | Upload document |
-| `GET` | `/api/v1/ingest/documents` | Admin | List documents |
-| `DELETE` | `/api/v1/ingest/documents/{id}` | Admin | Delete document |
+| `POST` | `/api/v1/documents/upload` | Admin | Upload document |
+| `GET` | `/api/v1/documents` | Admin | List documents |
+| `GET` | `/api/v1/documents/{id}` | Admin/Agent | Get single document status |
+| `POST` | `/api/v1/documents/{id}/retry` | Admin/Agent | Retry failed document ingestion |
+| `DELETE` | `/api/v1/documents/{id}` | Admin | Delete document |
 | `GET` | `/api/v1/admin/feedback/negative` | Admin | List negative feedback |
 | `GET` | `/api/v1/admin/escalations` | Admin | List escalated conversations |
 | `GET` | `/api/v1/admin/flagged` | Admin | List flagged messages |

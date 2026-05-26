@@ -125,6 +125,7 @@
 - [x] Multipart upload: PDF, Markdown, CSV, plain text
 - [x] File validation: max 10MB, max 50 files/tenant
 - [x] CRUD endpoints: upload, list, status, delete
+- [x] `POST /api/v1/documents/{id}/retry` — retry failed document ingestion (admin/agent)
 - [x] `DocumentService` domain service with tenant isolation
 - [x] `DocumentResponse`, `DocumentListResponse`, `DocumentUploadResponse` schemas
 - [x] Tests: 36 unit + 24 integration (file types, oversized, tenant isolation, RBAC)
