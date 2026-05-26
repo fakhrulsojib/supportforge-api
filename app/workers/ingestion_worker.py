@@ -117,57 +117,54 @@ async def run_ingestion_task(
                 secrets=tenant_secrets,
             )
 
-            # Resolve effective embedding service for this tenant
-            effective_embed = embedding_service
-            embed_disposable = False
-            if (
-                tenant_models.embedding_provider == "gemini"
-                and tenant_models.gemini_embedding_api_key
-            ):
+            if tenant_models.embedding_provider == "gemini":
+                if not tenant_models.gemini_embedding_api_key:
+                    msg = (
+                        "Gemini embedding provider configured but no API key found. "
+                        "Please add a 'gemini_embedding_api_key' secret in Settings → Secrets."
+                    )
+                    raise ValueError(msg)
+                if not tenant_models.embedding_model:
+                    msg = (
+                        "Gemini embedding provider configured but no model selected. "
+                        "Please select an embedding model in Settings → LLM Provider."
+                    )
+                    raise ValueError(msg)
                 from app.infrastructure.llm.factory import get_gemini_embedding_provider
-                resolved_model = tenant_models.embedding_model or "gemini-embedding-2"
                 effective_embed = get_gemini_embedding_provider(
                     api_key=tenant_models.gemini_embedding_api_key,
-                    model=resolved_model,
+                    model=tenant_models.embedding_model,
                 )
                 embed_disposable = True
                 logger.info(
                     "ingestion_using_gemini_embeddings",
                     document_id=document_id,
-                    model=resolved_model,
-                )
-            elif tenant_models.embedding_provider == "gemini":
-                # Provider is gemini but key is missing/corrupted
-                logger.warning(
-                    "ingestion_gemini_embedding_key_missing",
-                    document_id=document_id,
-                    hint="Gemini embeddings configured but API key missing — falling back to Ollama",
+                    model=tenant_models.embedding_model,
                 )
 
-            # Resolve effective chat LLM for contextualisation
-            effective_llm = llm_provider
-            llm_disposable = False
-            if (
-                tenant_models.chat_provider == "gemini"
-                and tenant_models.gemini_api_key
-            ):
+            if tenant_models.chat_provider == "gemini":
+                if not tenant_models.gemini_api_key:
+                    msg = (
+                        "Gemini chat provider configured but no API key found. "
+                        "Please add a 'gemini_api_key' secret in Settings → Secrets."
+                    )
+                    raise ValueError(msg)
+                if not tenant_models.chat_model:
+                    msg = (
+                        "Gemini chat provider configured but no model selected. "
+                        "Please select a chat model in Settings → LLM Provider."
+                    )
+                    raise ValueError(msg)
                 from app.infrastructure.llm.factory import get_gemini_provider
-                resolved_chat_model = tenant_models.chat_model or "gemini-2.5-flash"
                 effective_llm = get_gemini_provider(
                     api_key=tenant_models.gemini_api_key,
-                    model=resolved_chat_model,
+                    model=tenant_models.chat_model,
                 )
                 llm_disposable = True
                 logger.info(
                     "ingestion_using_gemini_chat",
                     document_id=document_id,
-                    model=resolved_chat_model,
-                )
-            elif tenant_models.chat_provider == "gemini":
-                logger.warning(
-                    "ingestion_gemini_chat_key_missing",
-                    document_id=document_id,
-                    hint="Gemini chat configured but API key missing — falling back to Ollama for contextualisation",
+                    model=tenant_models.chat_model,
                 )
 
             # Create the ingestion service and process
