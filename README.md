@@ -98,11 +98,7 @@ cp .env.example .env
 # 3. Start all services
 docker compose up -d
 
-# 4. Create tenant and seed demo data
-docker compose exec api python scripts/create_tenant.py
-docker compose exec api python scripts/seed_demo.py
-
-# 5. Verify
+# 4. Verify
 curl http://localhost:8000/health
 ```
 
