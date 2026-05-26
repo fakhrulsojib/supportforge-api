@@ -40,6 +40,7 @@ SupportForge is a production-grade, multi-tenant AI customer support agent. This
 | Phase 23 | `phase-23/deployment-e2e` | Docker prod, deployment guides, E2E test suite, tech debt cleanup |
 | Voice V1 | `feature/voice-v1` | Pipecat pipeline, STT/TTS adapters, session management, voice API |
 | Pluggable Tool System | `feature/pluggable-tool-system` | Tool executor, webhook tool, tool loop, tenant secrets, agent personality, SSRF protection |
+| Widget SDK + Event Hooks | `feature/widget-sdk-event-hooks` | Widget session auth, dual WebSocket auth, event hook dispatcher, tenant UI config |
 
 ### Branch Rules
 
@@ -353,7 +354,10 @@ For **any** module not listed below, derive the test path using this rule:
 | `app/api/schemas/analytics.py` | `tests/unit/schemas/test_analytics_schemas.py` |
 | `app/api/v1/analytics.py` | `tests/integration/api/test_analytics.py` |
 | `app/api/v1/models.py` | `tests/integration/api/test_models.py` _(planned)_ |
-| `app/core/tenant_config.py` | `tests/unit/test_tenant_config.py` _(planned)_ |
+| `app/core/tenant_config.py` | `tests/unit/core/test_tenant_config.py` |
+| `app/core/tenant_config.py` (secrets resolution) | `tests/unit/core/test_tenant_config_secrets.py` |
+| `app/api/schemas/tenant.py` (TestHook*) | `tests/unit/schemas/test_test_hook_schemas.py` |
+| `app/api/v1/tenants.py` (test-hook) | `tests/integration/api/test_test_hook.py` |
 | `app/workers/ingestion_queue.py` | `tests/unit/workers/test_ingestion_queue.py` |
 | `app/rag/contextualizer.py` | `tests/unit/domain/test_ingestion_service.py` (TestContextualRetrieval) |
 | `app/rag/bm25_retriever.py` | `tests/unit/rag/test_bm25_retriever.py` |

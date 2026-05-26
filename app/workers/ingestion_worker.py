@@ -99,9 +99,21 @@ async def run_ingestion_task(
             settings = get_settings()
             tenant_repo = SQLTenantRepository(session)
             tenant = await tenant_repo.get_by_id(tenant_id)
+
+            # Load tenant secrets for API key resolution (secrets > config_json)
+            from app.infrastructure.database.repositories.tenant_secret_repo import (
+                SQLTenantSecretRepository,
+            )
+            sec_repo = SQLTenantSecretRepository(session, encryption_key=settings.secret_key)
+            try:
+                tenant_secrets = await sec_repo.get_all_decrypted(tenant_id)
+            except Exception:
+                tenant_secrets = {}
+
             tenant_models = resolve_tenant_models(
                 tenant.config_json if tenant else None,
                 encryption_key=settings.secret_key,
+                secrets=tenant_secrets,
             )
 
             # Resolve effective embedding service for this tenant

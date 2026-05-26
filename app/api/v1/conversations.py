@@ -19,7 +19,9 @@ from app.api.schemas.conversation import (
     MessageResponse,
 )
 from app.core.dependencies import get_current_user
+from app.core.event_hooks import EventType, HookPayload, dispatch_event
 from app.core.exceptions import ConversationNotFoundError, SupportForgeError
+from app.domain.models.enums import FeedbackType
 from app.infrastructure.database.connection import get_async_session
 from app.infrastructure.database.repositories.conversation_repo import (
     SQLConversationRepository,
@@ -218,6 +220,29 @@ async def update_message_feedback(
         )
 
     logger.info("feedback_updated", message_id=message_id, feedback=request.feedback.value)
+
+    # ── Event hook: negative feedback ─────────────────────────
+    if request.feedback == FeedbackType.NEGATIVE:
+        # Load tenant config for event hooks
+        from app.infrastructure.database.repositories.tenant_repo import (
+            SQLTenantRepository,
+        )
+        tenant_repo = SQLTenantRepository(session)
+        tenant = await tenant_repo.get_by_id(user.tenant_id)
+        tenant_config = tenant.config_json if tenant else None
+
+        dispatch_event(
+            tenant_config,
+            EventType.ON_NEGATIVE_FEEDBACK,
+            HookPayload(
+                event=EventType.ON_NEGATIVE_FEEDBACK.value,
+                tenant_id=user.tenant_id,
+                conversation_id=existing.conversation_id,
+                data={
+                    "message_id": message_id,
+                },
+            ),
+        )
 
     return MessageResponse(
         id=message.id,

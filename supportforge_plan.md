@@ -1160,33 +1160,34 @@ Reference this plan: link to ROADMAP.md
 
 ---
 
-### Phase 21 — A/B Testing & Tenant Configuration 🟢
+### Phase 21 — Tenant Settings UI & API Keys ✅
 
 > **Priority:** Low — Useful for optimization but not required for core support.
 
 **What to implement:**
-- [ ] Define `config_json` schema: `{chat_model, temperature, system_prompt_variant, max_tokens}`
-- [ ] Create `PATCH /api/v1/admin/config` — admin-only config update
-- [ ] Update `ChatService` to read tenant config at chat start
-- [ ] Log `{model, temperature, prompt_variant}` per message for analytics
-- [ ] Create `src/pages/SettingsPage.jsx` — config editor (model, temperature, prompt variant)
-- [ ] **Tests:** config update → next chat uses new settings; invalid temp → rejected
-- [ ] **Verify:** change temperature to 0.1 → deterministic; 0.7 → creative
+- [x] Create settings UI for `config_json` schema (chat_model, temperature, agent prompt, tools, widget, hooks, moderation)
+- [x] Create `POST /api/v1/tenants/{id}/secrets` for API Keys
+- [x] Update `resolve_tenant_models` to check secrets for provider keys
+- [x] Update endpoints callers (`chat_ws`, `chat_router`, `ingestion_worker`)
+- [x] Create `src/pages/SettingsPage.jsx` — 7 tabs
+- [x] **Tests:** config update → next chat uses new settings; 30 unit tests for models/secrets
+- [x] **Verify:** manual browser verification
 
 ---
 
-### Phase 22 — Webhook Integration & Notifications 🟢
+### Phase 22 — Webhook Integration & Notifications ✅
 
-> **Priority:** Low — Nice-to-have for external system integration.
+> **Status:** Implemented via `feature/pluggable-tool-system` + `feature/widget-sdk-event-hooks` branches.
+> Architecture differs from original plan: uses fire-and-forget `dispatch_event()` with `asyncio.create_task` instead of retry-based `webhook_service.py`. Tenant config uses `config_json.event_hooks` (per-event URL + headers) instead of a single `webhook_url`.
 
-**What to implement:**
-- [ ] Add `webhook_url` to tenant `config_json`
-- [ ] Create `app/domain/services/webhook_service.py` — fires POST on escalation, negative feedback, new conversation
-- [ ] Support Slack + Discord webhook formats (auto-detect from URL)
-- [ ] Retry: 3 attempts with exponential backoff, log failures
-- [ ] Wire into ChatService + feedback + persist_exchange
-- [ ] **Tests:** webhook fires on escalation; retry on 500; Slack/Discord format
-- [ ] **Verify:** Slack webhook URL → escalation → Slack notification
+**What was implemented:**
+- [x] Add `event_hooks` to tenant `config_json` — per-event URL + custom headers configuration
+- [x] Create `app/core/event_hooks.py` — `dispatch_event()` fire-and-forget async dispatcher with SSRF protection
+- [x] 4 event types: `ON_ESCALATION`, `ON_NEW_CONVERSATION`, `ON_TOOL_FAILURE`, `ON_NEGATIVE_FEEDBACK`
+- [x] Wire into ChatService (escalation, new conversation, tool failure) + feedback endpoint (negative feedback)
+- [ ] Support Slack + Discord webhook formats _(deferred — tenants use raw JSON POST for now)_
+- [ ] Retry with exponential backoff _(deferred — current impl is single-attempt, fire-and-forget)_
+- [x] **Tests:** 16 unit tests for event hooks dispatch, timeout, error isolation
 
 ---
 

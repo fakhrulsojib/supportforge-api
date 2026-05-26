@@ -49,9 +49,9 @@ class EventType(str, Enum):
     """Platform events that can trigger outbound webhooks."""
 
     ON_ESCALATION = "on_escalation"
-    ON_NEW_CONVERSATION = "on_new_conversation"  # TODO: dispatch in session start
-    ON_TOOL_FAILURE = "on_tool_failure"  # TODO: dispatch in tool_loop error path
-    ON_NEGATIVE_FEEDBACK = "on_negative_feedback"  # TODO: dispatch in feedback endpoint
+    ON_NEW_CONVERSATION = "on_new_conversation"
+    ON_TOOL_FAILURE = "on_tool_failure"
+    ON_NEGATIVE_FEEDBACK = "on_negative_feedback"
 
 
 @dataclass

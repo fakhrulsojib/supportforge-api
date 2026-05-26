@@ -64,11 +64,15 @@ class _ResolvedConnection:
     config_json: dict | None = None
 
 
-def _extract_tenant_config(tenant: Tenant) -> dict:
+def _extract_tenant_config(tenant: Tenant, *, secrets: dict[str, str] | None = None) -> dict:
     """Extract LLM/agent config from a tenant domain model.
 
     Returns a dict of config values. Shared between JWT and widget
     auth paths to avoid duplicating the config extraction logic.
+
+    Args:
+        tenant: Resolved tenant domain model.
+        secrets: Decrypted tenant secrets dict (from tenant_secrets table).
     """
     result: dict = {
         "temperature": 0.2,
@@ -104,6 +108,7 @@ def _extract_tenant_config(tenant: Tenant) -> dict:
     tenant_models = resolve_tenant_models(
         config_json,
         encryption_key=settings.secret_key,
+        secrets=secrets,
     )
     result["chat_model"] = tenant_models.chat_model
     result["embedding_model"] = tenant_models.embedding_model
@@ -152,7 +157,17 @@ async def _authenticate_jwt(
         if not tenant or tenant.status != TenantStatus.ACTIVE:
             return None
 
-        cfg = _extract_tenant_config(tenant)
+        # Load tenant secrets for API key resolution
+        from app.infrastructure.database.repositories.tenant_secret_repo import (
+            SQLTenantSecretRepository,
+        )
+        sec_repo = SQLTenantSecretRepository(session, encryption_key=settings.secret_key)
+        try:
+            tenant_secrets = await sec_repo.get_all_decrypted(user.tenant_id)
+        except Exception:
+            tenant_secrets = {}
+
+        cfg = _extract_tenant_config(tenant, secrets=tenant_secrets)
 
     return _ResolvedConnection(
         tenant_id=user.tenant_id,
@@ -197,7 +212,17 @@ async def _authenticate_widget(
         if not tenant or tenant.status != TenantStatus.ACTIVE:
             return None
 
-        cfg = _extract_tenant_config(tenant)
+        # Load tenant secrets for API key resolution
+        from app.infrastructure.database.repositories.tenant_secret_repo import (
+            SQLTenantSecretRepository,
+        )
+        sec_repo = SQLTenantSecretRepository(session, encryption_key=settings.secret_key)
+        try:
+            tenant_secrets = await sec_repo.get_all_decrypted(payload.tenant_id)
+        except Exception:
+            tenant_secrets = {}
+
+        cfg = _extract_tenant_config(tenant, secrets=tenant_secrets)
 
     return _ResolvedConnection(
         tenant_id=payload.tenant_id,

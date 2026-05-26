@@ -67,10 +67,16 @@ def _detect_provider(model_name: str | None) -> str | None:
     return None
 
 
+# Secret key names for Gemini API keys in tenant_secrets table
+SECRET_GEMINI_API_KEY = "gemini_api_key"
+SECRET_GEMINI_EMBEDDING_API_KEY = "gemini_embedding_api_key"
+
+
 def resolve_tenant_models(
     config_json: dict | None,
     *,
     encryption_key: str | None = None,
+    secrets: dict[str, str] | None = None,
 ) -> TenantModelConfig:
     """Extract chat and embedding model overrides from tenant config.
 
@@ -78,17 +84,25 @@ def resolve_tenant_models(
     Returns ``None`` for either field if not configured, which signals
     downstream callers to fall back to the server's global default.
 
+    API keys are resolved with the following priority:
+        1. ``secrets`` dict (from ``tenant_secrets`` table) — preferred.
+        2. ``config_json`` encrypted values — backward compatibility.
+
     Args:
         config_json: Tenant's ``config_json`` dict (may be None).
         encryption_key: Application secret key for decrypting the stored
             Gemini API key.  If not provided, encrypted keys cannot be
             decrypted and ``gemini_api_key`` will be ``None``.
+        secrets: Decrypted tenant secrets dict (key → plaintext value).
+            If provided, Gemini API keys are read from here first.
 
     Returns:
         TenantModelConfig with resolved model selections.
     """
-    if not config_json:
+    if not config_json and not secrets:
         return TenantModelConfig()
+    if not config_json:
+        config_json = {}
 
     # ── Model selections ────────────────────────────────────────
     chat_model: str | None = None
@@ -119,29 +133,40 @@ def resolve_tenant_models(
         # Auto-detect from model name
         embedding_provider = _detect_provider(embedding_model)
 
-    # ── Gemini API key (encrypted in config_json) ───────────────
+    # ── Gemini API keys ──────────────────────────────────────────
+    # Priority: tenant_secrets table > config_json (backward compat)
     gemini_api_key: str | None = None
-    raw_key = config_json.get(CONFIG_GEMINI_API_KEY)
-    if isinstance(raw_key, str) and raw_key and encryption_key:
-        try:
-            gemini_api_key = decrypt_value(raw_key, encryption_key)
-        except Exception:
-            logger.warning(
-                "tenant_gemini_key_decrypt_failed",
-                reason="invalid_ciphertext",
-            )
-
-    # ── Gemini Embedding API key (separate, encrypted) ──────────
     gemini_embedding_api_key: str | None = None
-    raw_embed_key = config_json.get(CONFIG_GEMINI_EMBEDDING_API_KEY)
-    if isinstance(raw_embed_key, str) and raw_embed_key and encryption_key:
-        try:
-            gemini_embedding_api_key = decrypt_value(raw_embed_key, encryption_key)
-        except Exception:
-            logger.warning(
-                "tenant_gemini_embedding_key_decrypt_failed",
-                reason="invalid_ciphertext",
-            )
+
+    # Tier 1: Read from tenant_secrets table (preferred)
+    if secrets:
+        if SECRET_GEMINI_API_KEY in secrets:
+            gemini_api_key = secrets[SECRET_GEMINI_API_KEY]
+        if SECRET_GEMINI_EMBEDDING_API_KEY in secrets:
+            gemini_embedding_api_key = secrets[SECRET_GEMINI_EMBEDDING_API_KEY]
+
+    # Tier 2: Fall back to config_json (backward compat for pre-migration tenants)
+    if gemini_api_key is None:
+        raw_key = config_json.get(CONFIG_GEMINI_API_KEY)
+        if isinstance(raw_key, str) and raw_key and encryption_key:
+            try:
+                gemini_api_key = decrypt_value(raw_key, encryption_key)
+            except Exception:
+                logger.warning(
+                    "tenant_gemini_key_decrypt_failed",
+                    reason="invalid_ciphertext",
+                )
+
+    if gemini_embedding_api_key is None:
+        raw_embed_key = config_json.get(CONFIG_GEMINI_EMBEDDING_API_KEY)
+        if isinstance(raw_embed_key, str) and raw_embed_key and encryption_key:
+            try:
+                gemini_embedding_api_key = decrypt_value(raw_embed_key, encryption_key)
+            except Exception:
+                logger.warning(
+                    "tenant_gemini_embedding_key_decrypt_failed",
+                    reason="invalid_ciphertext",
+                )
 
     logger.debug(
         "tenant_models_resolved",

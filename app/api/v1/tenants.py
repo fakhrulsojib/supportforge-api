@@ -16,6 +16,8 @@ from app.api.schemas.tenant import (
     TenantListResponse,
     TenantResponse,
     TenantUpdateRequest,
+    TestHookRequest,
+    TestHookResponse,
 )
 from app.core.dependencies import get_current_user, require_role
 from app.core.exceptions import TenantNotFoundError
@@ -201,3 +203,97 @@ async def delete_tenant(
     service = _get_tenant_service(session)
     await service.delete_tenant(tenant_id)
     logger.info("tenant_deleted_via_api", tenant_id=tenant_id, deleted_by=user.id)
+
+
+@router.post("/{tenant_id}/test-hook", response_model=TestHookResponse)
+async def test_event_hook(
+    tenant_id: str,
+    request: TestHookRequest,
+    session: AsyncSession = Depends(get_async_session),
+    user: User = Depends(require_role(UserRole.ADMIN)),
+) -> TestHookResponse:
+    """Test a webhook URL by sending a sample payload.
+
+    Sends an HTTP POST with a sample event payload to verify the
+    tenant's webhook URL is reachable and responding.  Uses SSRF
+    protection to prevent internal network access.
+
+    Args:
+        tenant_id: Tenant UUID (must match authenticated user's tenant).
+        request: Test hook configuration (event_type, url, headers).
+        session: Database session.
+        user: Authenticated admin user.
+
+    Returns:
+        TestHookResponse with success status and HTTP status code.
+    """
+    # Verify tenant ownership
+    if user.tenant_id != tenant_id and not getattr(user, "is_superadmin", False):
+        return TestHookResponse(
+            success=False,
+            error="You can only test hooks for your own tenant",
+        )
+
+    try:
+        import httpx
+        from urllib.parse import urlparse
+
+        from app.rag.tools.webhook import validate_url_safety
+
+        # SSRF protection: resolve safe IP
+        safe_ip = await validate_url_safety(request.url)
+
+        parsed = urlparse(request.url)
+        original_hostname = parsed.hostname
+        send_headers = {
+            "Content-Type": "application/json",
+            "User-Agent": "SupportForge-Hooks/1.0",
+            **request.headers,
+        }
+        if original_hostname:
+            send_headers["Host"] = original_hostname
+            safe_url = parsed._replace(
+                netloc=parsed.netloc.replace(original_hostname, safe_ip, 1)
+            ).geturl()
+        else:
+            safe_url = request.url
+
+        # Build sample payload
+        from datetime import datetime, timezone
+
+        sample_payload = {
+            "event": request.event_type,
+            "tenant_id": tenant_id,
+            "conversation_id": "test-00000000-0000-0000-0000-000000000000",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "data": {"test": True, "message": "This is a test webhook from SupportForge"},
+        }
+
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.post(safe_url, json=sample_payload, headers=send_headers)
+
+        logger.info(
+            "test_hook_dispatched",
+            tenant_id=tenant_id,
+            event_type=request.event_type,
+            url=request.url,
+            status=response.status_code,
+        )
+
+        return TestHookResponse(
+            success=200 <= response.status_code < 300,
+            status_code=response.status_code,
+            error=None if 200 <= response.status_code < 300 else f"HTTP {response.status_code}",
+        )
+
+    except httpx.TimeoutException:
+        return TestHookResponse(success=False, error="Request timed out (10s)")
+    except Exception as exc:
+        logger.warning(
+            "test_hook_failed",
+            tenant_id=tenant_id,
+            url=request.url,
+            exc_info=True,
+        )
+        return TestHookResponse(success=False, error=str(exc)[:200])
+

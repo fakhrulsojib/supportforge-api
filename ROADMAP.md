@@ -679,6 +679,11 @@
 - [x] `app/core/event_hooks.py` — `dispatch_event()` fire-and-forget async dispatcher
 - [x] `EventType` enum: `ON_ESCALATION`, `ON_NEW_CONVERSATION`, `ON_TOOL_FAILURE`, `ON_NEGATIVE_FEEDBACK`
 - [x] `HookPayload` dataclass with auto-generated ISO timestamp
-- [x] `_send_hook()` — error-isolated HTTP POST (never crashes the request)
-- [x] `app/domain/services/chat_service.py` — event dispatch at 5 escalation points (process_message + stream_message smart/RAG/tool/post-gen)
+- [x] `_send_hook()` — SSRF-protected HTTP POST with Host header injection (never crashes the request)
+- [x] `app/domain/services/chat_service.py` — event dispatch:
+  - `ON_ESCALATION` — 5 points (process_message + stream_message smart/RAG/tool/post-gen)
+  - `ON_NEW_CONVERSATION` — 2 points (process_message + stream_message, fires when `is_new_conversation=True`)
+  - `ON_TOOL_FAILURE` — 2 points (process_message + stream_message, fires for each `success=False` tool result)
+- [x] `app/api/v1/conversations.py` — `ON_NEGATIVE_FEEDBACK` dispatch on `FeedbackType.NEGATIVE`
 - [x] Tests: 16 unit tests (`tests/unit/core/test_event_hooks.py`)
+

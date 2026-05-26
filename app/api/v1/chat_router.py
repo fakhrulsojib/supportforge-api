@@ -63,9 +63,21 @@ async def chat_endpoint(
     from app.config import get_settings
     from app.core.tenant_config import resolve_tenant_models
     settings = get_settings()
+
+    # Load tenant secrets for API key resolution (secrets > config_json)
+    from app.infrastructure.database.repositories.tenant_secret_repo import (
+        SQLTenantSecretRepository,
+    )
+    sec_repo = SQLTenantSecretRepository(session, encryption_key=settings.secret_key)
+    try:
+        tenant_secrets = await sec_repo.get_all_decrypted(user.tenant_id)
+    except Exception:
+        tenant_secrets = {}
+
     models = resolve_tenant_models(
         tenant.config_json,
         encryption_key=settings.secret_key,
+        secrets=tenant_secrets,
     )
 
     # Extract agent personality config (no decryption — plain dict)

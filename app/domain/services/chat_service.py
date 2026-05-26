@@ -391,6 +391,19 @@ class ChatService:
 
         blocklist = tenant_blocklist or []
 
+        # ── Event hook: new conversation ───────────────────────────
+        if is_new_conversation:
+            dispatch_event(
+                tenant_config_json,
+                EventType.ON_NEW_CONVERSATION,
+                HookPayload(
+                    event=EventType.ON_NEW_CONVERSATION.value,
+                    tenant_id=tenant_id,
+                    conversation_id=conversation_id,
+                    data={"user_id": user_id},
+                ),
+            )
+
         logger.info(
             "chat_process_message",
             tenant_id=tenant_id,
@@ -575,6 +588,23 @@ class ChatService:
                 chat_model=tenant_chat_model,
             )
 
+            # ── Event hook: tool failures ──────────────────────────
+            for tr in result.get("tool_results", []):
+                if not tr.get("success"):
+                    dispatch_event(
+                        tenant_config_json,
+                        EventType.ON_TOOL_FAILURE,
+                        HookPayload(
+                            event=EventType.ON_TOOL_FAILURE.value,
+                            tenant_id=tenant_id,
+                            conversation_id=conversation_id,
+                            data={
+                                "tool_name": tr.get("name", ""),
+                                "error": tr.get("error", ""),
+                            },
+                        ),
+                    )
+
             # Generate or escalate
             if result.get("should_escalate"):
                 result = await escalation_node(result)
@@ -749,6 +779,19 @@ class ChatService:
         is_new_conversation = not conversation_id
         if not conversation_id:
             conversation_id = str(uuid.uuid4())
+
+        # ── Event hook: new conversation ───────────────────────────
+        if is_new_conversation:
+            dispatch_event(
+                tenant_config_json,
+                EventType.ON_NEW_CONVERSATION,
+                HookPayload(
+                    event=EventType.ON_NEW_CONVERSATION.value,
+                    tenant_id=tenant_id,
+                    conversation_id=conversation_id,
+                    data={"user_id": user_id},
+                ),
+            )
 
         logger.info(
             "chat_stream_message",
@@ -1051,6 +1094,23 @@ class ChatService:
                 conversation_history=history_messages,
                 chat_model=tenant_chat_model,
             )
+
+            # ── Event hook: tool failures ──────────────────────────
+            for tr in state.get("tool_results", []):
+                if not tr.get("success"):
+                    dispatch_event(
+                        tenant_config_json,
+                        EventType.ON_TOOL_FAILURE,
+                        HookPayload(
+                            event=EventType.ON_TOOL_FAILURE.value,
+                            tenant_id=tenant_id,
+                            conversation_id=conversation_id,
+                            data={
+                                "tool_name": tr.get("name", ""),
+                                "error": tr.get("error", ""),
+                            },
+                        ),
+                    )
 
             # Check if tool loop triggered escalation
             if state.get("should_escalate"):

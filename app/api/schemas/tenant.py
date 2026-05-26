@@ -55,3 +55,33 @@ class TenantListResponse(BaseModel):
 
     tenants: list[TenantResponse] = Field(..., description="List of tenants")
     total: int = Field(..., description="Total count")
+
+
+class TestHookRequest(BaseModel):
+    """Request body for POST /api/v1/tenants/{id}/test-hook."""
+
+    event_type: str = Field(
+        ...,
+        min_length=1,
+        max_length=50,
+        description="Event type to test (e.g., on_escalation)",
+    )
+    url: str = Field(
+        ...,
+        min_length=1,
+        max_length=2048,
+        description="Webhook URL to test",
+    )
+    headers: dict[str, str] = Field(
+        default_factory=dict,
+        description="Custom headers to include in the test request",
+    )
+
+
+class TestHookResponse(BaseModel):
+    """Response body for POST /api/v1/tenants/{id}/test-hook."""
+
+    success: bool = Field(..., description="Whether the test request succeeded")
+    status_code: int | None = Field(None, description="HTTP status code from the webhook")
+    error: str | None = Field(None, description="Error message if the test failed")
+

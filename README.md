@@ -33,7 +33,9 @@ SupportForge is a multi-tenant AI customer support agent powered by Ollama (self
 - **Content Moderation** — Input filtering (jailbreak detection, tenant blocklist) and output flagging with full DB audit trail
 - **Smart Escalation** — Context-aware human handoff triggered by frustrated sentiment, repeated questions, or explicit user requests
 - **Per-Tenant Model Selection** — Admin-configurable chat and embedding models with Ollama and Gemini provider support, separate API key management, and tenant-scoped persistence
-- **Pluggable Tool System** — Extensible tool framework with WebhookTool for external API calls, multi-turn LLM↔tool loop, SSRF protection, circuit breaker, encrypted tenant secrets, and per-tenant agent personality with prompt sandwich defense
+- **Pluggable Tool System** — Extensible tool framework with WebhookTool for external API calls, multi-turn LLM↔tool loop, SSRF protection, circuit breaker, encrypted tenant secrets with secrets-first API key resolution, and per-tenant agent personality with prompt sandwich defense
+- **Widget SDK Backend** — Embeddable chat widget support with embed key auth, `ws_` session tokens, dual WebSocket auth (JWT + widget), anonymous visitor conversations, per-tenant UI branding config, and dynamic CORS origins
+- **Outbound Event Hooks** — Fire-and-forget webhook notifications on escalation, new conversation, tool failure, and negative feedback — SSRF-protected with tenant-configured URLs and webhook URL testing endpoint
 - **Feedback Review Queue** — Admin dashboard endpoints for reviewing negative feedback, escalations, and flagged messages
 - **Failed Query Logging** — Automatic tracking of RAG pipeline failures with admin analytics for identifying knowledge gaps
 - **Platform Superadmin** — Cross-tenant platform management role with dedicated RBAC, JWT claims, and CLI bootstrap script
@@ -197,6 +199,10 @@ supportforge-api/
 | `POST` | `/api/v1/tenants/{id}/secrets` | Admin | Create/update tenant secret |
 | `GET` | `/api/v1/tenants/{id}/secrets` | Admin | List tenant secret keys |
 | `DELETE` | `/api/v1/tenants/{id}/secrets/{key}` | Admin | Delete tenant secret |
+| `POST` | `/api/v1/tenants/{id}/test-hook` | Admin | Test webhook URL with SSRF protection |
+| `POST` | `/api/v1/widget/session` | Embed key | Create widget session (returns `ws_` token) |
+| `GET` | `/api/v1/widget/ui-config/{slug}` | — | Public tenant UI config (theme, branding) |
+
 
 ### Roles
 
