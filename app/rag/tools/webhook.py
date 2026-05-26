@@ -59,6 +59,10 @@ def _is_ip_blocked(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped:
         ip = ip.ipv4_mapped
 
+    from app.config import get_settings
+    if get_settings().app_env == "development":
+        return False
+
     if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
         return True
     # Additional explicit checks for cloud metadata ranges
