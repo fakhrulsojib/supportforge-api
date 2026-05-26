@@ -32,6 +32,10 @@ class RAGState(TypedDict, total=False):
         model_used: Which LLM model was used.
         tokens_in: Input token count.
         tokens_out: Output token count.
+        tool_calls: Tool calls made during the tool loop.
+        tool_results: Results from tool executions.
+        tool_round: Current tool loop round number.
+        tool_messages: Tool-related messages for history persistence.
     """
 
     query: str
@@ -45,6 +49,12 @@ class RAGState(TypedDict, total=False):
     model_used: str
     tokens_in: int
     tokens_out: int
+    # Phase 3 — Tool fields
+    tool_calls: list[dict[str, Any]]
+    tool_results: list[dict[str, Any]]
+    tool_round: int
+    tool_messages: list[dict[str, str]]
+    tool_answer: str
 
 
 # ── Node functions ────────────────────────────────────────────────
@@ -116,7 +126,8 @@ async def retrieve_node(
             try:
                 from app.rag.bm25_retriever import bm25_search
 
-                all_docs_raw = await vector_store.get_all_documents(tenant_id)
+                # Limit BM25 document fetch to prevent catastrophic OOM memory spikes
+                all_docs_raw = await vector_store.get_all_documents(tenant_id, limit=1000)
                 all_docs = [
                     {
                         "content": r.content,
@@ -240,50 +251,50 @@ async def generate_node(
     llm_provider: Any,
     *,
     chat_model: str | None = None,
+    history_messages: list[dict[str, str]] | None = None,
+    agent_config: dict[str, Any] | None = None,
 ) -> RAGState:
     """Generate an answer using the LLM with retrieved context.
 
-    Constructs a prompt with the relevant documents as context
-    and generates a response.
+    Uses ``prompt_builder`` for system prompt, context formatting, and
+    message construction — ensuring identical behaviour between the
+    non-streaming (``process_message``) and streaming (``stream_message``)
+    paths.
 
     Args:
         state: Current RAG state with relevant_docs.
         llm_provider: LLMProvider adapter instance.
         chat_model: Optional tenant-specific chat model override.
+        history_messages: Conversation history for multi-turn context.
+        agent_config: Tenant's ``config_json["agent_prompt"]`` dict.
 
     Returns:
         Updated state with answer and sources.
     """
+    from app.rag.prompt_builder import build_rag_messages, format_rag_context
+
     query = state["query"]
     relevant_docs = state.get("relevant_docs", [])
 
-    # Build context from relevant documents
-    context_parts: list[str] = []
+    # Build sources metadata for the response
     sources: list[dict[str, Any]] = []
-    for i, doc in enumerate(relevant_docs):
-        context_parts.append(f"[Source {i + 1}]: {doc['content']}")
+    for doc in relevant_docs:
         sources.append(
             {
-                "content": doc["content"][:200],
+                "content": doc.get("content", "")[:200],
                 "score": doc.get("score", 0),
                 "id": doc.get("id", ""),
             }
         )
 
-    context = "\n\n".join(context_parts)
-
-    system_prompt = (
-        "You are a helpful customer support assistant. "
-        "Answer the question using ONLY the provided context. "
-        "If the context doesn't contain enough information to answer, say so. "
-        "Be concise, friendly, and professional. "
-        "Always cite which source number you used."
+    # Build unified context and messages via prompt_builder
+    context = format_rag_context(relevant_docs)
+    messages = build_rag_messages(
+        query=query,
+        context=context,
+        history_messages=history_messages,
+        agent_config=agent_config,
     )
-
-    messages: list[dict[str, str]] = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {query}"},
-    ]
 
     try:
         answer = await llm_provider.generate(messages=messages, model=chat_model)
@@ -340,9 +351,15 @@ async def run_rag_pipeline(
     chat_model: str | None = None,
     embedding_model: str | None = None,
 ) -> RAGState:
-    """Execute the full RAG pipeline.
+    """Execute the RAG retrieval + grading pipeline via LangGraph.
 
-    Flow: retrieve → grade → (generate | escalate)
+    Flow: retrieve → grade → END
+
+    The graph handles ONLY retrieval and grading.  The caller is
+    responsible for the subsequent steps:
+        - Tool execution (via ``run_tool_loop``)
+        - Answer generation (via ``generate_node`` or ``provider.stream``)
+        - Escalation handling
 
     Args:
         query: User's question.
@@ -351,13 +368,25 @@ async def run_rag_pipeline(
         embedding_service: EmbeddingService.
         llm_provider: LLMProvider adapter.
         relevance_threshold: Minimum relevance score.
-        chat_model: Optional tenant-specific chat model override.
+        chat_model: Optional tenant-specific chat model override
+                    (reserved — not used by retrieve/grade, but kept
+                    for signature compatibility).
         embedding_model: Optional tenant-specific embedding model override.
 
     Returns:
-        Final RAGState with answer and metadata.
+        RAGState after retrieval and grading (no answer generated).
     """
-    state: RAGState = {
+    from app.rag.graph import build_rag_graph
+
+    compiled = build_rag_graph(
+        vector_store,
+        embedding_service,
+        llm_provider,
+        relevance_threshold=relevance_threshold,
+        embedding_model=embedding_model,
+    )
+
+    initial_state: RAGState = {
         "query": query,
         "tenant_id": tenant_id,
         "retrieved_docs": [],
@@ -369,18 +398,11 @@ async def run_rag_pipeline(
         "model_used": "",
         "tokens_in": 0,
         "tokens_out": 0,
+        "tool_calls": [],
+        "tool_results": [],
+        "tool_round": 0,
+        "tool_messages": [],
     }
 
-    # Step 1: Retrieve
-    state = await retrieve_node(state, vector_store, embedding_service, embedding_model=embedding_model)
+    return await compiled.ainvoke(initial_state)
 
-    # Step 2: Grade
-    state = await grade_node(state, llm_provider, relevance_threshold)
-
-    # Step 3: Generate or Escalate
-    if state.get("should_escalate"):
-        state = await escalation_node(state)
-    else:
-        state = await generate_node(state, llm_provider, chat_model=chat_model)
-
-    return state

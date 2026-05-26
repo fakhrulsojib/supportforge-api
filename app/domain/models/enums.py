@@ -36,6 +36,7 @@ class MessageRole(str, enum.Enum):
     ASSISTANT = "assistant"
     SYSTEM = "system"
     SUMMARY = "summary"
+    TOOL = "tool"  # Tool call results (Phase 3)
 
 
 class MessageChannel(str, enum.Enum):

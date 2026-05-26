@@ -12,13 +12,14 @@ from __future__ import annotations
 
 import json
 import time
-from typing import TYPE_CHECKING
+from uuid import uuid4
+from typing import TYPE_CHECKING, Any
 
 import httpx
 import structlog
 
 from app.core.exceptions import LLMError
-from app.domain.interfaces.llm_provider import LLMProvider
+from app.domain.interfaces.llm_provider import LLMProvider, ToolAwareResponse, ToolCall
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
@@ -140,6 +141,53 @@ class OllamaAdapter(LLMProvider):
             logger.error("ollama_generate_error", error=str(e), error_type=type(e).__name__)
             msg = f"Ollama generation failed: {e}"
             raise LLMError(msg) from e
+
+    async def generate_with_tools(
+        self,
+        messages: list[dict[str, str]],
+        tools: list[dict[str, Any]],
+        model: str | None = None,
+        temperature: float = 0.7,
+    ) -> ToolAwareResponse:
+        """Generate with function calling via Ollama /api/chat."""
+        effective_model = model or self.default_model
+        payload = {
+            "model": effective_model,
+            "messages": messages,
+            "tools": tools,
+            "stream": False,
+            "options": {"temperature": temperature},
+        }
+        try:
+            response = await self._http_client.post(
+                f"{self.base_url}/api/chat",
+                json=payload,
+                timeout=120.0,
+            )
+            response.raise_for_status()
+            data = response.json()
+            msg = data.get("message", {})
+
+            if msg.get("tool_calls"):
+                return ToolAwareResponse(
+                    tool_calls=[
+                        ToolCall(
+                            id=str(uuid4()),
+                            name=tc["function"]["name"],
+                            arguments=tc["function"]["arguments"],  # Already a dict
+                        )
+                        for tc in msg["tool_calls"]
+                    ],
+                    model_used=effective_model,
+                )
+            return ToolAwareResponse(
+                content=msg.get("content", ""),
+                model_used=effective_model,
+            )
+        except httpx.HTTPStatusError as exc:
+            raise LLMError(f"Ollama tool call failed: {exc.response.status_code}") from exc
+        except httpx.HTTPError as exc:
+            raise LLMError(f"Ollama connection error: {exc}") from exc
 
     async def stream(  # type: ignore[override]
         self,

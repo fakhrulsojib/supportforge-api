@@ -21,13 +21,14 @@ Security:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import json
+from typing import TYPE_CHECKING, Any
 
 import structlog
 from openai import AsyncOpenAI
 
 from app.core.exceptions import LLMError
-from app.domain.interfaces.llm_provider import LLMProvider
+from app.domain.interfaces.llm_provider import LLMProvider, ToolAwareResponse, ToolCall
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
@@ -121,6 +122,49 @@ class GeminiAdapter(LLMProvider):
             )
             msg = f"Gemini generation failed: {e}"
             raise LLMError(msg) from e
+
+    async def generate_with_tools(
+        self,
+        messages: list[dict[str, str]],
+        tools: list[dict[str, Any]],
+        model: str | None = None,
+        temperature: float = 0.7,
+    ) -> ToolAwareResponse:
+        """Generate with function calling via Gemini OpenAI-compat API."""
+        effective_model = model or self.default_model
+        try:
+            response = await self._client.chat.completions.create(
+                model=effective_model,
+                messages=messages,
+                tools=tools,
+                temperature=temperature,
+            )
+            choice = response.choices[0]
+            if choice.message.tool_calls:
+                parsed_calls = []
+                for tc in choice.message.tool_calls:
+                    try:
+                        args = json.loads(tc.function.arguments)
+                    except json.JSONDecodeError:
+                        args = {"_raw_invalid_json": tc.function.arguments}
+                        
+                    parsed_calls.append(
+                        ToolCall(
+                            id=tc.id,
+                            name=tc.function.name,
+                            arguments=args,
+                        )
+                    )
+                return ToolAwareResponse(
+                    tool_calls=parsed_calls,
+                    model_used=effective_model,
+                )
+            return ToolAwareResponse(
+                content=choice.message.content or "",
+                model_used=effective_model,
+            )
+        except Exception as exc:
+            raise LLMError(f"Gemini tool call failed: {exc}") from exc
 
     async def stream(  # type: ignore[override]
         self,

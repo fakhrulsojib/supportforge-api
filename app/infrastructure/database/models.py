@@ -180,6 +180,7 @@ class MessageModel(Base):
         server_default="text",
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
+    tool_calls_json: Mapped[list | None] = mapped_column(JSON, nullable=True, default=None)  # Phase 3 — tool calls
 
     # Relationships
     conversation: Mapped[ConversationModel] = relationship("ConversationModel", back_populates="messages")
@@ -288,4 +289,30 @@ class FailedQueryModel(Base):
         Index("ix_failed_queries_tenant_id", "tenant_id"),
         Index("ix_failed_queries_failure_reason", "failure_reason"),
         Index("ix_failed_queries_created_at", "created_at"),
+    )
+
+
+class TenantSecretModel(Base):
+    """Encrypted secrets for tenant tool auth — isolated from config_json.
+
+    Credentials are stored as Fernet-encrypted strings.  The GET API
+    returns only key names, never decrypted values.
+    """
+
+    __tablename__ = "tenant_secrets"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_generate_uuid)
+    tenant_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    key: Mapped[str] = mapped_column(String(255), nullable=False)
+    encrypted_value: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
+
+    # Relationships
+    tenant: Mapped[TenantModel] = relationship("TenantModel")
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "key", name="uq_tenant_secrets_key"),
+        Index("ix_tenant_secrets_tenant_id", "tenant_id"),
     )

@@ -23,6 +23,9 @@ logger = structlog.get_logger(__name__)
 # Default JWT secret — used to detect unchanged secrets at startup
 _DEFAULT_JWT_SECRET = "change-me-to-another-random-secret"  # noqa: S105
 
+# Default encryption secret — used to detect unchanged secrets at startup
+_DEFAULT_SECRET_KEY = "change-me-to-a-random-secret-key"  # noqa: S105
+
 # Regex to mask passwords in Redis URLs (redis://:password@host → redis://:***@host)
 _REDIS_PASSWORD_RE = re.compile(r"(rediss?://):([^@]+)@")
 
@@ -83,6 +86,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             hint="Set JWT_SECRET_KEY env var to a strong random value",
         )
         msg = "JWT_SECRET_KEY must be changed from the default value in non-test environments"
+        raise RuntimeError(msg)
+
+    # Phase 3: Reject default encryption secret in non-test environments
+    if settings.app_env not in ("test", "testing") and settings.secret_key == _DEFAULT_SECRET_KEY:
+        logger.critical(
+            "secret_key_not_configured",
+            hint="Set SECRET_KEY env var to a Fernet-compatible key",
+        )
+        msg = "SECRET_KEY must be changed from the default value in non-test environments"
         raise RuntimeError(msg)
 
     logger.info(
@@ -169,6 +181,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     if getattr(app.state, "cache", None) is not None:
         await app.state.cache.close()
         logger.info("redis_disconnected")
+
+    # Close shared webhook HTTP client
+    try:
+        from app.rag.tools.webhook import close_shared_http_client
+        await close_shared_http_client()
+        logger.info("webhook_client_closed")
+    except Exception:
+        logger.warning("webhook_client_close_failed", exc_info=True)
 
 
 async def _init_voice_providers(app: FastAPI, settings: object) -> None:

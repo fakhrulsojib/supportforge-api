@@ -33,6 +33,7 @@ SupportForge is a multi-tenant AI customer support agent powered by Ollama (self
 - **Content Moderation** — Input filtering (jailbreak detection, tenant blocklist) and output flagging with full DB audit trail
 - **Smart Escalation** — Context-aware human handoff triggered by frustrated sentiment, repeated questions, or explicit user requests
 - **Per-Tenant Model Selection** — Admin-configurable chat and embedding models with Ollama and Gemini provider support, separate API key management, and tenant-scoped persistence
+- **Pluggable Tool System** — Extensible tool framework with WebhookTool for external API calls, multi-turn LLM↔tool loop, SSRF protection, circuit breaker, encrypted tenant secrets, and per-tenant agent personality with prompt sandwich defense
 - **Feedback Review Queue** — Admin dashboard endpoints for reviewing negative feedback, escalations, and flagged messages
 - **Failed Query Logging** — Automatic tracking of RAG pipeline failures with admin analytics for identifying knowledge gaps
 - **Platform Superadmin** — Cross-tenant platform management role with dedicated RBAC, JWT claims, and CLI bootstrap script
@@ -69,6 +70,7 @@ Hexagonal Architecture (Ports & Adapters)
 | Framework | FastAPI (async) |
 | LLM | Ollama (self-hosted) + Google Gemini (cloud, per-tenant API key) |
 | RAG | LangGraph + ChromaDB + BM25 (rank_bm25) |
+| Tool Execution | httpx (async) + Fernet encryption |
 | Database | PostgreSQL (SQLAlchemy async) |
 | Cache | Redis |
 | Auth | JWT (access + refresh tokens) |
@@ -141,6 +143,7 @@ supportforge-api/
 │   ├── domain/                    # Pure business logic (models, services, interfaces)
 │   ├── infrastructure/            # Adapters (DB, LLM, vector, cache, WebSocket, STT, TTS, voice)
 │   ├── rag/                       # LangGraph RAG pipeline
+│   │   └── tools/                 # Pluggable tool system (executor, webhook, resolver, tool loop)
 │   ├── api/                       # HTTP + WebSocket endpoints
 │   └── workers/                   # Background tasks
 ├── tests/                         # Unit, integration, E2E tests
@@ -191,6 +194,9 @@ supportforge-api/
 | `GET` | `/api/v1/voice/config` | JWT | Voice availability for tenant |
 | `GET` | `/api/v1/voice/health` | JWT | STT/TTS service health |
 | `GET` | `/api/v1/voice/sessions` | Admin | Active voice session count |
+| `POST` | `/api/v1/tenants/{id}/secrets` | Admin | Create/update tenant secret |
+| `GET` | `/api/v1/tenants/{id}/secrets` | Admin | List tenant secret keys |
+| `DELETE` | `/api/v1/tenants/{id}/secrets/{key}` | Admin | Delete tenant secret |
 
 ### Roles
 

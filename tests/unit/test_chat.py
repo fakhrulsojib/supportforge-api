@@ -133,13 +133,35 @@ class TestChatService:
             embedding_service=embedding_service,
         )
 
-        with patch("app.domain.services.chat_service.run_rag_pipeline", new_callable=AsyncMock) as mock_rag:
+        with (
+            patch("app.domain.services.chat_service.run_rag_pipeline", new_callable=AsyncMock) as mock_rag,
+            patch("app.domain.services.chat_service.generate_node", new_callable=AsyncMock) as mock_gen,
+        ):
             mock_rag.return_value = {
+                "query": "Hello",
+                "tenant_id": "tenant-1",
+                "retrieved_docs": [],
+                "relevant_docs": [{"content": "source", "score": 0.8, "id": "1"}],
+                "answer": "",
+                "sources": [],
+                "should_escalate": False,
+                "escalation_reason": "",
+                "model_used": "",
+                "tokens_in": 0,
+                "tokens_out": 0,
+            }
+            mock_gen.return_value = {
+                "query": "Hello",
+                "tenant_id": "tenant-1",
+                "retrieved_docs": [],
+                "relevant_docs": [{"content": "source", "score": 0.8, "id": "1"}],
                 "answer": "Test answer",
                 "sources": [{"content": "source", "score": 0.8, "id": "1"}],
                 "should_escalate": False,
                 "escalation_reason": "",
                 "model_used": "test-model",
+                "tokens_in": 0,
+                "tokens_out": 0,
             }
 
             result = await service.process_message(
@@ -160,13 +182,35 @@ class TestChatService:
             embedding_service=AsyncMock(),
         )
 
-        with patch("app.domain.services.chat_service.run_rag_pipeline", new_callable=AsyncMock) as mock_rag:
+        with (
+            patch("app.domain.services.chat_service.run_rag_pipeline", new_callable=AsyncMock) as mock_rag,
+            patch("app.domain.services.chat_service.generate_node", new_callable=AsyncMock) as mock_gen,
+        ):
             mock_rag.return_value = {
+                "query": "Follow up",
+                "tenant_id": "tenant-1",
+                "retrieved_docs": [],
+                "relevant_docs": [],
+                "answer": "",
+                "sources": [],
+                "should_escalate": False,
+                "escalation_reason": "",
+                "model_used": "",
+                "tokens_in": 0,
+                "tokens_out": 0,
+            }
+            mock_gen.return_value = {
+                "query": "Follow up",
+                "tenant_id": "tenant-1",
+                "retrieved_docs": [],
+                "relevant_docs": [],
                 "answer": "Reply",
                 "sources": [],
                 "should_escalate": False,
                 "escalation_reason": "",
                 "model_used": "",
+                "tokens_in": 0,
+                "tokens_out": 0,
             }
 
             result = await service.process_message(
@@ -176,6 +220,99 @@ class TestChatService:
             )
 
             assert result["conversation_id"] == "existing-conv-123"
+
+    @pytest.mark.asyncio
+    async def test_session_factory_injection(self) -> None:
+        """Should use the injected session_factory instead of AsyncSessionLocal."""
+        from contextlib import asynccontextmanager
+        mock_session_factory = AsyncMock()
+        mock_session_context = AsyncMock()
+        mock_session_factory.return_value = mock_session_context
+        
+        @asynccontextmanager
+        async def mock_sf():
+            mock_session_factory()
+            yield mock_session_context
+            
+        service = ChatService(
+            llm_provider=AsyncMock(),
+            vector_store=AsyncMock(),
+            embedding_service=AsyncMock(),
+            session_factory=mock_sf,
+        )
+
+        with (
+            patch("app.domain.services.chat_service.run_rag_pipeline", new_callable=AsyncMock) as mock_rag,
+            patch("app.domain.services.chat_service.generate_node", new_callable=AsyncMock) as mock_gen,
+            patch("app.infrastructure.database.repositories.conversation_repo.SQLConversationRepository") as mock_repo_cls,
+        ):
+            mock_rag.return_value = {
+                "query": "Follow up", "tenant_id": "tenant-1", "retrieved_docs": [],
+                "relevant_docs": [], "answer": "", "sources": [], "should_escalate": False,
+                "escalation_reason": "", "model_used": "", "tokens_in": 0, "tokens_out": 0,
+            }
+            mock_gen.return_value = {
+                "query": "Follow up", "tenant_id": "tenant-1", "retrieved_docs": [],
+                "relevant_docs": [], "answer": "Reply", "sources": [], "should_escalate": False,
+                "escalation_reason": "", "model_used": "", "tokens_in": 0, "tokens_out": 0,
+            }
+            # Mock the repository methods
+            mock_repo = mock_repo_cls.return_value
+            mock_repo.get_by_id = AsyncMock(return_value=None)
+
+            # Call a method that definitely uses the session_factory
+            await service._persist_exchange(
+                conversation_id="conv-1",
+                tenant_id="tenant-1",
+                user_id="user-1",
+                user_message="hello",
+                assistant_message="hi",
+                assistant_thinking="",
+                sources=[],
+                model_used="test-model",
+                is_new=True,
+            )
+            
+            # The session factory should have been called
+            mock_session_factory.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_load_conversation_history_idor_protection(self) -> None:
+        """Should return empty list if conversation belongs to a different tenant."""
+        from contextlib import asynccontextmanager
+        @asynccontextmanager
+        async def mock_sf():
+            yield AsyncMock()
+
+        service = ChatService(
+            llm_provider=AsyncMock(),
+            vector_store=AsyncMock(),
+            embedding_service=AsyncMock(),
+            session_factory=mock_sf,
+        )
+
+        with (
+            patch("app.infrastructure.database.repositories.conversation_repo.SQLConversationRepository") as mock_conv_repo_cls,
+            patch("app.domain.services.chat_service.logger") as mock_logger,
+        ):
+            mock_conv_repo = mock_conv_repo_cls.return_value
+            mock_conv = AsyncMock()
+            mock_conv.tenant_id = "tenant-other" # Different tenant
+            mock_conv_repo.get_by_id = AsyncMock(return_value=mock_conv)
+
+            # Accessing conversation belonging to tenant-other while passing tenant-1
+            history = await service._load_conversation_history(
+                tenant_id="tenant-1",
+                conversation_id="conv-123",
+                is_new=False,
+            )
+
+            assert history == []
+            mock_logger.warning.assert_called_once_with(
+                "unauthorized_conversation_access",
+                tenant_id="tenant-1",
+                conversation_id="conv-123",
+            )
 
 
 class TestChatServiceStreaming:
@@ -201,24 +338,9 @@ class TestChatServiceStreaming:
             embedding_service=mock_embed,
         )
 
-        with (
-            patch("app.domain.services.chat_service.retrieve_node", new_callable=AsyncMock) as mock_retrieve,
-            patch("app.domain.services.chat_service.grade_node", new_callable=AsyncMock) as mock_grade,
-        ):
-            mock_retrieve.return_value = {
-                "query": "test",
-                "tenant_id": "t1",
-                "retrieved_docs": [{"content": "doc text", "score": 0.9, "id": "d1"}],
-                "relevant_docs": [],
-                "answer": "",
-                "sources": [],
-                "should_escalate": False,
-                "escalation_reason": "",
-                "model_used": "",
-                "tokens_in": 0,
-                "tokens_out": 0,
-            }
-            mock_grade.return_value = {
+        with patch("app.domain.services.chat_service.build_rag_graph") as mock_build:
+            mock_compiled = AsyncMock()
+            mock_compiled.ainvoke.return_value = {
                 "query": "test",
                 "tenant_id": "t1",
                 "retrieved_docs": [{"content": "doc text", "score": 0.9, "id": "d1"}],
@@ -231,6 +353,7 @@ class TestChatServiceStreaming:
                 "tokens_in": 0,
                 "tokens_out": 0,
             }
+            mock_build.return_value = mock_compiled
 
             frames = []
             async for frame in service.stream_message(
@@ -259,24 +382,9 @@ class TestChatServiceStreaming:
             embedding_service=AsyncMock(),
         )
 
-        with (
-            patch("app.domain.services.chat_service.retrieve_node", new_callable=AsyncMock) as mock_retrieve,
-            patch("app.domain.services.chat_service.grade_node", new_callable=AsyncMock) as mock_grade,
-        ):
-            mock_retrieve.return_value = {
-                "query": "test",
-                "tenant_id": "t1",
-                "retrieved_docs": [],
-                "relevant_docs": [],
-                "answer": "",
-                "sources": [],
-                "should_escalate": False,
-                "escalation_reason": "",
-                "model_used": "",
-                "tokens_in": 0,
-                "tokens_out": 0,
-            }
-            mock_grade.return_value = {
+        with patch("app.domain.services.chat_service.build_rag_graph") as mock_build:
+            mock_compiled = AsyncMock()
+            mock_compiled.ainvoke.return_value = {
                 "query": "test",
                 "tenant_id": "t1",
                 "retrieved_docs": [],
@@ -289,6 +397,7 @@ class TestChatServiceStreaming:
                 "tokens_in": 0,
                 "tokens_out": 0,
             }
+            mock_build.return_value = mock_compiled
 
             frames = []
             async for frame in service.stream_message(
@@ -324,23 +433,16 @@ class TestChatServiceStreaming:
             embedding_service=AsyncMock(),
         )
 
-        with (
-            patch("app.domain.services.chat_service.retrieve_node", new_callable=AsyncMock) as mock_retrieve,
-            patch("app.domain.services.chat_service.grade_node", new_callable=AsyncMock) as mock_grade,
-        ):
-            mock_retrieve.return_value = {
-                "query": "test", "tenant_id": "t1", "retrieved_docs": [],
-                "relevant_docs": [], "answer": "", "sources": [],
-                "should_escalate": False, "escalation_reason": "",
-                "model_used": "", "tokens_in": 0, "tokens_out": 0,
-            }
-            mock_grade.return_value = {
+        with patch("app.domain.services.chat_service.build_rag_graph") as mock_build:
+            mock_compiled = AsyncMock()
+            mock_compiled.ainvoke.return_value = {
                 "query": "test", "tenant_id": "t1", "retrieved_docs": [],
                 "relevant_docs": [{"content": "x", "score": 0.5, "id": "1"}],
                 "answer": "", "sources": [],
                 "should_escalate": False, "escalation_reason": "",
                 "model_used": "", "tokens_in": 0, "tokens_out": 0,
             }
+            mock_build.return_value = mock_compiled
 
             frames = []
             async for frame in service.stream_message(
@@ -356,10 +458,10 @@ class TestChatServiceThinking:
     """Test suite for thinking frame support in stream_message()."""
 
     @staticmethod
-    def _make_rag_state(*, with_docs: bool = True) -> tuple[dict, dict]:
-        """Helper to create retrieve and grade mock return values."""
+    def _make_rag_state(*, with_docs: bool = True) -> dict:
+        """Helper to create the mock return value for build_rag_graph's ainvoke."""
         doc = {"content": "doc text", "score": 0.9, "id": "d1"}
-        base = {
+        return {
             "query": "test", "tenant_id": "t1",
             "retrieved_docs": [doc] if with_docs else [],
             "relevant_docs": [doc] if with_docs else [],
@@ -367,7 +469,6 @@ class TestChatServiceThinking:
             "should_escalate": False, "escalation_reason": "",
             "model_used": "", "tokens_in": 0, "tokens_out": 0,
         }
-        return base, base.copy()
 
     @pytest.mark.asyncio
     async def test_stream_yields_thinking_and_content_frames(self) -> None:
@@ -386,14 +487,12 @@ class TestChatServiceThinking:
             vector_store=AsyncMock(),
             embedding_service=AsyncMock(),
         )
-        retrieve_state, grade_state = self._make_rag_state()
+        rag_state = self._make_rag_state()
 
-        with (
-            patch("app.domain.services.chat_service.retrieve_node", new_callable=AsyncMock) as mr,
-            patch("app.domain.services.chat_service.grade_node", new_callable=AsyncMock) as mg,
-        ):
-            mr.return_value = retrieve_state
-            mg.return_value = grade_state
+        with patch("app.domain.services.chat_service.build_rag_graph") as mock_build:
+            mock_compiled = AsyncMock()
+            mock_compiled.ainvoke.return_value = rag_state
+            mock_build.return_value = mock_compiled
 
             frames = []
             async for f in service.stream_message(message="test", tenant_id="t1"):
@@ -426,14 +525,12 @@ class TestChatServiceThinking:
             vector_store=AsyncMock(),
             embedding_service=AsyncMock(),
         )
-        retrieve_state, grade_state = self._make_rag_state()
+        rag_state = self._make_rag_state()
 
-        with (
-            patch("app.domain.services.chat_service.retrieve_node", new_callable=AsyncMock) as mr,
-            patch("app.domain.services.chat_service.grade_node", new_callable=AsyncMock) as mg,
-        ):
-            mr.return_value = retrieve_state
-            mg.return_value = grade_state
+        with patch("app.domain.services.chat_service.build_rag_graph") as mock_build:
+            mock_compiled = AsyncMock()
+            mock_compiled.ainvoke.return_value = rag_state
+            mock_build.return_value = mock_compiled
 
             frames = []
             async for f in service.stream_message(message="test", tenant_id="t1"):
@@ -459,14 +556,12 @@ class TestChatServiceThinking:
             vector_store=AsyncMock(),
             embedding_service=AsyncMock(),
         )
-        retrieve_state, grade_state = self._make_rag_state()
+        rag_state = self._make_rag_state()
 
-        with (
-            patch("app.domain.services.chat_service.retrieve_node", new_callable=AsyncMock) as mr,
-            patch("app.domain.services.chat_service.grade_node", new_callable=AsyncMock) as mg,
-        ):
-            mr.return_value = retrieve_state
-            mg.return_value = grade_state
+        with patch("app.domain.services.chat_service.build_rag_graph") as mock_build:
+            mock_compiled = AsyncMock()
+            mock_compiled.ainvoke.return_value = rag_state
+            mock_build.return_value = mock_compiled
 
             frames = []
             async for f in service.stream_message(message="test", tenant_id="t1"):
@@ -492,14 +587,12 @@ class TestChatServiceThinking:
             vector_store=AsyncMock(),
             embedding_service=AsyncMock(),
         )
-        retrieve_state, grade_state = self._make_rag_state()
+        rag_state = self._make_rag_state()
 
-        with (
-            patch("app.domain.services.chat_service.retrieve_node", new_callable=AsyncMock) as mr,
-            patch("app.domain.services.chat_service.grade_node", new_callable=AsyncMock) as mg,
-        ):
-            mr.return_value = retrieve_state
-            mg.return_value = grade_state
+        with patch("app.domain.services.chat_service.build_rag_graph") as mock_build:
+            mock_compiled = AsyncMock()
+            mock_compiled.ainvoke.return_value = rag_state
+            mock_build.return_value = mock_compiled
 
             frames = []
             async for f in service.stream_message(message="test", tenant_id="t1"):
@@ -689,10 +782,10 @@ class TestChatServiceOutputValidation:
     """Test suite for output validation integration in stream_message()."""
 
     @staticmethod
-    def _make_rag_state(*, with_docs: bool = True) -> tuple[dict, dict]:
-        """Helper to create retrieve and grade mock return values."""
+    def _make_rag_state(*, with_docs: bool = True) -> dict:
+        """Helper to create the mock return value for build_rag_graph's ainvoke."""
         doc = {"content": "doc text about orders", "score": 0.9, "id": "d1"}
-        base = {
+        return {
             "query": "test", "tenant_id": "t1",
             "retrieved_docs": [doc] if with_docs else [],
             "relevant_docs": [doc] if with_docs else [],
@@ -700,7 +793,6 @@ class TestChatServiceOutputValidation:
             "should_escalate": False, "escalation_reason": "",
             "model_used": "", "tokens_in": 0, "tokens_out": 0,
         }
-        return base, base.copy()
 
     @pytest.mark.asyncio
     async def test_stream_message_clean_output_passes_validation(self) -> None:
@@ -717,14 +809,12 @@ class TestChatServiceOutputValidation:
             vector_store=AsyncMock(),
             embedding_service=AsyncMock(),
         )
-        retrieve_state, grade_state = self._make_rag_state()
+        rag_state = self._make_rag_state()
 
-        with (
-            patch("app.domain.services.chat_service.retrieve_node", new_callable=AsyncMock) as mr,
-            patch("app.domain.services.chat_service.grade_node", new_callable=AsyncMock) as mg,
-        ):
-            mr.return_value = retrieve_state
-            mg.return_value = grade_state
+        with patch("app.domain.services.chat_service.build_rag_graph") as mock_build:
+            mock_compiled = AsyncMock()
+            mock_compiled.ainvoke.return_value = rag_state
+            mock_build.return_value = mock_compiled
 
             frames = []
             async for f in service.stream_message(message="test", tenant_id="t1"):
@@ -751,14 +841,12 @@ class TestChatServiceOutputValidation:
             vector_store=AsyncMock(),
             embedding_service=AsyncMock(),
         )
-        retrieve_state, grade_state = self._make_rag_state()
+        rag_state = self._make_rag_state()
 
-        with (
-            patch("app.domain.services.chat_service.retrieve_node", new_callable=AsyncMock) as mr,
-            patch("app.domain.services.chat_service.grade_node", new_callable=AsyncMock) as mg,
-        ):
-            mr.return_value = retrieve_state
-            mg.return_value = grade_state
+        with patch("app.domain.services.chat_service.build_rag_graph") as mock_build:
+            mock_compiled = AsyncMock()
+            mock_compiled.ainvoke.return_value = rag_state
+            mock_build.return_value = mock_compiled
 
             frames = []
             async for f in service.stream_message(message="test", tenant_id="t1"):
@@ -786,15 +874,15 @@ class TestChatServiceOutputValidation:
             vector_store=AsyncMock(),
             embedding_service=AsyncMock(),
         )
-        retrieve_state, grade_state = self._make_rag_state()
+        rag_state = self._make_rag_state()
 
         with (
-            patch("app.domain.services.chat_service.retrieve_node", new_callable=AsyncMock) as mr,
-            patch("app.domain.services.chat_service.grade_node", new_callable=AsyncMock) as mg,
+            patch("app.domain.services.chat_service.build_rag_graph") as mock_build,
             patch("app.domain.services.chat_service.logger") as mock_logger,
         ):
-            mr.return_value = retrieve_state
-            mg.return_value = grade_state
+            mock_compiled = AsyncMock()
+            mock_compiled.ainvoke.return_value = rag_state
+            mock_build.return_value = mock_compiled
 
             frames = []
             async for f in service.stream_message(message="test", tenant_id="t1"):
@@ -840,12 +928,10 @@ class TestChatServiceOutputValidation:
             "model_used": "", "tokens_in": 0, "tokens_out": 0,
         }
 
-        with (
-            patch("app.domain.services.chat_service.retrieve_node", new_callable=AsyncMock) as mr,
-            patch("app.domain.services.chat_service.grade_node", new_callable=AsyncMock) as mg,
-        ):
-            mr.return_value = retrieve_state
-            mg.return_value = retrieve_state.copy()
+        with patch("app.domain.services.chat_service.build_rag_graph") as mock_build:
+            mock_compiled = AsyncMock()
+            mock_compiled.ainvoke.return_value = retrieve_state
+            mock_build.return_value = mock_compiled
 
             frames = []
             async for f in service.stream_message(message="test", tenant_id="t1"):
@@ -869,14 +955,12 @@ class TestChatServiceOutputValidation:
             vector_store=AsyncMock(),
             embedding_service=AsyncMock(),
         )
-        retrieve_state, grade_state = self._make_rag_state()
+        rag_state = self._make_rag_state()
 
-        with (
-            patch("app.domain.services.chat_service.retrieve_node", new_callable=AsyncMock) as mr,
-            patch("app.domain.services.chat_service.grade_node", new_callable=AsyncMock) as mg,
-        ):
-            mr.return_value = retrieve_state
-            mg.return_value = grade_state
+        with patch("app.domain.services.chat_service.build_rag_graph") as mock_build:
+            mock_compiled = AsyncMock()
+            mock_compiled.ainvoke.return_value = rag_state
+            mock_build.return_value = mock_compiled
 
             frames = []
             async for f in service.stream_message(message="test", tenant_id="t1"):
@@ -894,24 +978,16 @@ class TestChatServiceOutputValidation:
             embedding_service=AsyncMock(),
         )
 
-        with (
-            patch("app.domain.services.chat_service.retrieve_node", new_callable=AsyncMock) as mock_retrieve,
-            patch("app.domain.services.chat_service.grade_node", new_callable=AsyncMock) as mock_grade,
-        ):
-            mock_retrieve.return_value = {
-                "query": "test", "tenant_id": "t1",
-                "retrieved_docs": [], "relevant_docs": [],
-                "answer": "", "sources": [],
-                "should_escalate": False, "escalation_reason": "",
-                "model_used": "", "tokens_in": 0, "tokens_out": 0,
-            }
-            mock_grade.return_value = {
+        with patch("app.domain.services.chat_service.build_rag_graph") as mock_build:
+            mock_compiled = AsyncMock()
+            mock_compiled.ainvoke.return_value = {
                 "query": "test", "tenant_id": "t1",
                 "retrieved_docs": [], "relevant_docs": [],
                 "answer": "", "sources": [],
                 "should_escalate": True, "escalation_reason": "No docs found",
                 "model_used": "", "tokens_in": 0, "tokens_out": 0,
             }
+            mock_build.return_value = mock_compiled
 
             frames = []
             async for frame in service.stream_message(
@@ -929,10 +1005,10 @@ class TestChatServiceContentModeration:
     """Test suite for content moderation integration in stream_message()."""
 
     @staticmethod
-    def _make_rag_state(*, with_docs: bool = True) -> tuple[dict, dict]:
-        """Helper to create retrieve and grade mock return values."""
+    def _make_rag_state(*, with_docs: bool = True) -> dict:
+        """Helper to create the mock return value for build_rag_graph's ainvoke."""
         doc = {"content": "doc text about orders", "score": 0.9, "id": "d1"}
-        base = {
+        return {
             "query": "test", "tenant_id": "t1",
             "retrieved_docs": [doc] if with_docs else [],
             "relevant_docs": [doc] if with_docs else [],
@@ -940,7 +1016,6 @@ class TestChatServiceContentModeration:
             "should_escalate": False, "escalation_reason": "",
             "model_used": "", "tokens_in": 0, "tokens_out": 0,
         }
-        return base, base.copy()
 
     @pytest.mark.asyncio
     async def test_jailbreak_input_blocked_no_llm_call(self) -> None:
@@ -1014,14 +1089,12 @@ class TestChatServiceContentModeration:
             vector_store=AsyncMock(),
             embedding_service=AsyncMock(),
         )
-        retrieve_state, grade_state = self._make_rag_state()
+        rag_state = self._make_rag_state()
 
-        with (
-            patch("app.domain.services.chat_service.retrieve_node", new_callable=AsyncMock) as mr,
-            patch("app.domain.services.chat_service.grade_node", new_callable=AsyncMock) as mg,
-        ):
-            mr.return_value = retrieve_state
-            mg.return_value = grade_state
+        with patch("app.domain.services.chat_service.build_rag_graph") as mock_build:
+            mock_compiled = AsyncMock()
+            mock_compiled.ainvoke.return_value = rag_state
+            mock_build.return_value = mock_compiled
 
             frames = []
             async for f in service.stream_message(
@@ -1053,15 +1126,15 @@ class TestChatServiceContentModeration:
             vector_store=AsyncMock(),
             embedding_service=AsyncMock(),
         )
-        retrieve_state, grade_state = self._make_rag_state()
+        rag_state = self._make_rag_state()
 
         with (
-            patch("app.domain.services.chat_service.retrieve_node", new_callable=AsyncMock) as mr,
-            patch("app.domain.services.chat_service.grade_node", new_callable=AsyncMock) as mg,
+            patch("app.domain.services.chat_service.build_rag_graph") as mock_build,
             patch("app.domain.services.chat_service.logger") as mock_logger,
         ):
-            mr.return_value = retrieve_state
-            mg.return_value = grade_state
+            mock_compiled = AsyncMock()
+            mock_compiled.ainvoke.return_value = rag_state
+            mock_build.return_value = mock_compiled
 
             frames = []
             async for f in service.stream_message(
@@ -1121,14 +1194,12 @@ class TestChatServiceContentModeration:
             vector_store=AsyncMock(),
             embedding_service=AsyncMock(),
         )
-        retrieve_state, grade_state = self._make_rag_state()
+        rag_state = self._make_rag_state()
 
-        with (
-            patch("app.domain.services.chat_service.retrieve_node", new_callable=AsyncMock) as mr,
-            patch("app.domain.services.chat_service.grade_node", new_callable=AsyncMock) as mg,
-        ):
-            mr.return_value = retrieve_state
-            mg.return_value = grade_state
+        with patch("app.domain.services.chat_service.build_rag_graph") as mock_build:
+            mock_compiled = AsyncMock()
+            mock_compiled.ainvoke.return_value = rag_state
+            mock_build.return_value = mock_compiled
 
             frames = []
             # No tenant_blocklist passed — should default to empty
@@ -1227,15 +1298,15 @@ class TestChatServiceContentModeration:
             vector_store=AsyncMock(),
             embedding_service=AsyncMock(),
         )
-        retrieve_state, grade_state = self._make_rag_state()
+        rag_state = self._make_rag_state()
 
         with (
-            patch("app.domain.services.chat_service.retrieve_node", new_callable=AsyncMock) as mr,
-            patch("app.domain.services.chat_service.grade_node", new_callable=AsyncMock) as mg,
+            patch("app.domain.services.chat_service.build_rag_graph") as mock_build,
             patch.object(service, "_persist_exchange", new_callable=AsyncMock) as mock_persist,
         ):
-            mr.return_value = retrieve_state
-            mg.return_value = grade_state
+            mock_compiled = AsyncMock()
+            mock_compiled.ainvoke.return_value = rag_state
+            mock_build.return_value = mock_compiled
 
             frames = []
             async for f in service.stream_message(

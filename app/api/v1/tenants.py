@@ -167,6 +167,13 @@ async def update_tenant(
     """
     service = _get_tenant_service(session)
     update_data = request.model_dump(exclude_unset=True)
+
+    # Validate config_json structure if provided
+    if "config_json" in update_data and update_data["config_json"]:
+        from app.core.config_validators import validate_config_json
+
+        update_data["config_json"] = validate_config_json(update_data["config_json"])
+
     tenant = await service.update_tenant(tenant_id, **update_data)
     return TenantResponse(
         id=tenant.id,

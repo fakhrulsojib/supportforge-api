@@ -90,8 +90,8 @@ class VectorStore(ABC):
         ...
 
     @abstractmethod
-    async def get_all_documents(self, tenant_id: str) -> list[SearchResult]:
-        """Retrieve all documents in a tenant's collection.
+    async def get_all_documents(self, tenant_id: str, limit: int = 1000) -> list[SearchResult]:
+        """Retrieve all (or up to limit) documents from a tenant's collection.
 
         Used by BM25 to build a keyword index over the full corpus.
         Each result has content, metadata, and id but score is 0.0
@@ -99,7 +99,6 @@ class VectorStore(ABC):
 
         Args:
             tenant_id: Tenant identifier.
-
         Returns:
             List of all documents in the collection.
         """

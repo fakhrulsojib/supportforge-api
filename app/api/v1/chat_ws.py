@@ -1,8 +1,9 @@
 """WebSocket chat streaming endpoint — WS /api/v1/ws/chat.
 
 Provides real-time token-by-token streaming of RAG responses.
-Authentication is via JWT token in the query string since WebSocket
-handshakes do not support custom headers.
+Supports two authentication modes:
+    1. **JWT auth** — admin/agent users via supportforge-ui
+    2. **Widget auth** — anonymous visitors via embeddable SDK (ws_ prefix)
 
 JSON Frame Protocol:
     → Client sends: ``{"message": "user question", "conversation_id": "optional"}``
@@ -18,6 +19,8 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 import structlog
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
@@ -25,13 +28,191 @@ from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 from app.config import get_settings
 from app.core.exceptions import AuthError, LLMError, SupportForgeError
 from app.core.security import verify_token
+from app.core.widget_token import WIDGET_TOKEN_PREFIX, verify_widget_token
 from app.domain.models.enums import TenantStatus
 from app.infrastructure.database.repositories.tenant_repo import SQLTenantRepository
 from app.infrastructure.database.repositories.user_repo import SQLUserRepository
 
+if TYPE_CHECKING:
+    from app.config import Settings
+    from app.domain.models.tenant import Tenant
+
 logger = structlog.get_logger(__name__)
 
 router = APIRouter(tags=["chat-ws"])
+
+
+@dataclass
+class _ResolvedConnection:
+    """Holds resolved auth + tenant config for a WebSocket connection.
+
+    Extracted into a dataclass to share config resolution logic between
+    the JWT auth path and the widget auth path without duplication.
+    """
+
+    tenant_id: str
+    user_id: str  # Empty string for anonymous widget visitors
+    temperature: float = 0.2
+    blocklist: list[str] = field(default_factory=list)
+    chat_model: str | None = None
+    embedding_model: str | None = None
+    chat_provider: str | None = None
+    gemini_api_key: str | None = None
+    embedding_provider: str | None = None
+    gemini_embedding_api_key: str | None = None
+    agent_config: dict | None = None
+    config_json: dict | None = None
+
+
+def _extract_tenant_config(tenant: Tenant) -> dict:
+    """Extract LLM/agent config from a tenant domain model.
+
+    Returns a dict of config values. Shared between JWT and widget
+    auth paths to avoid duplicating the config extraction logic.
+    """
+    result: dict = {
+        "temperature": 0.2,
+        "blocklist": [],
+        "chat_model": None,
+        "embedding_model": None,
+        "chat_provider": None,
+        "gemini_api_key": None,
+        "embedding_provider": None,
+        "gemini_embedding_api_key": None,
+        "agent_config": None,
+        "config_json": None,
+    }
+
+    config_json = tenant.config_json
+    if not config_json:
+        return result
+
+    result["config_json"] = config_json
+
+    raw = config_json.get("temperature")
+    if isinstance(raw, (int, float)) and 0.0 <= float(raw) <= 1.0:
+        result["temperature"] = float(raw)
+
+    raw_blocklist = config_json.get("moderation_blocklist")
+    if isinstance(raw_blocklist, list):
+        result["blocklist"] = [str(t) for t in raw_blocklist if t]
+
+    # Per-tenant model selections (admin-configurable)
+    from app.core.tenant_config import resolve_tenant_models
+
+    settings = get_settings()
+    tenant_models = resolve_tenant_models(
+        config_json,
+        encryption_key=settings.secret_key,
+    )
+    result["chat_model"] = tenant_models.chat_model
+    result["embedding_model"] = tenant_models.embedding_model
+    result["chat_provider"] = tenant_models.chat_provider
+    result["gemini_api_key"] = tenant_models.gemini_api_key
+    result["embedding_provider"] = tenant_models.embedding_provider
+    result["gemini_embedding_api_key"] = tenant_models.gemini_embedding_api_key
+
+    # Agent personality config (no decryption — plain dict)
+    raw_agent_config = config_json.get("agent_prompt")
+    result["agent_config"] = raw_agent_config if isinstance(raw_agent_config, dict) else None
+
+    return result
+
+
+async def _authenticate_jwt(
+    token: str,
+    settings: Settings,
+) -> _ResolvedConnection | None:
+    """Authenticate via standard JWT token (admin/agent users).
+
+    Returns a _ResolvedConnection on success, None on failure (caller
+    should close the WebSocket with the appropriate error).
+    """
+    from app.infrastructure.database.connection import AsyncSessionLocal
+
+    try:
+        payload = verify_token(
+            token=token,
+            secret_key=settings.jwt_secret_key,
+            algorithm=settings.jwt_algorithm,
+            expected_type="access",
+        )
+    except AuthError:
+        return None
+
+    async with AsyncSessionLocal() as session:
+        user_repo = SQLUserRepository(session)
+        user = await user_repo.get_by_id(payload.user_id)
+        if not user:
+            return None
+
+        tenant_repo = SQLTenantRepository(session)
+        tenant = await tenant_repo.get_by_id(user.tenant_id)
+
+        if not tenant or tenant.status != TenantStatus.ACTIVE:
+            return None
+
+        cfg = _extract_tenant_config(tenant)
+
+    return _ResolvedConnection(
+        tenant_id=user.tenant_id,
+        user_id=user.id,
+        temperature=cfg["temperature"],
+        blocklist=cfg["blocklist"],
+        chat_model=cfg["chat_model"],
+        embedding_model=cfg["embedding_model"],
+        chat_provider=cfg["chat_provider"],
+        gemini_api_key=cfg["gemini_api_key"],
+        embedding_provider=cfg["embedding_provider"],
+        gemini_embedding_api_key=cfg["gemini_embedding_api_key"],
+        agent_config=cfg["agent_config"],
+        config_json=cfg["config_json"],
+    )
+
+
+async def _authenticate_widget(
+    token: str,
+    settings: Settings,
+) -> _ResolvedConnection | None:
+    """Authenticate via widget session token (anonymous SDK visitors).
+
+    Skips user DB lookup — resolves tenant directly from the token.
+    Returns a _ResolvedConnection on success, None on failure.
+    """
+    from app.infrastructure.database.connection import AsyncSessionLocal
+
+    try:
+        payload = verify_widget_token(
+            token=token,
+            secret_key=settings.jwt_secret_key,
+            algorithm=settings.jwt_algorithm,
+        )
+    except AuthError:
+        return None
+
+    async with AsyncSessionLocal() as session:
+        tenant_repo = SQLTenantRepository(session)
+        tenant = await tenant_repo.get_by_id(payload.tenant_id)
+
+        if not tenant or tenant.status != TenantStatus.ACTIVE:
+            return None
+
+        cfg = _extract_tenant_config(tenant)
+
+    return _ResolvedConnection(
+        tenant_id=payload.tenant_id,
+        user_id="",  # Anonymous — conversations stored with NULL user_id
+        temperature=cfg["temperature"],
+        blocklist=cfg["blocklist"],
+        chat_model=cfg["chat_model"],
+        embedding_model=cfg["embedding_model"],
+        chat_provider=cfg["chat_provider"],
+        gemini_api_key=cfg["gemini_api_key"],
+        embedding_provider=cfg["embedding_provider"],
+        gemini_embedding_api_key=cfg["gemini_embedding_api_key"],
+        agent_config=cfg["agent_config"],
+        config_json=cfg["config_json"],
+    )
 
 
 @router.websocket("/api/v1/ws/chat")
@@ -42,14 +223,15 @@ async def websocket_chat(
     """WebSocket endpoint for streaming chat responses.
 
     Authentication flow:
-        1. Client connects with ``?token=<jwt>`` query param
-        2. Server validates JWT, extracts user_id + tenant_id
-        3. Server accepts connection and registers with ConnectionManager
-        4. Client sends message JSON, server streams response frames
+        1. Client connects with ``?token=<jwt_or_ws_token>`` query param
+        2. If token starts with ``ws_``: widget auth (no user lookup)
+        3. Otherwise: standard JWT auth (user + tenant lookup)
+        4. Server accepts connection and registers with ConnectionManager
+        5. Client sends message JSON, server streams response frames
 
     Args:
         websocket: The incoming WebSocket connection.
-        token: JWT access token from query string.
+        token: JWT access token or ws_-prefixed widget token.
     """
     # ── Authentication ───────────────────────────────────────────
     if not token:
@@ -58,71 +240,20 @@ async def websocket_chat(
 
     settings = get_settings()
 
-    try:
-        payload = verify_token(
-            token=token,
-            secret_key=settings.jwt_secret_key,
-            algorithm=settings.jwt_algorithm,
-            expected_type="access",
-        )
-    except AuthError as e:
-        await websocket.close(code=4001, reason=str(e.message))
-        return
-
-    # Look up user and tenant config in a single session
-    from app.infrastructure.database.connection import AsyncSessionLocal
-
-    tenant_temperature = 0.2  # default
-    tenant_blocklist: list[str] = []  # default — no blocked terms
-    tenant_chat_model: str | None = None  # None → use server default
-    tenant_embedding_model: str | None = None  # None → use server default
-    tenant_chat_provider: str | None = None  # None → use Ollama
-    tenant_gemini_api_key: str | None = None  # None → no Gemini key
-    tenant_embedding_provider: str | None = None  # None → use Ollama
-    tenant_gemini_embedding_api_key: str | None = None  # None → no Gemini embedding key
-    async with AsyncSessionLocal() as session:
-        user_repo = SQLUserRepository(session)
-        user = await user_repo.get_by_id(payload.user_id)
-        if not user:
-            await websocket.close(code=4001, reason="User not found")
+    # Dual auth: detect ws_ prefix for widget tokens
+    if token.startswith(WIDGET_TOKEN_PREFIX):
+        conn = await _authenticate_widget(token, settings)
+        if conn is None:
+            await websocket.close(code=4001, reason="Invalid or expired widget token")
+            return
+    else:
+        conn = await _authenticate_jwt(token, settings)
+        if conn is None:
+            await websocket.close(code=4001, reason="Invalid or expired token")
             return
 
-        # Read per-tenant LLM temperature and moderation blocklist from config_json
-        tenant_repo = SQLTenantRepository(session)
-        tenant = await tenant_repo.get_by_id(user.tenant_id)
-
-        # ── Tenant status gate ───────────────────────────────────
-        # Only ACTIVE tenants can access chat via WebSocket.
-        if not tenant or tenant.status != TenantStatus.ACTIVE:
-            await websocket.close(
-                code=4003,
-                reason="Tenant not active — chat access is disabled",
-            )
-            return
-
-        if tenant and tenant.config_json:
-            raw = tenant.config_json.get("temperature")
-            if isinstance(raw, (int, float)) and 0.0 <= float(raw) <= 1.0:
-                tenant_temperature = float(raw)
-            raw_blocklist = tenant.config_json.get("moderation_blocklist")
-            if isinstance(raw_blocklist, list):
-                tenant_blocklist = [str(t) for t in raw_blocklist if t]
-            # Per-tenant model selections (admin-configurable)
-            from app.core.tenant_config import resolve_tenant_models
-            settings = get_settings()
-            tenant_models = resolve_tenant_models(
-                tenant.config_json,
-                encryption_key=settings.secret_key,
-            )
-            tenant_chat_model = tenant_models.chat_model
-            tenant_embedding_model = tenant_models.embedding_model
-            tenant_chat_provider = tenant_models.chat_provider
-            tenant_gemini_api_key = tenant_models.gemini_api_key
-            tenant_embedding_provider = tenant_models.embedding_provider
-            tenant_gemini_embedding_api_key = tenant_models.gemini_embedding_api_key
-
-    tenant_id = user.tenant_id
-    user_id = user.id
+    tenant_id = conn.tenant_id
+    user_id = conn.user_id
 
     # ── Connection ───────────────────────────────────────────────
     ws_manager = getattr(websocket.app.state, "ws_manager", None)
@@ -182,14 +313,16 @@ async def websocket_chat(
                     tenant_id=tenant_id,
                     user_id=user_id,
                     conversation_id=_conversation_id,
-                    temperature=tenant_temperature,
-                    tenant_blocklist=tenant_blocklist,
-                    tenant_chat_model=tenant_chat_model,
-                    tenant_embedding_model=tenant_embedding_model,
-                    tenant_chat_provider=tenant_chat_provider,
-                    tenant_gemini_api_key=tenant_gemini_api_key,
-                    tenant_embedding_provider=tenant_embedding_provider,
-                    tenant_gemini_embedding_api_key=tenant_gemini_embedding_api_key,
+                    temperature=conn.temperature,
+                    tenant_blocklist=conn.blocklist,
+                    tenant_chat_model=conn.chat_model,
+                    tenant_embedding_model=conn.embedding_model,
+                    tenant_chat_provider=conn.chat_provider,
+                    tenant_gemini_api_key=conn.gemini_api_key,
+                    tenant_embedding_provider=conn.embedding_provider,
+                    tenant_gemini_embedding_api_key=conn.gemini_embedding_api_key,
+                    tenant_agent_config=conn.agent_config,
+                    tenant_config_json=conn.config_json,
                 )
                 try:
                     async for frame in stream_gen:
@@ -249,6 +382,14 @@ async def websocket_chat(
                             )
                             _stop.set()
                             return
+                        else:
+                            await ws_manager.send_json(
+                                websocket,
+                                {
+                                    "type": "error",
+                                    "data": {"message": "Please wait for the current response to complete"},
+                                },
+                            )
                 except WebSocketDisconnect:
                     _stop.set()
                     raise
@@ -268,11 +409,20 @@ async def websocket_chat(
                     ):
                         await task
 
-                # Re-raise WebSocketDisconnect if the stop listener caught it
+                # Re-raise WebSocketDisconnect or other exceptions
                 for task in done:
                     exc = task.exception() if not task.cancelled() else None
                     if isinstance(exc, WebSocketDisconnect):
                         raise exc
+                    elif exc is not None:
+                        logger.error(
+                            "ws_task_crashed",
+                            exc_info=exc,
+                            tenant_id=tenant_id,
+                            user_id=user_id,
+                        )
+                        if task is stream_task and not stop_event.is_set():
+                            raise exc
 
                 # If stopped, send a done frame so the UI knows
                 if stop_event.is_set():
@@ -293,3 +443,4 @@ async def websocket_chat(
         logger.info("ws_client_disconnected", tenant_id=tenant_id, user_id=user_id)
     finally:
         ws_manager.disconnect(websocket, tenant_id=tenant_id)
+

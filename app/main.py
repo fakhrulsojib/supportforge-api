@@ -88,7 +88,9 @@ def _register_routes(app: FastAPI) -> None:
     from app.api.v1.platform_tenants import router as platform_tenants_router
     from app.api.v1.review import router as review_router
     from app.api.v1.tenants import router as tenants_router
+    from app.api.v1.tenant_secrets import router as tenant_secrets_router
     from app.api.v1.voice import router as voice_router
+    from app.api.v1.widget import router as widget_router
 
     app.include_router(analytics_router)
     app.include_router(auth_router)
@@ -101,7 +103,9 @@ def _register_routes(app: FastAPI) -> None:
     app.include_router(platform_tenants_router)
     app.include_router(review_router)
     app.include_router(tenants_router)
+    app.include_router(tenant_secrets_router)
     app.include_router(voice_router)
+    app.include_router(widget_router)
 
 
 # Module-level app instance for uvicorn: `uvicorn app.main:app`

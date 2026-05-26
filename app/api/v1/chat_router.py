@@ -68,6 +68,10 @@ async def chat_endpoint(
         encryption_key=settings.secret_key,
     )
 
+    # Extract agent personality config (no decryption — plain dict)
+    raw_agent_config = tenant.config_json.get("agent_prompt") if tenant.config_json else None
+    tenant_agent_config = raw_agent_config if isinstance(raw_agent_config, dict) else None
+
     result = await chat_service.process_message(
         message=request.message,
         tenant_id=user.tenant_id,
@@ -78,6 +82,8 @@ async def chat_endpoint(
         tenant_gemini_api_key=models.gemini_api_key,
         tenant_embedding_provider=models.embedding_provider,
         tenant_gemini_embedding_api_key=models.gemini_embedding_api_key,
+        tenant_agent_config=tenant_agent_config,
+        tenant_config_json=tenant.config_json,
     )
 
     sources = [

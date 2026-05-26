@@ -136,6 +136,23 @@ class TestRetrieveNode:
         assert len(result["retrieved_docs"]) >= 1
         assert result["retrieved_docs"][0]["content"] == "Test content"
 
+    @pytest.mark.asyncio
+    async def test_retrieve_bm25_respects_document_limit(self) -> None:
+        """Should limit retrieved docs to 1000 to prevent OOM."""
+        vector_store = AsyncMock()
+        embedding_service = AsyncMock()
+        embedding_service.embed.return_value = [0.1, 0.2, 0.3]
+        vector_store.search.return_value = [_make_search_result()]
+        vector_store.get_all_documents.return_value = [_make_search_result()]
+
+        state = _make_state()
+        await retrieve_node(state, vector_store, embedding_service)
+
+        vector_store.get_all_documents.assert_called_once_with(
+            "tenant-123", limit=1000
+        )
+
+
 
 class TestGradeNode:
     """Test suite for grade_node."""
@@ -240,6 +257,77 @@ class TestGenerateNode:
 
         assert len(result["sources"]) == 2
 
+    @pytest.mark.asyncio
+    async def test_generate_with_history_messages(self) -> None:
+        """History messages should be included in the LLM call."""
+        llm_provider = AsyncMock()
+        llm_provider.generate.return_value = "Based on our previous conversation..."
+        llm_provider.default_model = "test-model"
+
+        docs = [{"content": "Return policy: 30 days.", "score": 0.9, "id": "1"}]
+        history = [
+            {"role": "user", "content": "What's your return policy?"},
+            {"role": "assistant", "content": "You can return within 30 days."},
+        ]
+        state = _make_state(relevant_docs=docs)
+        result = await generate_node(
+            state, llm_provider, history_messages=history,
+        )
+
+        assert result["answer"] == "Based on our previous conversation..."
+        # Verify the messages passed to LLM include history
+        call_args = llm_provider.generate.call_args
+        messages = call_args.kwargs["messages"]
+        # system + 2 history + user = 4 messages
+        assert len(messages) == 4
+        assert messages[1]["role"] == "user"
+        assert messages[1]["content"] == "What's your return policy?"
+        assert messages[2]["role"] == "assistant"
+
+    @pytest.mark.asyncio
+    async def test_generate_with_agent_config(self) -> None:
+        """Agent config should customize the system prompt."""
+        llm_provider = AsyncMock()
+        llm_provider.generate.return_value = "Custom bot response."
+        llm_provider.default_model = "test-model"
+
+        docs = [{"content": "Some doc.", "score": 0.9, "id": "1"}]
+        config = {"custom_prompt": "You are PirateBot. Say arrr!"}
+        state = _make_state(relevant_docs=docs)
+        result = await generate_node(
+            state, llm_provider, agent_config=config,
+        )
+
+        call_args = llm_provider.generate.call_args
+        messages = call_args.kwargs["messages"]
+        # System prompt should contain the custom prompt
+        assert "PirateBot" in messages[0]["content"]
+        assert "arrr" in messages[0]["content"]
+
+    @pytest.mark.asyncio
+    async def test_generate_with_history_and_config(self) -> None:
+        """Both history and config should work together."""
+        llm_provider = AsyncMock()
+        llm_provider.generate.return_value = "Combined response."
+        llm_provider.default_model = "test-model"
+
+        docs = [{"content": "Doc content.", "score": 0.9, "id": "1"}]
+        history = [{"role": "user", "content": "Previous Q"}]
+        config = {"agent_name": "TestBot", "company_name": "TestCo"}
+        state = _make_state(relevant_docs=docs)
+        result = await generate_node(
+            state, llm_provider,
+            history_messages=history, agent_config=config,
+        )
+
+        call_args = llm_provider.generate.call_args
+        messages = call_args.kwargs["messages"]
+        # system + 1 history + user = 3 messages
+        assert len(messages) == 3
+        # System prompt should have tenant config
+        assert "TestBot" in messages[0]["content"]
+        assert "TestCo" in messages[0]["content"]
+
 
 class TestEscalationNode:
     """Test suite for escalation_node."""
@@ -259,7 +347,7 @@ class TestRunRAGPipeline:
 
     @pytest.mark.asyncio
     async def test_pipeline_happy_path(self) -> None:
-        """Full pipeline should retrieve, grade, and generate."""
+        """Pipeline should retrieve and grade (no answer generation)."""
         vector_store = AsyncMock()
         embedding_service = AsyncMock()
         llm_provider = AsyncMock()
@@ -267,7 +355,6 @@ class TestRunRAGPipeline:
         embedding_service.embed.return_value = [0.1, 0.2, 0.3]
         vector_store.search.return_value = [_make_search_result(score=0.9)]
         vector_store.get_all_documents.return_value = [_make_search_result(score=0.9)]
-        llm_provider.generate.return_value = "Here's your answer!"
         llm_provider.default_model = "test-model"
 
         result = await run_rag_pipeline(
@@ -278,13 +365,16 @@ class TestRunRAGPipeline:
             llm_provider=llm_provider,
         )
 
-        assert result["answer"] == "Here's your answer!"
+        # Pipeline now only retrieves + grades — no answer generated
         assert result["should_escalate"] is False
-        assert len(result["sources"]) == 1
+        assert len(result["relevant_docs"]) > 0
+        assert result["answer"] == ""  # No generation — caller handles this
+        # generate should NOT be called by the pipeline
+        llm_provider.generate.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_pipeline_escalation_path(self) -> None:
-        """Pipeline should escalate when no relevant docs found."""
+        """Pipeline should set escalation flag when no relevant docs found."""
         vector_store = AsyncMock()
         embedding_service = AsyncMock()
         llm_provider = AsyncMock()
@@ -302,7 +392,8 @@ class TestRunRAGPipeline:
         )
 
         assert result["should_escalate"] is True
-        assert "human support agent" in result["answer"].lower()
+        # Pipeline no longer generates escalation answer — caller handles
+        assert result["answer"] == ""
         llm_provider.generate.assert_not_called()
 
     @pytest.mark.asyncio
@@ -327,3 +418,4 @@ class TestRunRAGPipeline:
 
         assert result["should_escalate"] is True
         llm_provider.generate.assert_not_called()
+

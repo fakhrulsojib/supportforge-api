@@ -101,6 +101,11 @@ class Settings(BaseSettings):
     # ── CORS ─────────────────────────────────────────────────────
     cors_origins: str = "http://localhost:5173,http://localhost:3000"
 
+    # ── Widget SDK ───────────────────────────────────────────────
+    widget_cors_origins: str = ""  # Comma-separated tenant domains
+    widget_session_expire_minutes: int = 60  # Widget token TTL
+    widget_rate_limit_per_ip: int = 10  # Max sessions/minute per IP
+
     # ── Superadmin Bootstrap (optional) ──────────────────────────
     # If both are set, the app will auto-create a "management" tenant
     # and superadmin user on startup (idempotent — skips if exists).
@@ -195,6 +200,13 @@ class Settings(BaseSettings):
     def cors_origin_list(self) -> list[str]:
         """Parse comma-separated CORS origins into a list."""
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+
+    @property
+    def widget_cors_origin_list(self) -> list[str]:
+        """Parse comma-separated widget CORS origins into a list."""
+        if not self.widget_cors_origins:
+            return []
+        return [origin.strip() for origin in self.widget_cors_origins.split(",") if origin.strip()]
 
 
 # ── Singleton settings cache ────────────────────────────────────

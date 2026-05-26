@@ -71,10 +71,13 @@ def setup_middleware(app: FastAPI) -> None:
     settings = get_settings()
 
     # CORS — outermost middleware
+    all_origins = settings.cors_origin_list + settings.widget_cors_origin_list
+    # CORS spec: allow_credentials=True is incompatible with allow_origins=["*"]
+    use_credentials = "*" not in all_origins
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=settings.cors_origin_list,
-        allow_credentials=True,
+        allow_origins=all_origins,
+        allow_credentials=use_credentials,
         allow_methods=["*"],
         allow_headers=["*"],
         expose_headers=["X-Request-ID"],

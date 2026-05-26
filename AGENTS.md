@@ -39,6 +39,7 @@ SupportForge is a production-grade, multi-tenant AI customer support agent. This
 | Phase 22 | `phase-22/webhook-integration` | Webhook service for escalation/feedback/new conversation events |
 | Phase 23 | `phase-23/deployment-e2e` | Docker prod, deployment guides, E2E test suite, tech debt cleanup |
 | Voice V1 | `feature/voice-v1` | Pipecat pipeline, STT/TTS adapters, session management, voice API |
+| Pluggable Tool System | `feature/pluggable-tool-system` | Tool executor, webhook tool, tool loop, tenant secrets, agent personality, SSRF protection |
 
 ### Branch Rules
 
@@ -371,6 +372,15 @@ For **any** module not listed below, derive the test path using this rule:
 | `app/infrastructure/voice/pipeline_factory.py` | `tests/unit/infrastructure/test_voice_session.py` |
 | `app/core/tenant_config.py` (TenantVoiceConfig) | `tests/unit/test_tenant_voice_config.py` |
 | `app/api/v1/voice.py` | `tests/integration/api/test_voice.py` |
+| `app/rag/graph.py` | `tests/unit/rag/test_graph.py` |
+| `app/rag/prompt_builder.py` | `tests/unit/rag/test_prompt_builder.py` |
+| `app/rag/tools/tool_loop.py` | `tests/unit/rag/test_tool_loop.py` |
+| `app/rag/tools/base.py`, `executor.py`, `resolver.py`, `webhook.py` | `tests/unit/rag/test_tools.py` |
+| `app/core/config_validators.py` | `tests/unit/test_config_validators.py` |
+| `app/core/widget_token.py` | `tests/unit/core/test_widget_token.py` |
+| `app/core/event_hooks.py` | `tests/unit/core/test_event_hooks.py` |
+| `app/api/v1/widget.py` | `tests/unit/test_widget.py` |
+| `app/api/schemas/widget.py` | `tests/unit/test_widget.py` |
 
 ### Testing Standards
 

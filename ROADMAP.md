@@ -197,6 +197,7 @@
 | 12 | Tenant Provisioning UI + Failed Queries UI | High | ✅ |
 | 13 | Analytics Backend API | High | ✅ |
 | V1 | Voice Pipeline (STT/TTS + Pipecat) | High | 🔧 (`feature/voice-v1`) |
+| WGT | Widget SDK + Event Hooks | High | ✅ (`feature/widget-sdk-event-hooks`) |
 | 14 | Rate Limiting Middleware | Medium | 🔲 |
 | 15 | PII Detection & Masking | Medium | 🔲 |
 | 16 | User Approval Workflow | Medium | 🔲 |
@@ -205,7 +206,7 @@
 | 19 | Moderation Dashboard API | Medium | 🔲 |
 | 20 | Moderation Dashboard UI | Medium | 🔲 |
 | 21 | A/B Testing & Tenant Config | Low | 🔲 |
-| 22 | Webhook Integration | Low | 🔲 |
+| 22 | Webhook Integration | Low | ✅ _(covered by `feature/pluggable-tool-system` + `feature/widget-sdk-event-hooks`)_ |
 | 23 | Deployment, Docs & E2E | Low | 🔲 |
 
 ### Known Gaps (from Phase 2 review)
@@ -594,3 +595,90 @@
 - [x] 5 unit tests: Reranker (NoOp, factory, interface, fallback)
 - [x] 2 pipeline tests: hybrid integration, BM25 degradation
 - [x] 775 total tests passing, zero regressions
+
+---
+
+## Pluggable Tool System ✅
+
+> **Branch:** `feature/pluggable-tool-system`
+> **Status:** Feature branch — pending merge to `main`
+
+### PTS.1 — Unified RAG Pipeline (LangGraph Graph) ✅
+- [x] `app/rag/graph.py` — LangGraph graph with retrieve→grade→decide flow
+- [x] Extracted duplicated RAG logic from `process_message`/`stream_message` into reusable graph
+- [x] `RAGState` TypedDict extended with tool fields in `app/rag/pipeline.py`
+- [x] `app/rag/prompt_builder.py` — shared `build_rag_messages()` for unified prompt construction
+- [x] Tests: 7 unit tests (`tests/unit/rag/test_graph.py`), 32 unit tests (`tests/unit/rag/test_prompt_builder.py`)
+
+### PTS.2 — Tenant Agent Personality ✅
+- [x] Per-tenant `agent_config` (custom_prompt, domain_rules, custom_instructions) in tenant config
+- [x] Prompt sandwich defense for injection-resistant personality enforcement
+- [x] Unified prompt construction via `prompt_builder.py`
+
+### PTS.3 — Tool Definitions & Executor ✅
+- [x] `app/rag/tools/__init__.py` — tool system package
+- [x] `app/rag/tools/base.py` — `ToolDefinition`, `ToolResult`, `ESCALATE_TOOL_DEFINITION`
+- [x] `app/rag/tools/executor.py` — `ToolExecutor` with `asyncio.wait_for` timeout, 50KB response size limits, error isolation
+- [x] `app/rag/tools/resolver.py` — `resolve_tenant_tools`, `BuiltinEscalateTool`, per-tool auth headers and base URL support
+- [x] Tests: 24 unit tests (`tests/unit/rag/test_tools.py`)
+
+### PTS.4 — Tool Loop & WebhookTool ✅
+- [x] `app/rag/tools/tool_loop.py` — `run_tool_loop` for multi-turn LLM↔tool interaction (configurable `max_rounds`)
+- [x] `app/rag/tools/webhook.py` — `WebhookTool` for tenant-configured external API endpoints (GET/POST/PUT/PATCH/DELETE)
+- [x] SSRF protection: async DNS resolution, IPv4-mapped IPv6 blocking, private/loopback/reserved IP blocking
+- [x] Circuit breaker for repetitive failed tool calls (auto-escalates)
+- [x] Shared `httpx.AsyncClient` with `asyncio.Lock` for connection pooling
+- [x] `tool_answer` passthrough (skip LLM regeneration when tools provide the answer)
+- [x] Tests: 13 unit tests (`tests/unit/rag/test_tool_loop.py`)
+
+### PTS.5 — Config Validators ✅
+- [x] `app/core/config_validators.py` — Pydantic validators with schema enforcement for tool/tenant config
+- [x] Tests: 26 unit tests (`tests/unit/test_config_validators.py`)
+
+### PTS.6 — Tenant Secrets API ✅
+- [x] `app/api/v1/tenant_secrets.py` — CRUD API for encrypted tenant secrets (Admin)
+- [x] `app/infrastructure/database/repositories/tenant_secret_repo.py` — Fernet-encrypted secret storage
+- [x] Race condition fix (`begin_nested` SAVEPOINT) in secret upsert
+- [x] Endpoints: `POST /api/v1/tenants/{id}/secrets`, `GET /api/v1/tenants/{id}/secrets`, `DELETE /api/v1/tenants/{id}/secrets/{key}`
+
+### PTS.7 — LLM Adapter Updates ✅
+- [x] `app/domain/interfaces/llm_provider.py` — added `generate_with_tools`, `ToolCall`, `ToolAwareResponse`
+- [x] `app/infrastructure/llm/gemini_adapter.py` — `generate_with_tools` implementation with graceful `JSONDecodeError` handling for malformed tool args
+- [x] `app/infrastructure/llm/ollama_adapter.py` — `generate_with_tools` implementation
+- [x] 100KB payload truncation for LLM-generated arguments
+
+### PTS.8 — ChatService Integration ✅
+- [x] `app/domain/services/chat_service.py` — tool loop integration in both `process_message` and `stream_message`
+
+---
+
+## Widget SDK Backend + Event Hooks ✅
+
+> **Branch:** `feature/widget-sdk-event-hooks`
+> **Status:** Feature branch — pending merge to `main`
+
+### WGT.1 — Widget Session & Auth ✅
+- [x] `app/core/widget_token.py` — `create_widget_token()`, `verify_widget_token()` with `ws_` prefix, `WidgetTokenPayload` dataclass
+- [x] `app/api/schemas/widget.py` — `WidgetSessionRequest`, `WidgetSessionResponse`, `WidgetUIConfigResponse` DTOs
+- [x] `app/api/v1/widget.py` — Widget endpoints:
+  - `POST /api/v1/widget/session` — embed_key validation, origin domain matching, IP rate limiting
+  - `GET /api/v1/widget/ui-config/{slug}` — public UI config (theme, branding) without exposing secrets
+- [x] `app/config.py` — `widget_cors_origins`, `widget_session_expire_minutes`, `widget_rate_limit_per_ip`
+- [x] `app/core/middleware.py` — merged `widget_cors_origin_list` into CORS origins
+- [x] `app/main.py` — widget router registration
+- [x] `.env.example` — widget SDK section
+- [x] Tests: 19 unit tests (`tests/unit/core/test_widget_token.py`), 27 unit tests (`tests/unit/test_widget.py`)
+
+### WGT.2 — WebSocket Dual Auth ✅
+- [x] `app/api/v1/chat_ws.py` — dual authentication: JWT (admin/agent) + `ws_` widget token (anonymous visitors)
+- [x] `_ResolvedConnection` dataclass — shared auth result for both paths
+- [x] `_extract_tenant_config()` — DRY tenant config extraction (eliminates prior duplication)
+- [x] Anonymous widget visitors: `user_id=""` → NULL `user_id` in conversations table
+
+### WGT.3 — Outbound Event Hooks ✅
+- [x] `app/core/event_hooks.py` — `dispatch_event()` fire-and-forget async dispatcher
+- [x] `EventType` enum: `ON_ESCALATION`, `ON_NEW_CONVERSATION`, `ON_TOOL_FAILURE`, `ON_NEGATIVE_FEEDBACK`
+- [x] `HookPayload` dataclass with auto-generated ISO timestamp
+- [x] `_send_hook()` — error-isolated HTTP POST (never crashes the request)
+- [x] `app/domain/services/chat_service.py` — event dispatch at 5 escalation points (process_message + stream_message smart/RAG/tool/post-gen)
+- [x] Tests: 16 unit tests (`tests/unit/core/test_event_hooks.py`)

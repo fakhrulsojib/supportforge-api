@@ -9,10 +9,27 @@ NO framework imports allowed.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
+
+
+@dataclass
+class ToolCall:
+    """A single tool call from the LLM."""
+    id: str
+    name: str
+    arguments: dict[str, Any]  # Always a parsed dict, never a JSON string
+
+
+@dataclass
+class ToolAwareResponse:
+    """LLM response that may include tool calls."""
+    content: str | None = None
+    tool_calls: list[ToolCall] = field(default_factory=list)
+    model_used: str = ""
 
 
 class LLMProvider(ABC):
@@ -121,5 +138,30 @@ class LLMProvider(ABC):
 
         Returns:
             List of embedding model info dicts.
+        """
+        ...
+
+    @abstractmethod
+    async def generate_with_tools(
+        self,
+        messages: list[dict[str, str]],
+        tools: list[dict[str, Any]],
+        model: str | None = None,
+        temperature: float = 0.7,
+    ) -> ToolAwareResponse:
+        """Generate a response with tool/function calling support.
+
+        The LLM decides whether to call a tool or respond with text.
+        If tool calls are returned, the caller executes them and feeds
+        results back in a loop.
+
+        Args:
+            messages: Conversation messages in OpenAI format.
+            tools: Tool definitions in OpenAI function-calling format.
+            model: Model to use (None = provider default).
+            temperature: Sampling temperature.
+
+        Returns:
+            ToolAwareResponse with either content or tool_calls.
         """
         ...

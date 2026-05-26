@@ -53,3 +53,4 @@ class Message(BaseModel):
     reviewed_by: str = ""
     created_at: datetime | None = None
     channel: MessageChannel = MessageChannel.TEXT
+    tool_calls_json: list[dict[str, object]] | None = None  # Phase 3 — tool calls

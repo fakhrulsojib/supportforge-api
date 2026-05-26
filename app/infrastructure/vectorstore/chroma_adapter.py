@@ -124,10 +124,10 @@ class ChromaAdapter(VectorStore):
             "tenant_id": tenant_id,
         }
 
-    async def get_all_documents(self, tenant_id: str) -> list[SearchResult]:
-        """Retrieve all documents from a tenant's ChromaDB collection."""
+    async def get_all_documents(self, tenant_id: str, limit: int = 1000) -> list[SearchResult]:
+        """Retrieve all documents from a tenant's ChromaDB collection (up to limit)."""
         collection = self._get_or_create_collection(tenant_id)
-        result = collection.get(include=["documents", "metadatas"])
+        result = collection.get(include=["documents", "metadatas"], limit=limit)
 
         search_results: list[SearchResult] = []
         if result["ids"]:
