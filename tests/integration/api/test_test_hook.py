@@ -199,10 +199,9 @@ class TestTestHookEndpoint:
                 headers={"Authorization": f"Bearer {admin_token}"},
             )
 
-        assert response.status_code == 200
+        assert response.status_code == 403
         data = response.json()
-        assert data["success"] is False
-        assert "own tenant" in data["error"]
+        assert "own tenant" in data["detail"]
 
     @pytest.mark.asyncio
     async def test_viewer_cannot_test_hooks(
@@ -272,7 +271,6 @@ class TestTestHookEndpoint:
                 headers={"Authorization": f"Bearer {admin_token}"},
             )
 
-        assert response.status_code == 200
+        assert response.status_code == 400
         data = response.json()
-        assert data["success"] is False
-        assert "private IP" in (data["error"] or "")
+        assert "private IP" in (data.get("detail", ""))

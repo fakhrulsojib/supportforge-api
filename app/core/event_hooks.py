@@ -88,13 +88,15 @@ async def _send_hook(url: str, payload: dict[str, Any], headers: dict[str, str])
         original_hostname = parsed.hostname
         if original_hostname:
             headers["Host"] = original_hostname
-            safe_url = parsed._replace(
-                netloc=parsed.netloc.replace(original_hostname, safe_ip, 1)
-            ).geturl()
+            port_part = f":{parsed.port}" if parsed.port else ""
+            # Strip auth credentials and rebuild safely
+            safe_url = f"{parsed.scheme}://{safe_ip}{port_part}{parsed.path}"
+            if parsed.query:
+                safe_url += f"?{parsed.query}"
         else:
             safe_url = url  # validate_url_safety would have raised, but be safe
 
-        async with httpx.AsyncClient(timeout=_HOOK_TIMEOUT) as client:
+        async with httpx.AsyncClient(timeout=_HOOK_TIMEOUT, verify=False) as client:
             response = await client.post(safe_url, json=payload, headers=headers)
         logger.info(
             "event_hook_dispatched",
@@ -114,7 +116,7 @@ async def _send_hook(url: str, payload: dict[str, Any], headers: dict[str, str])
             "event_hook_failed",
             event_type=payload.get("event"),
             url=url,
-            exc_info=True,
+            exc_info=False,
         )
 
 

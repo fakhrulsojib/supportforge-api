@@ -167,6 +167,10 @@ async def update_tenant(
     Returns:
         Updated TenantResponse.
     """
+    if user.role != UserRole.SUPERADMIN and user.tenant_id != tenant_id:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=403, detail="Not authorized to modify this tenant")
+
     service = _get_tenant_service(session)
     update_data = request.model_dump(exclude_unset=True)
 
@@ -200,6 +204,10 @@ async def delete_tenant(
         session: Database session.
         user: Authenticated admin user.
     """
+    if user.role != UserRole.SUPERADMIN and user.tenant_id != tenant_id:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=403, detail="Not authorized to modify this tenant")
+
     service = _get_tenant_service(session)
     await service.delete_tenant(tenant_id)
     logger.info("tenant_deleted_via_api", tenant_id=tenant_id, deleted_by=user.id)
@@ -228,11 +236,9 @@ async def test_event_hook(
         TestHookResponse with success status and HTTP status code.
     """
     # Verify tenant ownership
-    if user.tenant_id != tenant_id and not getattr(user, "is_superadmin", False):
-        return TestHookResponse(
-            success=False,
-            error="You can only test hooks for your own tenant",
-        )
+    if user.tenant_id != tenant_id and user.role != UserRole.SUPERADMIN:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=403, detail="You can only test hooks for your own tenant")
 
     try:
         import httpx
@@ -241,9 +247,10 @@ async def test_event_hook(
         from app.rag.tools.webhook import validate_url_safety
 
         # SSRF protection: resolve safe IP
-        safe_ip = await validate_url_safety(request.url)
+        url_str = str(request.url)
+        safe_ip = await validate_url_safety(url_str)
 
-        parsed = urlparse(request.url)
+        parsed = urlparse(url_str)
         original_hostname = parsed.hostname
         send_headers = {
             "Content-Type": "application/json",
@@ -252,11 +259,13 @@ async def test_event_hook(
         }
         if original_hostname:
             send_headers["Host"] = original_hostname
-            safe_url = parsed._replace(
-                netloc=parsed.netloc.replace(original_hostname, safe_ip, 1)
-            ).geturl()
+            port_part = f":{parsed.port}" if parsed.port else ""
+            # Strip auth credentials and rebuild safely
+            safe_url = f"{parsed.scheme}://{safe_ip}{port_part}{parsed.path}"
+            if parsed.query:
+                safe_url += f"?{parsed.query}"
         else:
-            safe_url = request.url
+            safe_url = url_str
 
         # Build sample payload
         from datetime import datetime, timezone
@@ -269,8 +278,8 @@ async def test_event_hook(
             "data": {"test": True, "message": "This is a test webhook from SupportForge"},
         }
 
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.post(safe_url, json=sample_payload, headers=send_headers)
+        async with httpx.AsyncClient(timeout=10.0, verify=False) as client:
+            response = await client.post(str(safe_url), json=sample_payload, headers=send_headers)
 
         logger.info(
             "test_hook_dispatched",
@@ -292,8 +301,9 @@ async def test_event_hook(
         logger.warning(
             "test_hook_failed",
             tenant_id=tenant_id,
-            url=request.url,
-            exc_info=True,
+            url=str(request.url),
+            exc_info=False,
         )
-        return TestHookResponse(success=False, error=str(exc)[:200])
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail=str(exc)[:200])
 

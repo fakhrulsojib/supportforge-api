@@ -228,6 +228,7 @@ def resolve_tenant_voice_config(
     config_json: dict | None,
     *,
     encryption_key: str | None = None,
+    secrets: dict[str, str] | None = None,
     stt_locally_available: bool = False,
     tts_locally_available: bool = False,
 ) -> TenantVoiceConfig:
@@ -247,6 +248,7 @@ def resolve_tenant_voice_config(
     Args:
         config_json: Tenant's ``config_json`` dict (may be None).
         encryption_key: Secret for decrypting stored API keys.
+        secrets: Decrypted tenant secrets dict.
         stt_locally_available: Whether local STT (whisper) is loaded.
         tts_locally_available: Whether local TTS (piper) is loaded.
 
@@ -282,33 +284,30 @@ def resolve_tenant_voice_config(
         stt_provider = config_json.get(CONFIG_STT_PROVIDER)
         stt_api_key = None
         if isinstance(stt_provider, str) and stt_provider:
-            raw_stt_key = config_json.get(CONFIG_STT_API_KEY)
-            if isinstance(raw_stt_key, str) and raw_stt_key:
-                if encryption_key:
+            if secrets and secrets.get("stt_api_key"):
+                stt_api_key = secrets["stt_api_key"]
+            else:
+                raw_stt_key = config_json.get(CONFIG_STT_API_KEY)
+                if isinstance(raw_stt_key, str) and raw_stt_key and encryption_key:
                     try:
                         stt_api_key = decrypt_value(raw_stt_key, encryption_key)
                         logger.debug("voice_config_stt_key_decrypted")
                     except Exception:
                         logger.warning("tenant_stt_key_decrypt_failed")
-                        stt_api_key = None
-                else:
-                    # Plaintext key (dev mode)
-                    stt_api_key = raw_stt_key
 
         tts_provider = config_json.get(CONFIG_TTS_PROVIDER)
         tts_api_key = None
         if isinstance(tts_provider, str) and tts_provider:
-            raw_tts_key = config_json.get(CONFIG_TTS_API_KEY)
-            if isinstance(raw_tts_key, str) and raw_tts_key:
-                if encryption_key:
+            if secrets and secrets.get("tts_api_key"):
+                tts_api_key = secrets["tts_api_key"]
+            else:
+                raw_tts_key = config_json.get(CONFIG_TTS_API_KEY)
+                if isinstance(raw_tts_key, str) and raw_tts_key and encryption_key:
                     try:
                         tts_api_key = decrypt_value(raw_tts_key, encryption_key)
                         logger.debug("voice_config_tts_key_decrypted")
                     except Exception:
                         logger.warning("tenant_tts_key_decrypt_failed")
-                        tts_api_key = None
-                else:
-                    tts_api_key = raw_tts_key
 
         # Read Azure-specific config (region)
         azure_region = config_json.get(CONFIG_AZURE_REGION, "eastus")
