@@ -16,13 +16,26 @@ class ToolDefinition:
     is_builtin: bool = False
 
     def to_openai_format(self) -> dict[str, Any]:
-        """Convert to OpenAI function-calling format."""
+        """Convert to OpenAI function-calling format.
+
+        Normalises the ``parameters`` schema so that:
+        - Empty dicts become ``{"type": "object", "properties": {}}``.
+        - Schemas missing ``"type"`` get ``"type": "object"`` injected.
+
+        This ensures compatibility with Gemini (requires valid
+        ``protobuf.Struct``) and OpenAI alike.
+        """
+        params = self.parameters
+        if not params or params == {}:
+            params = {"type": "object", "properties": {}}
+        elif "type" not in params:
+            params = {"type": "object", **params}
         return {
             "type": "function",
             "function": {
                 "name": self.name,
                 "description": self.description,
-                "parameters": self.parameters,
+                "parameters": params,
             },
         }
 

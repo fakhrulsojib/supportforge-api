@@ -158,10 +158,12 @@ class GeminiAdapter(LLMProvider):
                 return ToolAwareResponse(
                     tool_calls=parsed_calls,
                     model_used=effective_model,
+                    raw_message=choice.message.model_dump(exclude_unset=True),
                 )
             return ToolAwareResponse(
                 content=choice.message.content or "",
                 model_used=effective_model,
+                raw_message=choice.message.model_dump(exclude_unset=True),
             )
         except Exception as exc:
             raise LLMError(f"Gemini tool call failed: {exc}") from exc

@@ -178,11 +178,12 @@ async def run_tool_loop(
                         "arguments": _safe_json_dumps(tc.arguments),
                     },
                 })
-                messages.append({
+                assistant_msg = response.raw_message if getattr(response, "raw_message", None) else {
                     "role": "assistant",
-                    "content": None,
+                    "content": response.content,
                     "tool_calls": assistant_tool_calls,
-                })
+                }
+                messages.append(assistant_msg)
                 state["tool_calls"] = all_tool_calls
                 state["tool_results"] = all_tool_results
                 state["tool_messages"] = [
@@ -244,11 +245,12 @@ async def run_tool_loop(
 
         # Append ONE assistant message with all tool calls, then all results
         if assistant_tool_calls:
-            messages.append({
+            assistant_msg = response.raw_message if getattr(response, "raw_message", None) else {
                 "role": "assistant",
-                "content": None,
+                "content": response.content,
                 "tool_calls": assistant_tool_calls,
-            })
+            }
+            messages.append(assistant_msg)
             messages.extend(tool_result_messages)
 
         state["tool_round"] = round_num + 1

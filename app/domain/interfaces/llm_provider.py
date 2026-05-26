@@ -30,6 +30,7 @@ class ToolAwareResponse:
     content: str | None = None
     tool_calls: list[ToolCall] = field(default_factory=list)
     model_used: str = ""
+    raw_message: dict[str, Any] | None = None
 
 
 class LLMProvider(ABC):

@@ -997,73 +997,83 @@ class ChatService:
                         logger.debug("embed_adapter_close_failed", exc_info=True)
 
             # Step 2: Check RAG-level escalation (no relevant docs found)
+            # Only trigger this premature escalation if tools are disabled.
+            # If tools are enabled, the LLM might be able to handle the query via a tool call
+            # even without retrieved documents.
+            tools_enabled = tenant_config_json.get("tools_enabled", False) if tenant_config_json else False
+            
             if state.get("should_escalate"):
-                rag_reason = state.get("escalation_reason", "")
-                answer_text = _ESCALATION_MESSAGES[EscalationTrigger.NO_CONTEXT]
-                logger.info(
-                    "rag_escalation_triggered",
-                    conversation_id=conversation_id,
-                    reason=rag_reason,
-                )
-                yield {
-                    "type": "token",
-                    "data": answer_text,
-                }
-                yield {
-                    "type": "done",
-                    "data": {
-                        "conversation_id": conversation_id,
-                        "model_used": "",
-                        "sources": [],
-                        "escalated": True,
-                        "escalation_reason": rag_reason,
-                        "escalation_trigger": EscalationTrigger.NO_CONTEXT.value,
-                    },
-                }
-
-                # Persist escalation to DB
-                await self._persist_exchange(
-                    conversation_id=conversation_id,
-                    tenant_id=tenant_id,
-                    user_id=user_id,
-                    user_message=message,
-                    assistant_message=answer_text,
-                    assistant_thinking="",
-                    sources=[],
-                    model_used="",
-                    is_new=is_new_conversation,
-                    escalation_trigger=EscalationTrigger.NO_CONTEXT.value,
-                )
-
-                # ── Failed query logging ─────────────────────────────
-                retrieved_docs = state.get("retrieved_docs", [])
-                await self._persist_failed_query(
-                    tenant_id=tenant_id,
-                    conversation_id=conversation_id,
-                    query_text=message,
-                    failure_reason=FailureReason.NO_DOCS,
-                    retrieved_doc_count=len(retrieved_docs),
-                    max_relevance_score=max(
-                        (d.get("score", 0) for d in retrieved_docs), default=0.0,
-                    ),
-                    escalation_trigger=EscalationTrigger.NO_CONTEXT,
-                )
-
-                # ── Event hook: RAG-level escalation ──────────────
-                dispatch_event(
-                    tenant_config_json,
-                    EventType.ON_ESCALATION,
-                    HookPayload(
-                        event=EventType.ON_ESCALATION.value,
+                if tools_enabled:
+                    # Let the tool loop attempt to handle it even without RAG context
+                    state["should_escalate"] = False
+                    state["escalation_reason"] = ""
+                else:
+                    rag_reason = state.get("escalation_reason", "")
+                    answer_text = _ESCALATION_MESSAGES[EscalationTrigger.NO_CONTEXT]
+                    logger.info(
+                        "rag_escalation_triggered",
+                        conversation_id=conversation_id,
+                        reason=rag_reason,
+                    )
+                    yield {
+                        "type": "token",
+                        "data": answer_text,
+                    }
+                    yield {
+                        "type": "done",
+                        "data": {
+                            "conversation_id": conversation_id,
+                            "model_used": "",
+                            "sources": [],
+                            "escalated": True,
+                            "escalation_reason": rag_reason,
+                            "escalation_trigger": EscalationTrigger.NO_CONTEXT.value,
+                        },
+                    }
+    
+                    # Persist escalation to DB
+                    await self._persist_exchange(
+                        conversation_id=conversation_id,
+                        tenant_id=tenant_id,
+                        user_id=user_id,
+                        user_message=message,
+                        assistant_message=answer_text,
+                        assistant_thinking="",
+                        sources=[],
+                        model_used="",
+                        is_new=is_new_conversation,
+                        escalation_trigger=EscalationTrigger.NO_CONTEXT.value,
+                    )
+    
+                    # ── Failed query logging ─────────────────────────────
+                    retrieved_docs = state.get("retrieved_docs", [])
+                    await self._persist_failed_query(
                         tenant_id=tenant_id,
                         conversation_id=conversation_id,
-                        data={
-                            "trigger": EscalationTrigger.NO_CONTEXT.value,
-                            "reason": "No relevant documents found",
-                        },
-                    ),
-                )
-                return
+                        query_text=message,
+                        failure_reason=FailureReason.NO_DOCS,
+                        retrieved_doc_count=len(retrieved_docs),
+                        max_relevance_score=max(
+                            (d.get("score", 0) for d in retrieved_docs), default=0.0,
+                        ),
+                        escalation_trigger=EscalationTrigger.NO_CONTEXT,
+                    )
+    
+                    # ── Event hook: RAG-level escalation ──────────────
+                    dispatch_event(
+                        tenant_config_json,
+                        EventType.ON_ESCALATION,
+                        HookPayload(
+                            event=EventType.ON_ESCALATION.value,
+                            tenant_id=tenant_id,
+                            conversation_id=conversation_id,
+                            data={
+                                "trigger": EscalationTrigger.NO_CONTEXT.value,
+                                "reason": "No relevant documents found",
+                            },
+                        ),
+                    )
+                    return
 
             # Step 3: Run tool loop (always runs — even for pure RAG)
             # Load encrypted secrets for tool auth

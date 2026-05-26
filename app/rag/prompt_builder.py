@@ -158,19 +158,37 @@ def build_system_prompt(
 
     # Inject tool descriptions if available (includes built-in escalate tool)
     if available_tools:
+        # Filter out the built-in escalate tool for the tool listing
+        tenant_tools = [t for t in available_tools if t.definition.name != "escalate"]
         tool_section = (
             "\n## Available Tools\n"
-            "You can call these tools when the knowledge base alone isn't enough:\n"
+            "You have tools available to PERFORM actions on behalf of the customer. "
+            "This OVERRIDES the escalation rule for account actions — if a tool "
+            "exists that can handle the customer's request, USE the tool instead "
+            "of escalating.\n\n"
         )
-        for tool in available_tools:
-            defn = tool.definition
-            desc = defn.description
-            if getattr(defn, "requires_confirmation", False):
-                desc += (
-                    " (⚠️ Describe what you'll do and ask the user to "
-                    "confirm before calling this tool.)"
-                )
-            tool_section += f"- **{defn.name}**: {desc}\n"
+        if tenant_tools:
+            tool_section += "**Tools you can call:**\n"
+            for tool in tenant_tools:
+                defn = tool.definition
+                desc = defn.description
+                if getattr(defn, "requires_confirmation", False):
+                    desc += (
+                        " (⚠️ Describe what you'll do and ask the user to "
+                        "confirm before calling this tool.)"
+                    )
+                tool_section += f"- **{defn.name}**: {desc}\n"
+        tool_section += (
+            "\n**Tool usage rules:**\n"
+            "1. If the customer's request matches a tool above, call the tool. "
+            "Do NOT escalate.\n"
+            "2. If a tool requires parameters the customer hasn't provided, "
+            "ASK the customer for the missing details before calling the tool. "
+            "Do NOT guess or fabricate parameter values.\n"
+            "3. Only use the **escalate** tool when: the customer explicitly "
+            "asks for a human agent, OR no tool can handle their request AND "
+            "the knowledge base has no answer.\n"
+        )
         base += tool_section
 
     # Guardrails ALWAYS appended — non-negotiable, even with custom_prompt

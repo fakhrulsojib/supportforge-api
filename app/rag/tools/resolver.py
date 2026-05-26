@@ -5,6 +5,7 @@ Converts the JSON tool definitions in ``config_json.tools[]`` into
 """
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import structlog
@@ -27,6 +28,34 @@ class BuiltinEscalateTool:
             success=True,
             data={"escalated": True, "reason": arguments.get("reason", "")},
         )
+
+
+def _parse_parameters(raw: Any) -> dict[str, Any]:
+    """Parse tool parameters into a dict, handling JSON strings.
+
+    The Settings UI stores parameters as JSON strings in config_json.
+    The Gemini API requires proper dicts (Protobuf Struct), so we
+    parse strings into dicts here at resolver time.
+
+    Args:
+        raw: Parameters as a dict, JSON string, or None.
+
+    Returns:
+        Parsed dict. Empty dict on parse failure.
+    """
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, str):
+        raw = raw.strip()
+        if not raw:
+            return {}
+        try:
+            parsed = json.loads(raw)
+            return parsed if isinstance(parsed, dict) else {}
+        except (json.JSONDecodeError, ValueError):
+            logger.warning("tool_parameters_parse_failed", raw=raw[:100])
+            return {}
+    return {}
 
 
 def resolve_tenant_tools(
@@ -80,7 +109,7 @@ def resolve_tenant_tools(
                     description=description,
                     http_method=t.get("http_method", "GET"),
                     endpoint_url=full_url,
-                    parameters_schema=t.get("parameters", {}),
+                    parameters_schema=_parse_parameters(t.get("parameters")),
                     requires_confirmation=t.get("requires_confirmation", False),
                     timeout=t.get("timeout", 15.0),
                     response_mapping=t.get("response_mapping"),
@@ -93,3 +122,4 @@ def resolve_tenant_tools(
     # Escalate tool always last — so LLM sees it but prefers tenant tools
     tools.append(escalate_tool)
     return tools
+
