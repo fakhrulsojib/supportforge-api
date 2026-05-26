@@ -77,7 +77,7 @@ class SQLDocumentRepository(DocumentRepository):
         result = await self._session.execute(stmt)
         return [self._to_domain(m) for m in result.scalars().all()]
 
-    async def update_status(self, document_id: str, status: DocumentStatus, chunk_count: int = 0) -> Document | None:
+    async def update_status(self, document_id: str, status: DocumentStatus, chunk_count: int = 0, *, reset_chunk_count: bool = False) -> Document | None:
         """Update a document's processing status."""
         model = await self._session.get(DocumentModel, document_id)
         if not model:
@@ -85,6 +85,8 @@ class SQLDocumentRepository(DocumentRepository):
         model.status = status
         if chunk_count > 0:
             model.chunk_count = chunk_count
+        elif reset_chunk_count:
+            model.chunk_count = 0
         await self._session.flush()
         return self._to_domain(model)
 

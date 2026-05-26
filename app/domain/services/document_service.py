@@ -7,6 +7,7 @@ and persistence of uploaded documents through the DocumentRepository port.
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from pathlib import Path
 
 from app.core.exceptions import DocumentNotFoundError, IngestionError
 from app.domain.models.document import Document
@@ -183,3 +184,7 @@ class DocumentService:
         # cleanup is preferred for observability and vector store sync)
         await self._repo.delete_chunks_by_document(document_id)
         await self._repo.delete(document_id)
+
+        # Clean up any cached file from failed ingestions
+        cache_path = Path(f"/tmp/supportforge_docs/{document_id}.bin")
+        cache_path.unlink(missing_ok=True)

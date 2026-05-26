@@ -9,6 +9,7 @@ caught and logged — background tasks must never crash the request handler.
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from pathlib import Path
 
 import structlog
 
@@ -198,6 +199,10 @@ async def run_ingestion_task(
 
             # Commit all changes (chunks, READY status, etc.)
             await session.commit()
+
+            # Clean up the cached file on success
+            cache_path = Path(f"/tmp/supportforge_docs/{document_id}.bin")
+            cache_path.unlink(missing_ok=True)
 
             logger.info(
                 "ingestion_task_completed",

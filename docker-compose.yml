@@ -58,7 +58,11 @@ services:
     environment:
       # Override for Docker networking
       POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-supportforge}:${POSTGRES_PASSWORD:-change-me}@postgres:5432/${POSTGRES_DB:-supportforge}
       REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_URL: redis://redis:6379/0
       CHROMA_HOST: chromadb
       CHROMA_PORT: 8000
     ports:

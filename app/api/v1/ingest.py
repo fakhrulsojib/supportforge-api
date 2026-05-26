@@ -13,6 +13,7 @@ admin or agent role. Delete requires admin role.
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from pathlib import Path
 
 import structlog
 from fastapi import APIRouter, Depends, Request, UploadFile
@@ -23,8 +24,8 @@ from app.api.schemas.ingest import (
     DocumentUploadResponse,
 )
 from app.core.dependencies import get_embedding_service, get_llm_provider_dep, get_vector_store, require_role
-from app.core.exceptions import IngestionError, SupportForgeError
-from app.domain.models.enums import UserRole
+from app.core.exceptions import IngestionError, SupportForgeError, DocumentNotFoundError
+from app.domain.models.enums import UserRole, DocumentStatus
 from app.domain.services.document_service import DocumentService
 from app.infrastructure.database.connection import get_async_session
 from app.infrastructure.database.repositories.document_repo import SQLDocumentRepository
@@ -148,6 +149,12 @@ async def upload_document(
         uploaded_by=user.id,
     )
 
+    # Cache the file locally to allow for retries
+    cache_dir = Path("/tmp/supportforge_docs")
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    cache_path = cache_dir / f"{document.id}.bin"
+    cache_path.write_bytes(content)
+
     # Submit to the bounded-concurrency ingestion queue.
     # The queue uses a semaphore to limit parallel processing,
     # preventing Ollama overload on bulk uploads.
@@ -166,6 +173,102 @@ async def upload_document(
         filename=filename,
         status="pending",
         message="Document uploaded successfully. Processing will begin shortly.",
+    )
+
+
+@router.post("/{document_id}/retry", response_model=DocumentUploadResponse)
+async def retry_document_ingestion(
+    document_id: str,
+    request: Request,
+    session: AsyncSession = Depends(get_async_session),
+    user: User = Depends(require_role(UserRole.ADMIN, UserRole.AGENT)),
+    embedding_service: EmbeddingService = Depends(get_embedding_service),
+    vector_store: VectorStore = Depends(get_vector_store),
+    llm_provider: LLMProvider | None = Depends(get_llm_provider_dep),
+) -> DocumentUploadResponse:
+    """Retry a failed document ingestion.
+
+    Reads the cached file content from the local temporary directory.
+    If the file is lost, the user must delete and re-upload the document.
+
+    Args:
+        document_id: Document UUID to retry.
+        request: FastAPI request.
+        session: Database session.
+        user: Authenticated admin or agent user.
+        embedding_service: Embedding generation service.
+        vector_store: Vector database for storing embeddings.
+
+    Returns:
+        DocumentUploadResponse.
+    """
+    logger.debug(
+        "incoming_document_retry",
+        tenant_id=user.tenant_id,
+        document_id=document_id,
+        user_id=user.id
+    )
+    service = _get_document_service(session)
+
+    try:
+        document = await service.get_document(document_id, user.tenant_id)
+    except DocumentNotFoundError as exc:
+        raise SupportForgeError(
+            message="Document not found.",
+            status_code=404,
+            error_code="NOT_FOUND"
+        ) from exc
+
+    if document.status != DocumentStatus.FAILED:
+        raise SupportForgeError(
+            message=f"Only failed documents can be retried. Current status is {document.status.value}.",
+            status_code=400,
+            error_code="INVALID_STATE"
+        )
+
+    cache_path = Path(f"/tmp/supportforge_docs/{document.id}.bin")
+    if not cache_path.exists():
+        raise SupportForgeError(
+            message="Original file content is no longer available on the server. Please delete this document and re-upload it.",
+            status_code=400,
+            error_code="FILE_LOST"
+        )
+
+    content = cache_path.read_bytes()
+
+    # Reset document status to pending via repository (domain model is read-only)
+    doc_repo = SQLDocumentRepository(session)
+    await doc_repo.update_status(
+        document_id=document.id,
+        status=DocumentStatus.PENDING,
+        reset_chunk_count=True,
+    )
+    # Also clean up any old chunks from the previous failed attempt
+    await doc_repo.delete_chunks_by_document(document.id)
+    await session.commit()
+
+    logger.info(
+        "document_retry_started",
+        document_id=document.id,
+        filename=document.filename,
+        tenant_id=user.tenant_id,
+    )
+
+    ingestion_queue: IngestionQueue = request.app.state.ingestion_queue
+    await ingestion_queue.submit(
+        document_id=document.id,
+        file_content=content,
+        tenant_id=user.tenant_id,
+        embedding_service=embedding_service,
+        vector_store=vector_store,
+        llm_provider=llm_provider,
+    )
+
+    return DocumentUploadResponse(
+        document_id=document.id,
+        filename=document.filename,
+        status="pending",
+        message="Document ingestion retried successfully. Processing will begin shortly.",
     )
 
 
