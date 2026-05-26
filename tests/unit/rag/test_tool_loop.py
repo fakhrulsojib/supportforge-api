@@ -15,6 +15,15 @@ from app.rag.tools.resolver import BuiltinEscalateTool
 from app.rag.tools.tool_loop import run_tool_loop
 
 
+async def _run_tool_loop_to_end(*args, **kwargs) -> dict[str, Any]:
+    result = None
+    async for frame in run_tool_loop(*args, **kwargs):
+        if frame["type"] == "state":
+            result = frame["data"]
+    if result is None:
+        raise RuntimeError("run_tool_loop finished without yielding state")
+    return result
+
 def _make_provider(responses: list[ToolAwareResponse]) -> AsyncMock:
     """Create a mock LLM provider that returns the given responses in order."""
     provider = AsyncMock()
@@ -61,7 +70,7 @@ class TestRunToolLoop:
         executor = ToolExecutor(max_rounds=3)
         escalate = BuiltinEscalateTool()
 
-        result = await run_tool_loop(
+        result = await _run_tool_loop_to_end(
             state, [escalate], provider, executor,
             system_prompt="Be helpful",
         )
@@ -81,7 +90,7 @@ class TestRunToolLoop:
         state = _base_state()
         executor = ToolExecutor(max_rounds=3)
 
-        result = await run_tool_loop(
+        result = await _run_tool_loop_to_end(
             state, [mock_tool, BuiltinEscalateTool()], provider, executor,
             system_prompt="Be helpful",
         )
@@ -112,7 +121,7 @@ class TestRunToolLoop:
         state = _base_state()
         executor = ToolExecutor(max_rounds=5)
 
-        result = await run_tool_loop(
+        result = await _run_tool_loop_to_end(
             state, [tool1, tool2, BuiltinEscalateTool()], provider, executor,
             system_prompt="Be helpful",
         )
@@ -131,7 +140,7 @@ class TestRunToolLoop:
         executor = ToolExecutor(max_rounds=3)
         escalate = BuiltinEscalateTool()
 
-        result = await run_tool_loop(
+        result = await _run_tool_loop_to_end(
             state, [escalate], provider, executor,
             system_prompt="Be helpful",
         )
@@ -153,7 +162,7 @@ class TestRunToolLoop:
         state = _base_state()
         executor = ToolExecutor(max_rounds=2)
 
-        result = await run_tool_loop(
+        result = await _run_tool_loop_to_end(
             state, [mock_tool, BuiltinEscalateTool()], provider, executor,
             system_prompt="Be helpful",
         )
@@ -174,7 +183,7 @@ class TestRunToolLoop:
         executor = ToolExecutor(max_rounds=3)
 
         # Only escalate tool is available
-        result = await run_tool_loop(
+        result = await _run_tool_loop_to_end(
             state, [BuiltinEscalateTool()], provider, executor,
             system_prompt="Be helpful",
         )
@@ -197,7 +206,7 @@ class TestRunToolLoop:
         state = _base_state()
         executor = ToolExecutor(max_rounds=3)
 
-        result = await run_tool_loop(
+        result = await _run_tool_loop_to_end(
             state, [mock_tool, BuiltinEscalateTool()], provider, executor,
             system_prompt="Be helpful",
         )
@@ -218,7 +227,7 @@ class TestRunToolLoop:
         state = _base_state()
         executor = ToolExecutor(max_rounds=3)
 
-        result = await run_tool_loop(
+        result = await _run_tool_loop_to_end(
             state, [mock_tool, BuiltinEscalateTool()], provider, executor,
             system_prompt="Be helpful",
         )
@@ -237,7 +246,7 @@ class TestRunToolLoop:
         history = [{"role": "user", "content": "Previous msg"}]
         executor = ToolExecutor(max_rounds=1)
 
-        await run_tool_loop(
+        await _run_tool_loop_to_end(
             state, [BuiltinEscalateTool()], provider, executor,
             system_prompt="Be helpful",
             conversation_history=history,
@@ -269,7 +278,7 @@ class TestRunToolLoop:
         state = _base_state()
         executor = ToolExecutor(max_rounds=3)
 
-        result = await run_tool_loop(
+        result = await _run_tool_loop_to_end(
             state, [tool_a, tool_b, BuiltinEscalateTool()], provider, executor,
             system_prompt="Be helpful",
         )
@@ -287,7 +296,7 @@ class TestRunToolLoop:
         state = _base_state()
         executor = ToolExecutor(max_rounds=1)
 
-        await run_tool_loop(
+        await _run_tool_loop_to_end(
             state, [BuiltinEscalateTool()], provider, executor,
             system_prompt="Be helpful",
             chat_model="gpt-4o-mini",
@@ -308,7 +317,7 @@ class TestRunToolLoop:
         state = _base_state()
         executor = ToolExecutor(max_rounds=3)
 
-        result = await run_tool_loop(
+        result = await _run_tool_loop_to_end(
             state, [mock_tool, BuiltinEscalateTool()], provider, executor,
             system_prompt="Be helpful",
         )
@@ -351,7 +360,7 @@ class TestRunToolLoop:
         escalate = BuiltinEscalateTool()
 
         state = _base_state()
-        result = await run_tool_loop(
+        result = await _run_tool_loop_to_end(
             state=state,
             tools=[tool, escalate],
             llm_provider=provider,

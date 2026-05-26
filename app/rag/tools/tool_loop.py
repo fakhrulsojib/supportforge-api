@@ -40,6 +40,8 @@ def _safe_json_dumps(obj: Any) -> str:
     return res
 
 
+from collections.abc import AsyncGenerator
+
 async def run_tool_loop(
     state: dict[str, Any],
     tools: list[Any],
@@ -49,7 +51,7 @@ async def run_tool_loop(
     system_prompt: str,
     conversation_history: list[dict[str, str]] | None = None,
     chat_model: str | None = None,
-) -> dict[str, Any]:
+) -> AsyncGenerator[dict[str, Any], None]:
     """Run the tool decision loop.
 
     Called by BOTH ``process_message`` and ``stream_message`` — single
@@ -72,7 +74,7 @@ async def run_tool_loop(
         chat_model: Model to use for tool calls.
 
     Returns:
-        Updated state dict with tool_calls, tool_results, and tool_messages.
+        AsyncGenerator yielding intermediate tool frames and finally the state dict.
     """
     tool_defs = [t.definition.to_openai_format() for t in tools]
     tool_map = {t.definition.name: t for t in tools}
@@ -112,8 +114,6 @@ async def run_tool_loop(
             break
 
         # Circuit breaker: detect identical failed tool calls
-        # If the LLM generates the exact same tool calls as the previous round,
-        # and those calls failed, it's stuck in a loop. Break early.
         current_calls_fingerprint = [
             (tc.name, _safe_json_dumps(tc.arguments))
             for tc in response.tool_calls
@@ -121,9 +121,6 @@ async def run_tool_loop(
         
         # Check if the exact same calls were made in the previous round
         if round_num > 0 and len(response.tool_calls) > 0:
-            # Reconstruct previous round's calls from all_tool_calls
-            # Since we append to all_tool_calls in order, the last N items correspond to the previous round.
-            # Look at the previous assistant message to see how many calls there were
             prev_tool_msgs = [m for m in messages if m.get("role") == "assistant" and m.get("tool_calls")]
             if prev_tool_msgs:
                 prev_num_calls = len(prev_tool_msgs[-1].get("tool_calls", []))
@@ -142,7 +139,6 @@ async def run_tool_loop(
                         break
 
         # Execute each tool call
-        # Build a single assistant message with ALL tool calls from this response
         assistant_tool_calls = []
         tool_result_messages = []
 
@@ -193,10 +189,15 @@ async def run_tool_loop(
                     m for m in messages
                     if m.get("role") == "tool" or m.get("tool_calls")
                 ]
-                return state  # Exit loop immediately on escalation
+                yield {"type": "state", "data": state}
+                return  # Exit loop immediately on escalation
+
+            yield {"type": "tool_start", "data": {"name": tc.name}}
 
             # Execute the tool
             result = await executor.execute(tool, tc.arguments)
+
+            yield {"type": "tool_result", "data": {"name": tc.name, "success": result.success}}
 
             # Record the interaction
             all_tool_calls.append({
@@ -263,4 +264,5 @@ async def run_tool_loop(
         if m.get("role") == "tool" or m.get("tool_calls")
     ]
 
-    return state
+    yield {"type": "state", "data": state}
+

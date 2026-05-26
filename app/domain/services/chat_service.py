@@ -583,12 +583,15 @@ class ChatService:
                 available_tools=tenant_tools,
             )
             executor = ToolExecutor(max_rounds=max_rounds)
-            result = await run_tool_loop(
+            tool_loop_gen = run_tool_loop(
                 result, tenant_tools, effective_provider, executor,
                 system_prompt=system_prompt,
                 conversation_history=history_messages,
                 chat_model=tenant_chat_model,
             )
+            async for frame in tool_loop_gen:
+                if frame["type"] == "state":
+                    result = frame["data"]
 
             # ── Event hook: tool failures ──────────────────────────
             for tr in result.get("tool_results", []):
@@ -1091,12 +1094,17 @@ class ChatService:
                 available_tools=tenant_tools,
             )
             executor = ToolExecutor(max_rounds=max_rounds)
-            state = await run_tool_loop(
+            tool_loop_gen = run_tool_loop(
                 state, tenant_tools, effective_provider, executor,
                 system_prompt=system_prompt,
                 conversation_history=history_messages,
                 chat_model=tenant_chat_model,
             )
+            async for frame in tool_loop_gen:
+                if frame["type"] == "state":
+                    state = frame["data"]
+                else:
+                    yield frame
 
             # ── Event hook: tool failures ──────────────────────────
             for tr in state.get("tool_results", []):
