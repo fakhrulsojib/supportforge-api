@@ -215,6 +215,7 @@ class ChatService:
 
     async def _is_conversation_escalated(self, conversation_id: str) -> bool:
         """Check if a conversation has already been escalated."""
+        logger.debug("checking_escalation_status", conversation_id=conversation_id)
         try:
             from app.infrastructure.database.repositories.conversation_repo import (
                 SQLConversationRepository,
@@ -384,6 +385,7 @@ class ChatService:
         Returns:
             Dict with answer, sources, escalation status, etc.
         """
+        logger.debug("chat_service_process_message_started", tenant_id=tenant_id, conversation_id=conversation_id, user_id=user_id)
         # Generate conversation ID if not provided
         is_new_conversation = not conversation_id
         if not conversation_id:
@@ -769,6 +771,7 @@ class ChatService:
         Yields:
             Structured frame dicts for WebSocket delivery.
         """
+        logger.debug("chat_service_stream_message_started", tenant_id=tenant_id, conversation_id=conversation_id, user_id=user_id)
         # Clamp temperature to valid range
         if not isinstance(temperature, (int, float)) or temperature < 0.0 or temperature > 1.0:
             temperature = 0.2

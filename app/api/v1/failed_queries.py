@@ -64,6 +64,7 @@ async def list_failed_queries(
     Returns:
         Paginated list of failed queries.
     """
+    logger.debug("api_failed_queries_list", tenant_id=user.tenant_id, resolved=resolved, limit=limit, offset=offset)
     repo = SQLFailedQueryRepository(session)
 
     # Parse failure_reason filter
@@ -127,6 +128,7 @@ async def resolve_failed_query(
     Raises:
         SupportForgeError: If failed query not found or belongs to different tenant.
     """
+    logger.debug("api_failed_queries_resolve", query_id=query_id, user_id=user.id)
     repo = SQLFailedQueryRepository(session)
 
     # Verify exists and tenant ownership
@@ -179,6 +181,7 @@ async def get_failed_query_stats(
     Returns:
         Aggregated failed query statistics.
     """
+    logger.debug("api_failed_queries_stats", tenant_id=user.tenant_id)
     repo = SQLFailedQueryRepository(session)
 
     total_unresolved = await repo.count_unresolved(user.tenant_id)

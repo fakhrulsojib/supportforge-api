@@ -115,11 +115,13 @@ class IngestionService:
 
         try:
             # Step 2: Extract text
+            logger.debug("ingestion_extracting_text", document_id=doc_id, file_type=document.file_type)
             text = self._extract_text(file_content, document.file_type)
 
             # Step 3: Chunk text
             #   For markdown files: parse structure first, then chunk each section
             #   For all other files: chunk the raw text directly
+            logger.debug("ingestion_chunking_text", document_id=doc_id, length=len(text))
             if document.file_type == "md":
                 chunks = self._chunk_markdown(text, doc_id, document.filename)
             else:
@@ -153,6 +155,7 @@ class IngestionService:
                 )
 
             # Step 5: Generate embeddings (on contextualised text)
+            logger.debug("ingestion_generating_embeddings", document_id=doc_id, model=tenant_embedding_model)
             embeddings = await self._embedding_service.embed_batch(
                 chunk_texts, model=tenant_embedding_model,
             )
@@ -164,6 +167,7 @@ class IngestionService:
             )
 
             # Step 6: Generate unique IDs and store in vector DB
+            logger.debug("ingestion_storing_vectors", document_id=doc_id)
             chroma_ids = [f"{doc_id}_chunk_{i}_{uuid.uuid4().hex[:8]}" for i in range(len(chunks))]
 
             metadatas: list[dict[str, object]] = []
@@ -198,6 +202,7 @@ class IngestionService:
             # Step 7: Persist chunk records in DB
             # Store the contextualised text so DB content matches what's
             # in the vector store (important for source display)
+            logger.debug("ingestion_storing_chunks_db", document_id=doc_id)
             for i, _chunk in enumerate(chunks):
                 db_chunk = DocumentChunk(
                     document_id=doc_id,

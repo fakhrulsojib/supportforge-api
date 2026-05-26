@@ -30,22 +30,67 @@ _DEFAULT_SECRET_KEY = "change-me-to-a-random-secret-key"  # noqa: S105
 _REDIS_PASSWORD_RE = re.compile(r"(rediss?://):([^@]+)@")
 
 
+import logging.config
+import os
+
 def _configure_structlog(log_level: str) -> None:
     """Configure structlog for JSON output with request-ID correlation."""
+    os.makedirs("logs", exist_ok=True)
+    
+    logging.config.dictConfig({
+        "version": 1,
+        "disable_existing_loggers": False,
+        "formatters": {
+            "json": {
+                "()": structlog.stdlib.ProcessorFormatter,
+                "processor": structlog.processors.JSONRenderer(),
+            },
+            "console": {
+                "()": structlog.stdlib.ProcessorFormatter,
+                "processor": structlog.dev.ConsoleRenderer(colors=True),
+            },
+        },
+        "handlers": {
+            "console": {
+                "class": "logging.StreamHandler",
+                "formatter": "console",
+            },
+            "file": {
+                "class": "logging.handlers.TimedRotatingFileHandler",
+                "filename": "logs/api.log",
+                "when": "midnight",
+                "backupCount": 30,
+                "formatter": "json",
+            },
+        },
+        "loggers": {
+            "": {
+                "handlers": ["console", "file"],
+                "level": log_level.upper(),
+            },
+            "uvicorn": {
+                "handlers": ["console", "file"],
+                "level": log_level.upper(),
+                "propagate": False,
+            },
+        }
+    })
+
     structlog.configure(
         processors=[
+            structlog.stdlib.filter_by_level,
             structlog.contextvars.merge_contextvars,
-            structlog.processors.add_log_level,
-            structlog.processors.StackInfoRenderer(),
-            structlog.dev.set_exc_info,
+            structlog.stdlib.add_logger_name,
+            structlog.stdlib.add_log_level,
+            structlog.stdlib.PositionalArgumentsFormatter(),
             structlog.processors.TimeStamper(fmt="iso"),
-            structlog.dev.ConsoleRenderer() if log_level == "DEBUG" else structlog.processors.JSONRenderer(),
+            structlog.processors.StackInfoRenderer(),
+            structlog.processors.format_exc_info,
+            structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
         ],
-        wrapper_class=structlog.make_filtering_bound_logger(
-            getattr(logging, log_level, logging.INFO),
-        ),
+        logger_factory=structlog.stdlib.LoggerFactory(),
+        wrapper_class=structlog.stdlib.BoundLogger,
         context_class=dict,
-        logger_factory=structlog.PrintLoggerFactory(),
         cache_logger_on_first_use=True,
     )
 

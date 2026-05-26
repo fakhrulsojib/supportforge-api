@@ -234,6 +234,8 @@ async def grade_node(
         if doc.get("score", 0) >= relevance_threshold:
             relevant.append(doc)
 
+    logger.debug("grade_node_filtering", total=len(retrieved), relevant=len(relevant), threshold=relevance_threshold)
+
     if not relevant:
         state["relevant_docs"] = []
         state["should_escalate"] = True
@@ -297,6 +299,7 @@ async def generate_node(
     )
 
     try:
+        logger.debug("generate_node_calling_llm", model=chat_model, message_count=len(messages))
         answer = await llm_provider.generate(messages=messages, model=chat_model)
         state["answer"] = answer
         state["sources"] = sources

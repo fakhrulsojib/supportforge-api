@@ -78,6 +78,12 @@ async def upload_document(
     Returns:
         DocumentUploadResponse with document ID and status.
     """
+    logger.debug(
+        "incoming_document_upload",
+        tenant_id=user.tenant_id,
+        filename=file.filename,
+        user_id=user.id
+    )
     service = _get_document_service(session)
 
     # Validate file type
@@ -177,6 +183,11 @@ async def list_documents(
     Returns:
         DocumentListResponse with all tenant documents.
     """
+    logger.debug(
+        "incoming_list_documents",
+        tenant_id=user.tenant_id,
+        user_id=user.id
+    )
     service = _get_document_service(session)
     documents = await service.list_documents(user.tenant_id)
 
@@ -221,6 +232,12 @@ async def get_document_status(
         DocumentNotFoundError: If document doesn't exist or belongs
             to another tenant.
     """
+    logger.debug(
+        "incoming_get_document_status",
+        tenant_id=user.tenant_id,
+        document_id=document_id,
+        user_id=user.id
+    )
     service = _get_document_service(session)
     document = await service.get_document(document_id, user.tenant_id)
 
@@ -252,6 +269,12 @@ async def delete_document(
         session: Database session.
         user: Authenticated admin user.
     """
+    logger.debug(
+        "incoming_delete_document",
+        tenant_id=user.tenant_id,
+        document_id=document_id,
+        user_id=user.id
+    )
     service = _get_document_service(session)
     await service.delete_document(document_id, user.tenant_id)
 

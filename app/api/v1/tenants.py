@@ -62,6 +62,11 @@ async def create_tenant(
     Returns:
         Created TenantResponse.
     """
+    logger.debug(
+        "incoming_create_tenant",
+        user_id=user.id,
+        tenant_name=request.name
+    )
     service = _get_tenant_service(session)
     tenant_data = TenantCreate(
         name=request.name,
@@ -94,6 +99,10 @@ async def list_tenants(
     Returns:
         TenantListResponse with all tenants.
     """
+    logger.debug(
+        "incoming_list_tenants",
+        user_id=user.id
+    )
     service = _get_tenant_service(session)
     tenants = await service.list_tenants()
     return TenantListResponse(
@@ -130,6 +139,11 @@ async def get_tenant(
     Returns:
         TenantResponse.
     """
+    logger.debug(
+        "incoming_get_tenant",
+        user_id=user.id,
+        slug_or_id=slug_or_id
+    )
     service = _get_tenant_service(session)
     tenant = None
     try:
@@ -171,6 +185,11 @@ async def update_tenant(
         from fastapi import HTTPException
         raise HTTPException(status_code=403, detail="Not authorized to modify this tenant")
 
+    logger.debug(
+        "incoming_update_tenant",
+        user_id=user.id,
+        tenant_id=tenant_id
+    )
     service = _get_tenant_service(session)
     update_data = request.model_dump(exclude_unset=True)
 
@@ -208,6 +227,11 @@ async def delete_tenant(
         from fastapi import HTTPException
         raise HTTPException(status_code=403, detail="Not authorized to modify this tenant")
 
+    logger.debug(
+        "incoming_delete_tenant",
+        user_id=user.id,
+        tenant_id=tenant_id
+    )
     service = _get_tenant_service(session)
     await service.delete_tenant(tenant_id)
     logger.info("tenant_deleted_via_api", tenant_id=tenant_id, deleted_by=user.id)

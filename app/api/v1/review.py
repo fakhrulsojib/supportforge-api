@@ -73,6 +73,7 @@ async def list_negative_feedback(
     Returns:
         Paginated list of negative feedback items.
     """
+    logger.debug("api_review_list_negative", tenant_id=user.tenant_id, reviewed=reviewed, limit=limit, offset=offset)
     msg_repo = SQLMessageRepository(session)
     conv_repo = SQLConversationRepository(session)
     user_repo = SQLUserRepository(session)
@@ -156,6 +157,7 @@ async def list_escalations(
     Returns:
         Paginated list of escalated conversations.
     """
+    logger.debug("api_review_list_escalations", tenant_id=user.tenant_id, trigger=trigger, reviewed=reviewed, limit=limit)
     conv_repo = SQLConversationRepository(session)
     msg_repo = SQLMessageRepository(session)
     user_repo = SQLUserRepository(session)
@@ -231,6 +233,7 @@ async def mark_escalation_reviewed(
     Raises:
         SupportForgeError: If conversation not found or belongs to different tenant.
     """
+    logger.debug("api_review_mark_escalation_reviewed", conversation_id=conversation_id, user_id=user.id)
     conv_repo = SQLConversationRepository(session)
 
     # Verify conversation exists and belongs to admin's tenant
@@ -290,6 +293,7 @@ async def list_flagged_messages(
     Returns:
         Paginated list of flagged messages.
     """
+    logger.debug("api_review_list_flagged", tenant_id=user.tenant_id, reviewed=reviewed, limit=limit, offset=offset)
     msg_repo = SQLMessageRepository(session)
     conv_repo = SQLConversationRepository(session)
     user_repo = SQLUserRepository(session)
@@ -367,6 +371,7 @@ async def mark_reviewed(
     Raises:
         SupportForgeError: If message not found or belongs to different tenant.
     """
+    logger.debug("api_review_mark_feedback_reviewed", message_id=message_id, user_id=user.id)
     msg_repo = SQLMessageRepository(session)
     conv_repo = SQLConversationRepository(session)
 
@@ -430,6 +435,7 @@ async def get_review_stats(
     Returns:
         Aggregate review queue statistics.
     """
+    logger.debug("api_review_stats", tenant_id=user.tenant_id)
     from app.infrastructure.database.repositories.failed_query_repo import (
         SQLFailedQueryRepository,
     )

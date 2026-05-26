@@ -62,6 +62,7 @@ async def register(
         SupportForgeError(404): Tenant not found.
         SupportForgeError(409): Email already registered.
     """
+    logger.debug("api_auth_register", email=request.email, tenant_id=request.tenant_id, role=request.role)
     # ── C5: Validate local inputs FIRST (no DB queries) to prevent
     #    tenant/email enumeration via error ordering ──────────────
 
@@ -170,6 +171,7 @@ async def login(
     Raises:
         AuthError: Invalid credentials.
     """
+    logger.debug("api_auth_login", email=request.email, tenant_id=request.tenant_id)
     user_repo = SQLUserRepository(session)
     user = await user_repo.get_by_email(request.email, request.tenant_id)
 
@@ -233,6 +235,7 @@ async def refresh(
     Raises:
         AuthError: Invalid or expired refresh token.
     """
+    logger.debug("api_auth_refresh")
     payload = verify_token(
         token=request.refresh_token,
         secret_key=settings.jwt_secret_key,

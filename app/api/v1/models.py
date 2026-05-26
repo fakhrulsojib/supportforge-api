@@ -86,6 +86,7 @@ async def list_models(
     Returns:
         Available models grouped by provider, plus the active models.
     """
+    logger.debug("api_models_list", tenant_id=user.tenant_id, user_id=user.id)
     llm_provider = request.app.state.llm_provider
 
     # ── Ollama provider ─────────────────────────────────────────
@@ -241,6 +242,7 @@ async def set_active_model(
     Raises:
         SupportForgeError: If provider, model, or type not found.
     """
+    logger.debug("api_models_set_active", tenant_id=user.tenant_id, provider=body.provider, model_id=body.model_id, model_type=body.model_type)
     if body.provider not in _SUPPORTED_PROVIDERS:
         raise SupportForgeError(
             message=f"Provider '{body.provider}' is not configured",

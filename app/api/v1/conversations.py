@@ -63,6 +63,7 @@ async def list_conversations(
         in Phase 3 frontend integration. For now the field is accurate for
         single-page results.
     """
+    logger.debug("api_conversations_list", user_id=user.id, limit=limit, offset=offset)
     limit = min(limit, 100)
     repo = SQLConversationRepository(session)
     msg_repo = SQLMessageRepository(session)
@@ -115,6 +116,7 @@ async def get_conversation(
     Returns:
         Full conversation with messages.
     """
+    logger.debug("api_conversations_get", conversation_id=conversation_id, user_id=user.id)
     conv_repo = SQLConversationRepository(session)
     msg_repo = SQLMessageRepository(session)
 
@@ -185,6 +187,7 @@ async def update_message_feedback(
     Returns:
         Updated message with feedback.
     """
+    logger.debug("api_conversations_feedback", message_id=message_id, user_id=user.id, feedback=request.feedback.value)
     msg_repo = SQLMessageRepository(session)
     conv_repo = SQLConversationRepository(session)
 

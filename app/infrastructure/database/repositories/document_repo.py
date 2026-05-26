@@ -11,8 +11,12 @@ from app.domain.models.document import Document, DocumentChunk
 from app.domain.models.enums import DocumentStatus
 from app.infrastructure.database.models import DocumentChunkModel, DocumentModel
 
+import structlog
+
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
+
+logger = structlog.get_logger(__name__)
 
 
 class SQLDocumentRepository(DocumentRepository):
@@ -46,6 +50,7 @@ class SQLDocumentRepository(DocumentRepository):
 
     async def create(self, document: Document) -> Document:
         """Create a new document record."""
+        logger.debug("repo_create_document", tenant_id=document.tenant_id, filename=document.filename)
         model = DocumentModel(
             tenant_id=document.tenant_id,
             filename=document.filename,
@@ -60,6 +65,7 @@ class SQLDocumentRepository(DocumentRepository):
 
     async def get_by_id(self, document_id: str) -> Document | None:
         """Get a document by ID."""
+        logger.debug("repo_get_document_by_id", document_id=document_id)
         result = await self._session.get(DocumentModel, document_id)
         return self._to_domain(result) if result else None
 
@@ -84,6 +90,7 @@ class SQLDocumentRepository(DocumentRepository):
 
     async def delete(self, document_id: str) -> bool:
         """Delete a document and its chunks."""
+        logger.debug("repo_delete_document", document_id=document_id)
         model = await self._session.get(DocumentModel, document_id)
         if not model:
             return False

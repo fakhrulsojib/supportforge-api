@@ -51,12 +51,24 @@ async def chat_endpoint(
     Returns:
         ChatResponse with AI-generated answer and source citations.
     """
+    logger.debug(
+        "incoming_chat_request",
+        tenant_id=user.tenant_id,
+        conversation_id=request.conversation_id,
+        message_length=len(request.message)
+    )
+
     # ── Tenant status gate ───────────────────────────────────────
     # Only ACTIVE tenants can access chat. Pending, suspended, and
     # archived tenants are all blocked.
     tenant_repo = SQLTenantRepository(session)
     tenant = await tenant_repo.get_by_id(user.tenant_id)
     if not tenant or tenant.status != TenantStatus.ACTIVE:
+        logger.warning(
+            "chat_request_rejected",
+            reason="tenant_suspended_or_not_found",
+            tenant_id=user.tenant_id
+        )
         raise TenantSuspendedError(tenant_id=user.tenant_id)
 
     # Read per-tenant model overrides from config_json
@@ -106,6 +118,14 @@ async def chat_endpoint(
         )
         for s in result.get("sources", [])
     ]
+
+    logger.info(
+        "chat_request_completed",
+        conversation_id=result["conversation_id"],
+        model_used=result.get("model_used", ""),
+        sources_count=len(sources),
+        escalated=result.get("escalated", False)
+    )
 
     return ChatResponse(
         answer=result["answer"],
