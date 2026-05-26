@@ -47,6 +47,7 @@ COPY scripts/ ./scripts/
 
 # Non-root user
 RUN useradd --create-home --no-log-init appuser
+RUN chown -R appuser:appuser /app
 USER appuser
 
 # Expose port
